@@ -21,7 +21,7 @@ class ToolsRegistry:
         """Kieruje wywołanie narzędzia do odpowiedniej logiki."""
         try:
             # Weryfikacja uprawnień na podstawie tieru
-            tier_clearance = {"butler": 1, "regis": 2, "prime": 3}
+            tier_clearance = {"butler": 1, "regis": 2}
             current_clearance = tier_clearance.get(self.tier, 1)
             
             tool_def = None
@@ -38,12 +38,12 @@ class ToolsRegistry:
                 return json.dumps({"error": f"Odmowa dostępu do '{tool_name}' w obecnym trybie."}, ensure_ascii=False)
 
             dispatch = {
-                "get_devices": lambda: self._get_devices(arguments.get("domain"), arguments.get("room")),
                 "get_device_state": lambda: self._get_device_state(arguments.get("entity_id")),
-                "execute_ha_action": lambda: self._execute_ha_action(
+                "execute_action": lambda: self._execute_action(
                     arguments.get("action"), arguments.get("entity_id"), arguments.get("parameters")),
                 "get_current_time": lambda: self._get_current_time(),
                 "get_weather": lambda: self._get_weather(arguments.get("location")),
+                "get_phone_battery": lambda: self._get_phone_battery(),
             }
             
             handler = dispatch.get(tool_name)
@@ -59,46 +59,197 @@ class ToolsRegistry:
 
     def _get_devices(self, domain: str = None, room: str = None) -> str:
         """Zwraca urządzenia z opcjonalnym filtrowaniem po domenie i pokoju.
-
-        Jeśli room jest None lub nie istnieje w rooms.json — zwraca wszystkie urządzenia
-        (zachowanie wsteczne). Jeśli room jest podany, zawęża listę do urządzeń
-        przypisanych do tego pokoju w data/rooms.json.
+        
+        Ukrywa surowe urządzenia, pozostawiając tylko te "zdefiniowane w abstrakcji":
+        - Wirtualne grupy
+        - Urządzenia przypisane do pokoi (rooms.json)
+        - Urządzenia ze zdefiniowanym aliasem (aliases.json)
         """
         states = self.ha_client.get_all_states()
         room_filter = self.rooms.get(room) if room and self.rooms else None
         devices = []
+        
+        virtual_groups = getattr(self.ha_client, "virtual_groups", {})
+        aliases = getattr(self.ha_client, "aliases", {})
+        
+        # Zbierz wszystkie encje zdefiniowane w pokojach
+        room_entities = set()
+        for r_data in (self.rooms.values() if self.rooms else []):
+            if isinstance(r_data, dict):
+                room_entities.update(r_data.get("devices", []))
+            else:
+                room_entities.update(r_data)
+            
+        active_virtual_groups = {}
+        for vg_id, children in virtual_groups.items():
+            vg_domain = vg_id.split(".")[0] if "." in vg_id else ""
+            if domain and vg_domain != domain:
+                continue
+            
+            is_in_room = False
+            if room_filter is None:
+                is_in_room = True
+            elif room and room in vg_id: # np. light.moj_pokoj pasuje do room="moj_pokoj"
+                is_in_room = True
+            else:
+                for child in children:
+                    if room_filter and child in room_filter:
+                        is_in_room = True
+                        break
+                        
+            if is_in_room:
+                active_virtual_groups[vg_id] = True
+                
         for entity_id, data in states.items():
             if domain and not entity_id.startswith(f"{domain}."):
                 continue
             if room_filter is not None and entity_id not in room_filter:
                 continue
-            devices.append({"entity_id": entity_id, "name": data.get("friendly_name")})
+                
+            # Sprawdzenie definicji abstrakcji
+            has_alias = entity_id in aliases
+            in_room = entity_id in room_entities
+            
+            # Jeżeli encja składowa należy do jakiejś wirtualnej grupy, nie pokazuj jej osobno
+            is_part_of_any_vg = any(entity_id in children for children in virtual_groups.values())
+            if is_part_of_any_vg:
+                continue
+                
+            if has_alias or in_room:
+                devices.append({"entity_id": entity_id, "name": data.get("friendly_name", "Nieznana Nazwa")})
+            
+        # Dodaj wirtualne grupy jako jedno syntetyczne urządzenie
+        for vg_id in active_virtual_groups:
+            domain_part = vg_id.split(".")[0] if "." in vg_id else ""
+            name_part = vg_id.split(".")[1].replace("_", " ").title() if "." in vg_id else vg_id
+            
+            vg_children = virtual_groups.get(vg_id, [])
+            nested_vgs = [c for c in vg_children if c in virtual_groups]
+            
+            devices.append({
+                "entity_id": vg_id, 
+                "name": f"{name_part} (Grupa)",
+                "nested": nested_vgs
+            })
+            
         return json.dumps({"devices": devices}, ensure_ascii=False)
+
+    def get_global_menu(self) -> str:
+        """Zwraca sformatowany tekst w Markdown reprezentujący abstrakcyjne urządzenia domowe z uwzględnieniem pokoi."""
+        devices_json = json.loads(self._get_devices())
+        devices = devices_json.get("devices", [])
+        
+        entity_to_room = {}
+        room_metadata = {}
+        if getattr(self, "rooms", None):
+            for room_name, r_data in self.rooms.items():
+                if isinstance(r_data, dict):
+                    room_metadata[room_name] = r_data.get("metadata", [])
+                    display_name = r_data.get("name", room_name.title())
+                    for ent in r_data.get("devices", []):
+                        entity_to_room[ent] = display_name
+                else:
+                    for ent in r_data:
+                        entity_to_room[ent] = room_name.title()
+                    
+        grouped_devices = {}
+        for dev in devices:
+            ent_id = dev["entity_id"]
+            name = dev["name"]
+            nested = dev.get("nested", [])
+            
+            room = "Urządzenia bez przypisanego pokoju"
+            if ent_id in entity_to_room:
+                room = entity_to_room[ent_id]
+            else:
+                for r_name in (self.rooms.keys() if getattr(self, "rooms", None) else []):
+                    if r_name in ent_id:
+                        r_data = self.rooms[r_name]
+                        room = r_data.get("name", r_name.title()) if isinstance(r_data, dict) else r_name.title()
+                        break
+                        
+            if room not in grouped_devices:
+                grouped_devices[room] = []
+                
+            entry = f"- {ent_id} ({name})"
+            if nested:
+                entry += f" [Zawiera: {', '.join(nested)}]"
+            grouped_devices[room].append(entry)
+            
+        if not devices:
+            return "BRAK URZĄDZEŃ W SYSTEMIE."
+            
+        menu = "DOSTĘPNE URZĄDZENIA (Globalne Menu):\n"
+        for room, devs in grouped_devices.items():
+            menu += f"\n## Pokój: {room}\n"
+            orig_room = next((k for k, v in self.rooms.items() if (v.get("name") if isinstance(v, dict) else k.title()) == room), None)
+            if orig_room and orig_room in room_metadata and room_metadata[orig_room]:
+                meta_str = ", ".join(room_metadata[orig_room])
+                menu += f"*Metadane: {meta_str}*\n"
+            menu += "\n".join(devs) + "\n"
+            
+        return menu.strip()
 
     def _get_device_state(self, entity_id: str | list[str]) -> str:
         states = self.ha_client.get_all_states()
-        if isinstance(entity_id, list):
-            results = {}
-            for eid in entity_id:
-                if eid in states:
-                    results[eid] = states[eid]
-                else:
-                    results[eid] = {"error": "Urządzenie nie znalezione."}
-            return json.dumps(results, ensure_ascii=False)
+        ha_virtual_groups = getattr(self.ha_client, "virtual_groups", {})
+        
+        is_single_string = isinstance(entity_id, str)
+        eids = [entity_id] if is_single_string else entity_id
+        
+        results = {}
+        for eid in eids:
+            if eid in ha_virtual_groups:
+                children = self.ha_client._flatten_entities(eid) if hasattr(self.ha_client, "_flatten_entities") else ha_virtual_groups[eid]
+                any_on = any(
+                    child in states and states[child].get("state") == "on" 
+                    for child in children
+                )
+                name_part = eid.split(".")[-1].replace("_", " ").title()
+                
+                group_response = {
+                    "state": "on" if any_on else "off",
+                    "friendly_name": f"{name_part} (Grupa)",
+                    "attributes": {}
+                }
+                
+                for child in children:
+                    if child in states and states[child].get("state") == "on" and "attributes" in states[child]:
+                        group_response["attributes"].update(states[child]["attributes"])
+                        
+                results[eid] = group_response
+            elif eid in states:
+                results[eid] = states[eid]
+            else:
+                results[eid] = {"error": "Urządzenie nie znalezione."}
+                
+        if is_single_string:
+            return json.dumps(results[entity_id], ensure_ascii=False)
         else:
-            if entity_id in states:
-                return json.dumps(states[entity_id], ensure_ascii=False)
-            return json.dumps({"error": f"Urządzenie o ID '{entity_id}' nie zostało znalezione."}, ensure_ascii=False)
+            return json.dumps(results, ensure_ascii=False)
 
-    def _execute_ha_action(self, action: str, entity_id: str, parameters: dict[str, Any]) -> str:
+    def _get_phone_battery(self) -> str:
+        try:
+            data = self.ha_client.get_phone_battery()
+            return json.dumps(data, ensure_ascii=False)
+        except Exception as e:
+            logging.error(f"Błąd w delegacji pobierania baterii: {e}")
+            return json.dumps({"battery_level": "unknown", "battery_state": "error"}, ensure_ascii=False)
+
+    def _execute_action(self, action: str, entity_id: str, parameters: dict[str, Any]) -> str:
         if action not in ["turn_on", "turn_off", "toggle"]:
             return json.dumps({"error": f"Nieprawidłowa akcja: '{action}'. Dozwolone: 'turn_on', 'turn_off', 'toggle'. Użyj 'turn_on' do zmiany jasności/koloru."}, ensure_ascii=False)
                 
-        success = self.ha_client.execute_action(action, entity_id, parameters)
-        if success:
-            return json.dumps({"result": "success", "message": f"Wykonano {action} na {entity_id}."}, ensure_ascii=False)
-        else:
-            return json.dumps({"error": f"Akcja {action} nie powiodła się dla {entity_id}."}, ensure_ascii=False)
+        try:
+            success = self.ha_client.execute_action(action, entity_id, parameters)
+            if success:
+                return json.dumps({"result": "success", "message": f"Wykonano {action} na {entity_id}."}, ensure_ascii=False)
+            else:
+                return json.dumps({"error": f"Akcja {action} nie powiodła się dla {entity_id}."}, ensure_ascii=False)
+        except ValueError as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": f"Wystąpił błąd podczas wywoływania akcji: {e}"}, ensure_ascii=False)
 
     # ─── Narzędzia ogólne ─────────────────────────────────────────────
 

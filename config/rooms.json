@@ -1,0 +1,18 @@
+{
+    "pracownia_glowna": {
+        "name": "Pracownia Główna",
+        "metadata": ["mój pokój", "pokój TheBloka", "komputer", "łóżko", "TheBlok"],
+        "devices": [
+            "light.pracownia_glowna",
+            "light.nad_lozkiem",
+            "light.nad_komputerem"
+        ]
+    },
+    "kotlownia": {
+        "name": "Kotłownia",
+        "metadata": ["piwnica", "piec"],
+        "devices": [
+            "switch.shellyplus2pm_fcb46732c174_output_0"
+        ]
+    }
+}

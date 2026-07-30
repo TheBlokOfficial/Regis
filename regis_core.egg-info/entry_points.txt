@@ -1,4 +1,0 @@
-[console_scripts]
-regis-controller = regis_controller.main:start
-regis-terminal = regis_terminal.main:main
-regis-worker = regis_worker.node:start

@@ -1,4 +1,4 @@
-# Regis-Core: Przewodnik dla Agentów AI
+# Regis: Przewodnik dla Agentów AI
 
 Ten dokument jest przeznaczony wyłącznie dla agentów AI (LLM) pracujących nad projektem. Odpowiada na pytanie: *jak myśleć o tym projekcie*, a nie tylko co w nim jest.
 
@@ -95,12 +95,14 @@ Poniższe decyzje były świadomie przemyślane i rozstrzygnięte. Propozycja ic
 | Decyzja | Powód |
 |---|---|
 | Narzędzia renderowane jako tekst XML w prompcie (`<tools>`), nie jako pole `tools` w API Ollamy | "Droga A" — eliminuje wstrzykiwanie przez Ollamę angielskiego bloku instrukcji, które powoduje "angielski drift" w odpowiedziach modelu |
-| Stop Token `</tool_call>` w API Ollamy | Wymusza liniową pętlę ReAct. Bez tego modele Qwen halucynują równoległe wywołania |
+| Stop Token `</action>` w API Ollamy | Wymusza liniową pętlę ReAct. Bez tego modele Qwen halucynują równoległe wywołania |
 | Model 1.5B (Butler) używa Structured Outputs (JSON Schema), nie ReAct | Model jest zbyt mały na niezawodny ReAct. JSON Schema wymuszerminuje halucynacje narzędzi deterministycznie |
 | Pozytywne ramowanie w promptach zamiast zakazów | Negative framing degraduje zdolności kognitywne małych modeli |
 | Brak chmurowych API (Gemini jest eksperymentalny, nie produkcyjny) | Zasada prywatności i lokalności |
 | Ascetyczny styl CLI (bez jaskrawych kolorów, minimalne emoji) | Zasada estetyczna projektu. Opisana w `AGENTS.md` |
 | Historia konwersacji przechowuje tylko pełne tury (user+assistant), nie ślad ReAct | Ślad ReAct (myśli + wywołania) zaśmieca kontekst i powoduje amnezję przy długich sesjach |
+| Dystrybucja Windows = Inno Setup Installer + Python systemowy (nie PyInstaller) | PyInstaller odrzucony: black box, podejrzany wygląd, opóźnienia startu. Szczegóły: `docs/distribution_rfc.md` |
+| `controller.worker` zostaje jako headless worker dla Linux/RPi5 | RPi5 nie ma audio, pełni rolę serwera. `node` = tylko Windows. Dwa oddzielne deployment targety. |
 
 ---
 
@@ -129,7 +131,7 @@ Ten projekt ma dwa fundamentalnie różne tryby pracy modelu. Pomylenie ich przy
 - Prompt w `data/prompts/tier_butler.md` jest ekstremalnie uproszczony. Celowo.
 - **Nie dodawaj do niego ReAct-owych instrukcji.** Nie obsłuży ich i zepsuje się.
 
-### Tryb ReAct — tier `regis` / `prime` (modele 14B+)
+### Tryb ReAct — tier `regis` (Qwen 3.5 9B)
 - Model działa jako **pełnoprawny agent** z pętlą Reasoning → Acting.
 - Obowiązkowo używa tagu `<thought>...</thought>` do wewnętrznego rozumowania przed każdą akcją.
 - Pętla trwa dopóki model wywołuje narzędzia. Gdy nie wywołuje — to jest finalna odpowiedź.

@@ -1,4 +1,4 @@
-# Regis-Core: Mapa Kodu (Onboarding)
+# Regis: Mapa Kodu (Onboarding)
 
 Ten dokument to przewodnik po strukturze repozytorium. Wyjaśnia, co robi każdy katalog i każdy plik — prostym językiem, bez nadmiernego zagłębiania się w szczegóły implementacji. Jest przeznaczony zarówno dla człowieka wracającego do projektu po przerwie, jak i dla agenta AI rozpoczynającego pracę w projekcie.
 
@@ -9,33 +9,34 @@ Zanim zaczniesz czytać ten dokument, upewnij się, że zapoznałeś się z `doc
 ## Struktura Katalogów — Obraz Ogólny
 
 ```
-regis-core/
+regis/
 │
 ├── src/                ← Cały kod źródłowy projektu (src layout)
 │   ├── core/           ← Biblioteka wspólna — importowana przez wszystkich
 │   ├── integrations/   ← Klienci zewnętrznych API (HA, MQTT, inne)
-│   ├── regis_controller/ ← Usługa RPi5: routing, rejestr encji, proxy
-│   ├── regis_node/     ← Usługa Windows: tray app (worker + satellite)
-│   └── regis_cli/      ← Narzędzie deweloperskie: build, deploy, testy
+│   ├── controller/     ← Usługa RPi5: routing, rejestr encji, proxy
+│   ├── controller/worker/  ← Usługa RPi5: headless worker LLM (fallback 1.5B) [przejściowy]
+│   └── node/           ← Aplikacja Windows: UI + Worker + Satellite
 │
-├── data/               ← Konfiguracja, logi, prompty (wykluczone z Git)
+├── config/             ← Konfiguracja statyczna (aliases, rooms, virtual_groups)
+├── data/               ← Stan dynamiczny, logi, prompty (wykluczone z Git)
 ├── docs/               ← Dokumentacja projektu
 ├── tests/              ← Testy jednostkowe pytest
 ├── pyproject.toml      ← Definicja pakietu i zależności
 ├── pytest.ini          ← Konfiguracja testów
-└── regis.bat           ← Uruchomienie CLI menedżera projektu (dev)
+└── regis.bat           ← Uruchomienie aplikacji node (dev)
 ```
 
 **Prosta zasada podziału:**
 - `core/` = **mózg** — nie uruchamia się sam, ale wszystko go używa.
-- `regis_controller/` + `regis_node/` = **usługi produkcyjne** — każda na innym urządzeniu.
+- `controller/` + `node/` = **dwa środowiska uruchomieniowe** — każde na innym sprzęcie.
 - `integrations/` = **zmysły** — klienci zewnętrznych platform. Każda integracja to osobny plik.
-- `regis_cli/` = **narzędzie dewelopera** — build, deploy, testy. Nie jest dystrybuowany.
-- `data/` = **pamięć** — konfiguracja i stan, który przeżywa restarty.
+- `data/` = **pamięć dynamiczna** — konfiguracja i stan, który przeżywa restarty.
+- `config/` = **konfiguracja statyczna** — aliasy, pokoje, grupy wirtualne.
 
 ---
 
-## `src/regis_controller/` — Kontroler (RPi5)
+## `src/controller/` — Kontroler (RPi5)
 
 **Rola:** Mózg systemu. Lekki daemon uruchamiany wyłącznie na Raspberry Pi 5 (jedna instancja globalna). Zarządza rejestrem węzłów i satelit, routingiem sesji oraz delegowaniem narzędzi do Home Assistant.
 
@@ -53,46 +54,39 @@ regis-core/
 
 ---
 
-## `src/regis_node/` — Węzeł (Windows PC)
+## `src/node/` — Węzeł (Windows PC)
 
-**Rola:** Zunifikowana usługa Windows zastępująca trzy poprzednie binarki (`regis_worker`, `regis_satellite`, `regis_terminal`). Działa jako **aplikacja System Tray** — ikona w prawym dolnym rogu paska zadań.
+**Rola:** Pełnoprawna **aplikacja Windows** z interfejsem terminalowym (stan obecny, konfiguracja przejściowa). Łączy trzy warstwy w jedną całość:
+- **UI terminalowy** (dashboard, monitor konwersacji, monitor głosowy) — pierwszorzędny element
+- **Worker LLM** (inferencja 9B) — uruchamiany jako ukryty proces w tle
+- **Satellite audio** (VAD + WakeWord + przechwytywanie dźwięku) — uruchamiany jako ukryty proces w tle
 
-**Dystrybucja:** Portable App — folder `Regis-Node/` z binarką PyInstaller, plikiem `Uruchom.bat` i folderem `data/`.
+Ikona w pasku zadań to jedynie mechanizm życia procesu — nie definicja aplikacji. W docelowej architekturze (patrz MANIFEST.md §3.6) Worker odpada z `node`, a Windows staje się czystą Satelitą z UI.
+
+**Dystrybucja:** Windows Installer (`RegisNodeSetup.exe`) — budowany narzędziem Inno Setup. Wymaga Python zainstalowanego w systemie. Szczegóły: `docs/distribution_rfc.md`. **PyInstaller jest porzucony i nie jest używany.**
 
 **Pliki:**
-- `main.py` — entry point: jeśli brak `data/settings.json` → uruchamia wizard; jeśli istnieje → uruchamia tray
-- `wizard.py` — kreator konfiguracji (questionary) dla pierwszego uruchomienia; dostępny też z menu tray
-- `tray.py` — logika ikony System Tray (biblioteka `pystray`); zarządza procesami Worker i Satellite przez `subprocess.Popen`
+- `main.py` — entry point: jeśli brak `data/settings.json` → uruchamia wizard; jeśli istnieje → uruchamia serwis
+- `wizard.py` — kreator konfiguracji (questionary) dla pierwszego uruchomienia
+- `service.py` — **pełnoprawna usługa Windows** (biblioteka `pystray`); właściciel procesów Worker i Satellite. Wystawia mini HTTP API na `localhost:8099` dla dashboardu. Menu ma 3 pozycje: status, "Otwórz panel kontrolny", "Zamknij". Zamknięcie zawsze zatrzymuje wszystkie procesy.
+- `dashboard.py` — panel kontrolny CLI; klient HTTP API serwisu. Wyświetla status usług, umożliwia start/stop Worker i Satellite, otwiera wizard i Monitor.
 - `worker.py` — serwer HTTP węzła LLM (FastAPI); uruchamiany jako ukryty proces w tle
-- `node.py` — klasa `WorkerNode`: inicjalizuje `LLMEngine` i `STTEngine`, obsługuje `handle_chat()` i `handle_audio()`
+- `node.py` — klasa `WorkerNode`: inicjalizuje `LLMEngine`, obsługuje `handle_chat()`
 - `satellite.py` — logika przechwytywania audio z mikrofonu i wysyłania do Kontrolera
+- `monitor.py` — interaktywne narzędzie czatu tekstowego (Monitor konwersacji)
+- `monitor_core.py` — wspólna logika wyświetlania eventów SSE
+- `monitor_voice.py` — Monitor Głosowy (Live Dashboard): śledzenie pipeline'u audio w czasie rzeczywistym
+- `stt_worker.py` — osobny proces STT (Whisper) uruchamiany przez Worker
+- `ux.py` — style rich/questionary wspólne dla całego modułu node
 
 **Flow pierwszego uruchomienia:**
 1. `Uruchom.bat` → `regis-node.exe`
 2. Brak `settings.json` → otwiera się konsola z wizardem questionary
 3. Użytkownik konfiguruje: nazwa instancji, pokój, URL Kontrolera, tier modelu, które usługi uruchamiać
-4. Zapisuje `data/settings.json` → konsola znika → ikona pojawia się w tray
+4. Zapisuje `data/settings.json` → konsola znika → usługa odpala się w tle (ikona pojawia się w pasku zadań)
 
-**Menu System Tray (prawy klik):**
-- Status i przyciski start/stop dla Worker i Satellite (mogą działać jednocześnie)
-- Włącz/wyłącz autostart systemu (Registry Run)
-- Konfiguracja (otwiera ponownie wizard)
-- Zamknij panel (procesy w tle działają dalej)
-- Zamknij wszystko
-
----
-
-## `src/regis_cli/` — Menedżer Projektu (Dev)
-
-**Rola:** Narzędzie deweloperskie do zarządzania projektem. **Nie jest dystrybuowany** do użytkowników końcowych.
-
-**Uruchomienie:** `regis.bat` w katalogu głównym.
-
-**Pliki:**
-- `main.py` — menu główne (questionary): Build, Deploy, Testy
-- `builders.py` — kompilacja binarek PyInstaller; produkuje jedną paczkę `Regis-Node/` (portable app)
-- `deployers.py` — deployment na Raspberry Pi przez SSH (upload `.whl`, restart usługi systemd)
-- `ux.py` — style rich/questionary wspólne dla całego CLI
+**Architektura Service ←→ Dashboard:**
+Serwis (`service.py`) jest właścicielem procesów (Worker, Satellite) i wystawia HTTP API na `localhost:8099`. Dashboard jest klientem — pyta serwis o status przez `GET /status` i wydaje komendy przez `POST /worker/toggle` itp. Dzięki temu serwis nie ma własnego UI zarządzania — deleguje je do dashboardu.
 
 ---
 
@@ -113,7 +107,7 @@ Kluczowe odpowiedzialności:
 ### `stream_parser.py` — Parser Strumieniowy
 Przetwarza surowy strumień tokenów z Ollamy i segreguje na trzy kanały:
 - `<thought>...</thought>` → callback `on_thought_token` (wewnętrzny monolog modelu)
-- `<tool_call>...</tool_call>` → przechwycone jako wywołanie narzędzia
+- `<action>...</action>` → przechwycone jako wywołanie narzędzia
 - Reszta → callback `on_content_token` (to co widzi użytkownik)
 
 Bufor Lookahead chroni przed tagami rozbitymi na dwa chunki TCP.
@@ -128,7 +122,7 @@ Używany przez Węzeł Roboczy. Zamiast wywoływać narzędzia lokalnie — dele
 `BASE_TOOLS_SCHEMA` — lista wszystkich dostępnych narzędzi z opisami, parametrami i wymaganym tierem. To "menu narzędzi" systemu.
 
 ### `config.py` — Konfiguracja
-Centralny punkt ładowania konfiguracji z `data/`. Obsługuje profile (`ACTIVE_PROFILE` z `.env`) i tryb frozen (PyInstaller). Ładuje: `settings.<PROFILE>.json`, `aliases.json`, `virtual_groups.json`, `rooms.json`.
+Centralny punkt ładowania konfiguracji z `data/` i `config/`. Obsługuje profile (`ACTIVE_PROFILE` z `.env`). Plik zawiera również pozostawłość po epoce PyInstaller (`if getattr(sys, 'frozen', False)`) — dead code do usunięcia. Ładuje: `settings.<PROFILE>.json`, `config/aliases.json`, `config/virtual_groups.json`, `config/rooms.json`.
 
 ### `discovery.py` — Auto-Discovery
 Implementacja Zero-Conf przez UDP Broadcast. Węzły i Satelity wykrywają Kontroler automatycznie w sieci lokalnej bez hardkodowania IP.
@@ -165,16 +159,16 @@ Konfiguracja per instancja. Profil ładowany przez zmienną `ACTIVE_PROFILE` z `
 Pliki Markdown definiujące osobowość i instrukcje dla każdego tieru modelu:
 - `tier_butler.md` — model 1.5B, NLU, minimalistyczny prompt Few-Shot JSON
 - `tier_regis.md` — model 14B, pełny agent ReAct z Chain of Thought
-- `tier_prime.md` — model 32B+, rozszerzone możliwości
+ 
 
-### `virtual_groups.json`
+### `rooms.json` *(w `config/`, nie w `data/`)*
+Mapowanie pokójów na listy `entity_id` — wewnętrzna konfiguracja Regis niezależna od HA. Używana przez Spatial Context Filtering.
+
+### `virtual_groups.json` *(w `config/`, nie w `data/`)*
 Logiczne grupy urządzeń (np. "wszystkie żarówki w salonie"). Pozwala sterować wieloma urządzeniami jedną komendą.
 
-### `aliases.json`
+### `aliases.json` *(w `config/`, nie w `data/`)*
 Mapowanie przyjaznych nazw na `entity_id` HA.
-
-### `rooms.json`
-Mapowanie pokojów na listy `entity_id` — wewnętrzna konfiguracja Regis niezależna od HA. Używana przez Spatial Context Filtering.
 
 ---
 
@@ -186,7 +180,9 @@ Mapowanie pokojów na listy `entity_id` — wewnętrzna konfiguracja Regis nieza
 | `AGENT_GUIDE.md` | Instrukcja dla agentów AI pracujących w projekcie. |
 | `ONBOARDING.md` | Ten plik. Mapa kodu i struktury. |
 | `arch_restrukturyzacja_2025.md` | Plan restrukturyzacji do dwóch usług (sesja 2026-07-23). |
+| `distribution_rfc.md` | Decyzja o nowym systemie dystrybucji Windows (Inno Setup, porzucenie PyInstallera). |
 | `auto_discovery_rfc.md` | Specyfikacja protokołu Zero-Conf UDP Broadcast. |
+| `ux_monitor_tray_rfc.md` | Plan implementacji Monitora konwersacji i refaktoryzacji traya (3 etapy). |
 | `architectural_debt_report.md` | Historyczny raport długu architektonicznego (już rozwiązany). |
 
 ---
@@ -196,13 +192,13 @@ Mapowanie pokojów na listy `entity_id` — wewnętrzna konfiguracja Regis nieza
 ```
 Użytkownik mówi "włącz lampę" (przez mikrofon)
         ↓
-[regis_node/satellite.py]
+[node/satellite.py]
 Nagrywa audio WAV → wysyła POST /v1/chat/audio_stream do Kontrolera
         ↓
-[regis_controller/router.py]
+[controller/router.py]
 Wybiera najlepszy aktywny węzeł z rejestru → proxy SSE do Worker
         ↓
-[regis_node/worker.py → node.py]
+[node/worker.py → node.py]
 Odbiera audio → STT (Whisper) → transkrypcja "włącz lampę"
         ↓
 [core/llm_engine.py] — pętla ReAct, iteracja 1
@@ -210,17 +206,17 @@ Buduje prompt (tier_regis.md + opisy narzędzi) → Ollama streamuje tokeny
         ↓
 [core/stream_parser.py]
   <thought>Muszę sprawdzić urządzenia...</thought>  → on_thought_token
-  <tool_call>{"name": "get_devices"}</tool_call>    → wywołanie narzędzia
+  <action>{"name": "get_devices"}</action>    → wywołanie narzędzia
         ↓
 [core/remote_tools_registry.py]
 POST /v1/tools/execute do Kontrolera (z room z kontekstu Satelity)
         ↓
-[regis_controller/tools.py → core/tools_registry.py]
+[controller/tools.py → core/tools_registry.py]
 Spatial Context Filtering: filtruje urządzenia do pokoju Satelity
 → ha_client.get_devices() → zwraca listę urządzeń pokoju
         ↓
 [core/llm_engine.py] — pętla ReAct, iteracja 2
-Wynik narzędzia w historii → Ollama: <tool_call>{"name":"turn_on",...}</tool_call>
+Wynik narzędzia w historii → Ollama: <action>{"name":"turn_on",...}</action>
         ↓
 [integrations/ha_client.py]
 POST do Home Assistant REST API → lampa się zapala
@@ -247,6 +243,5 @@ Z menedżera (`regis.bat`) wybierz "Wdróż serwer produkcyjny". Deployer:
 2. Kopiuje przez SSH na RPi
 3. Instaluje przez `pip` i restartuje usługę `systemd`
 
-### Budowanie paczki Windows (Portable App)
-Z menedżera wybierz "Zbuduj paczki Portable". Builder PyInstaller tworzy:
-`dist/Regis-Node/` — gotową do skopiowania na dowolny Windows PC.
+### Budowanie paczki Windows (Installer)
+Z menedżera wybierz "Zbuduj Installer Windows". Builder generuje skrypt `.iss` i uruchamia Inno Setup (`ISCC.exe`), produkując `dist/RegisNodeSetup.exe`. Wymaga zainstalowanego Inno Setup na maszynie deweloperskiej.

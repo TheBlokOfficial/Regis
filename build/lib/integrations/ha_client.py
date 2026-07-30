@@ -60,7 +60,12 @@ class HomeAssistantClient:
                 if domain not in allowed_domains:
                     continue
                 
-                original_name = entity["attributes"].get("friendly_name", "Nieznana Nazwa")
+                attrs = entity.get("attributes", {})
+                original_name = attrs.get("friendly_name")
+                if not original_name:
+                    # Kiedy encja nie ma nazwy, wyciągnij ładną z entity_id
+                    original_name = entity_id.split(".")[-1].replace("_", " ").title()
+                
                 friendly_name = self.aliases.get(entity_id, original_name)
                 
                 filtered_state[entity_id] = {
@@ -103,6 +108,8 @@ class HomeAssistantClient:
             service = "turn_on"
         elif action == "turn_off":
             service = "turn_off"
+        elif action == "toggle":
+            service = "toggle"
         else:
             logging.warning(f"[HA CLIENT] Nie obsługiwana akcja: {action}")
             return False

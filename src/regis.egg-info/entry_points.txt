@@ -1,0 +1,4 @@
+[console_scripts]
+regis = node.main:main
+regis-controller = controller.main:start
+regis-worker = controller.worker.node:start

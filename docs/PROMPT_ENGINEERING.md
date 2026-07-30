@@ -1,6 +1,6 @@
 # Podręcznik Prompt Engineeringu: Qwen 2.5 Instruct (v2)
 
-Ten dokument jest stałą bazą wiedzy dla wszystkich agentów i programistów rozwijających projekt Regis-Core. Zbiór wytycznych opracowano w celu uzyskania stabilnego, przewidywalnego zachowania modeli z rodziny Qwen 2.5 (warianty 7B i 14B), w tym niezawodnego Tool Callingu i stabilnej pętli ReAct.
+Ten dokument jest stałą bazą wiedzy dla wszystkich agentów i programistów rozwijających projekt Regis. Zbiór wytycznych opracowano w celu uzyskania stabilnego, przewidywalnego zachowania modeli z rodziny Qwen 2.5 (warianty 7B i 14B), w tym niezawodnego Tool Callingu i stabilnej pętli ReAct.
 
 **Zmiana względem v1:** dokument nie traktuje już samego promptu systemowego jako jedynego źródła niezawodności. Prompt odpowiada za *intencję* modelu, a nie za twarde gwarancje formatu czy powtarzalności — te zapewnia warstwa infrastruktury (sampling, constrained decoding, parser). Rozdzielenie tych dwóch warstw jest kluczowe i przewija się przez cały dokument.
 

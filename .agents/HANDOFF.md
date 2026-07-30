@@ -1,45 +1,23 @@
-# Agent Handoff & State Journal
+# Przekazanie Sesji (Handoff)
 
-Ten plik służy do przekazywania kontekstu między agentami. Zawsze czytaj go na starcie sesji i zawsze zastępuj jego zawartość nową wersją przed zakończeniem (zgodnie z protokołem w AGENTS.md). Nie dopisuj — zastępuj.
+## Ostatnia Sesja: Integracja telemetrii i baterii telefonu, optymalizacja UX
 
----
+### Co zostało zrobione w tej sesji:
+- **Telemetria end-to-end (Profiler):** Wdrożono mierzenie czasów TTFT (Time To First Token) oraz Gen (czas generacji samej wypowiedzi) od `WorkerNode` przez pętlę ReAct, aż do strumieniowania SSE. Profiler wysyła dokładne dane bez używania pollingu (wydarzenia asynchroniczne `typ: profiler`).
+- **Aktualizacja interfejsu (Monitor Głosowy):** Zmodyfikowano `monitor_voice.py`. Zamiast agresywnego czyszczenia całej historii komendą `cls`, ekran odświeża się płynnie "w miejscu" przy pomocy kodów ANSI (`\033[2;1H\033[2K`), co zapobiega miganiu UI i zachowuje starą konwersację na ekranie terminala.
+- **Wdrożenie i refaktoryzacja abstrakcji dla `get_phone_battery`:**
+  - Utworzono narzędzie dla agenta pytające o stan procentowy telefonu.
+  - Zidentyfikowano błąd architektury polegający na tworzeniu wywołań HTTP bezpośrednio z warstwy `tools_registry.py`.
+  - Kod pomyślnie zrefaktoryzowano i przeniesiono w całości do izolowanego pliku `ha_client.py`. Zaimplementowano w nim również słownik formatujący (`state_mapping`), który tłumaczy surowe i nienaturalne techniczne słowa Androida (np. `discharging`) na czyste dla LLM koncepcje (np. `not_charging`), zapobiegając nadgorliwym halucynacjom modelu.
+- **Decyzja o opóźnieniu Continuous Conversation:** Przeprowadzono głęboki audyt pipeline'u audio w poszukiwaniu możliwości ciągłego słuchania z pominięciem Wake Wordu (tzw. Follow-up). Użytkownik zdecydował o odłożeniu wdrożenia tej funkcji aż do momentu dodania systemu TTS, w celu idealnego zsynchronizowania VAD z czasem zakończenia mówienia asystenta.
+- **Ustalenia dot. LLM "nieodpowiadającego" po wykonaniu narzędzia:** Zidentyfikowano, że mały model (9B) sporadycznie milknie po wygenerowaniu narzędzia. Omówiono podejście `Suffix Forcing` oraz `Auto-Intervention`, ostatecznie ustalając by na tym etapie zachować czystość architektury i zaakceptować to zjawisko.
 
-## Ostatnia Aktywność (Sesja 2026-07-23 — Implementacja: Sesja C - Częściowo Zakończona)
+### Aktualny stan kodu:
+- Kod działa na najnowszych poprawkach. Warstwa `ha_client.py` skutecznie separuje logikę HTTP od `tools_registry.py`.
+- Narzędzia LLM otrzymują wyłącznie przyjazne formaty danych, unikając szumu pojęciowego.
+- Monitor głosowy obsługuje nadpisywanie nagłówka ANSI.
 
-### Co zostało zrobione
-
-Zrealizowano kod źródłowy dla Sesji C (Stworzenie `regis_node`), jednak występują problemy z finalnym uruchomieniem na platformie docelowej.
-
-1. Utworzono aplikację `regis_node`.
-2. Zintegrowano procesy `regis_worker` i `regis_satellite` jako podprocesy zarządzane przez zasobnik.
-3. Utworzono konfigurator `wizard.py`.
-4. Przebudowano skrypt buildera CLI (`builders.py`), aby generował jedną paczkę `Regis-Node`. Naprawiono konflikty ścieżek na Windows oraz brakujące moduły `pystray` dla PyInstallera.
-5. Zaktualizowano zależności w `pyproject.toml`.
-6. Testy `pytest` przechodzą prawidłowo (logika kontrolera nienaruszona).
-
-**Zidentyfikowany Błąd Do Rozwiązania:** 
-Kompilacja przez PyInstaller działa, proces konfiguratora (wizard) w konsoli również odpala się poprawnie, jednak w momencie próby ukrycia konsoli lub wejścia do pętli `pystray`, proces zawiesza się lub crashuje się na etapie przejścia z wizarda do paska zadań.
-
----
-
-## Aktualny Stan Kodu
-
-```text
-src/
-├── core/                   ← biblioteka wspólna [BEZ ZMIAN]
-├── integrations/           ← klient HA          [BEZ ZMIAN]
-├── regis_controller/       ← refaktoryzowane (registry, router, tools, app, main)
-├── regis_node/             ← W TRAKCIE (wymaga debugowania Pystray w środowisku skompilowanym)
-├── regis_worker/           ← przestarzałe, do usunięcia
-├── regis_satellite/        ← przestarzałe, do usunięcia
-├── regis_terminal/         ← przestarzałe, do usunięcia
-└── regis_cli/              ← zaktualizowane
-```
-
----
-
-## Kroki Startowe dla Następnego Agenta
-
-1. **Przeczytaj `docs/MANIFEST.md` i `docs/AGENT_GUIDE.md` (obowiązkowe).**
-2. **Dokończ Sesję C** - zadanie priorytetowe to analiza błędu aplikacji podczas startu `pystray` ze skompilowanego środowiska Portable (PyInstaller). Po włączeniu `Uruchom.bat` aplikacja przechodzi wizarda, po czym kończy nagle pracę i zamyka konsolę zamiast przenieść się do System Tray. Należy rozpocząć od diagnozy kodu `main.py` oraz `tray.py`.
-3. Jeśli Sesja C zostanie całkowicie naprawiona, przejdź do Sesji D (usunięcie starych pakietów, update dokumentacji projektu).
+### Wskazówki startowe dla następnego agenta:
+1. Przeanalizuj wnioski dotyczące jakości STT (szybkie ucięcia przez VAD i niedokładność modela `faster-whisper`), zanim zaczniesz ingerować w pipeline audio. Zespół wstrzymał zmiany do momentu wdrożenia TTS, które zmieni zachowanie czasowe systemu.
+2. Gdy zaczniesz budować system TTS, pamiętaj, aby skomunikować włączenie `STREAMING` (trybu follow-up) dopiero **po pełnym zakończeniu odtwarzania audio TTS przez Węzeł Windows**, a nie po zamknięciu generacji JSON na Kontrolerze.
+3. Zajrzyj do `.agents/TASKS.md` po nowe funkcje w kolejce (np. implementacja zero-conf lub nowej pamięci).

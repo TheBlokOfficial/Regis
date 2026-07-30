@@ -1,6 +1,6 @@
 # Plan Wdrożenia: Architektura "Model Tiering" (Podział Klas Modeli)
 
-Zbudowanie w Regis-Core wbudowanego **Frameworka Kategoryzacji Modeli**. Oszczędzi to mniejszym modelom tzw. *cognitive overload* (kiedy widzą zbyt dużo narzędzi i z tego powodu "głupieją"), a jednocześnie odblokuje pełny potencjał gigantów.
+Zbudowanie w Regis wbudowanego **Frameworka Kategoryzacji Modeli**. Oszczędzi to mniejszym modelom tzw. *cognitive overload* (kiedy widzą zbyt dużo narzędzi i z tego powodu "głupieją"), a jednocześnie odblokuje pełny potencjał gigantów.
 
 ## Zarys Architektury
 

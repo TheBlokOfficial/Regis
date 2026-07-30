@@ -1,7 +1,0 @@
-core
-integrations
-regis_cli
-regis_controller
-regis_node
-regis_satellite
-regis_worker

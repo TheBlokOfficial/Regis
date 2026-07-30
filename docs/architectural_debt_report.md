@@ -2,7 +2,7 @@
 
 ## 1. Analiza Problemu: Dystrybucja Węzłów i Konfiguracja
 
-Bieżąca architektura Regis-Core narusza zasady fizycznej separacji komponentów w środowisku rozproszonym, co bezpośrednio generuje ryzyko awarii konfiguracyjnych podczas wdrożeń. Zidentyfikowano dwa główne obszary długu:
+Bieżąca architektura Regis narusza zasady fizycznej separacji komponentów w środowisku rozproszonym, co bezpośrednio generuje ryzyko awarii konfiguracyjnych podczas wdrożeń. Zidentyfikowano dwa główne obszary długu:
 
 ### 1.1 Scentralizowany Stan Konfiguracji (Monolityczny `settings.json`)
 Konfiguracja wszystkich ról w systemie (Kontroler, Worker, Satelita) jest utrzymywana w jednym pliku współdzielonym.
@@ -11,7 +11,7 @@ Konfiguracja wszystkich ról w systemie (Kontroler, Worker, Satelita) jest utrzy
 - **Brak izolacji:** Architektura nie wspiera mechanizmu profili konfiguracyjnych dedykowanych poszczególnym klasom urządzeń.
 
 ### 1.2 Dystrybucja Kodu Źródłowego zamiast Skompilowanych Komponentów
-Każdy węzeł brzegowy otrzymuje pełne repozytorium `Regis-Core`, mimo iż jego rola w architekturze jest ściśle określona i ograniczona.
+Każdy węzeł brzegowy otrzymuje pełne repozytorium `Regis`, mimo iż jego rola w architekturze jest ściśle określona i ograniczona.
 - **Nadmiarowy narzut (Overhead):** Uruchomienie Zdalnego Satelity lub Workera na maszynie brzegowej wiąże się z przesyłaniem zbędnych modułów (m.in. serwera Kontrolera, logiki administracyjnej, integracji z Home Assistant).
 - **Zależność środowiskowa:** System wymusza proces instalacji zależności, utrzymywanie wirtualnego środowiska Pythona (`.venv`) oraz uruchamianie usług z monolitycznych skryptów startowych na każdym urządzeniu. Stanowi to naruszenie zasady rozdzielenia logiki określonej w dokumencie `MANIFEST.md`.
 

@@ -18,8 +18,8 @@ class StreamingTokenParser:
         
         self.OPEN_THOUGHT = "<thought>"
         self.CLOSE_THOUGHT = "</thought>"
-        self.OPEN_TOOL = "<tool_call>"
-        self.CLOSE_TOOL = "</tool_call>"
+        self.OPEN_TOOL = "<action>"
+        self.CLOSE_TOOL = "</action>"
         
     def reset_state(self):
         """

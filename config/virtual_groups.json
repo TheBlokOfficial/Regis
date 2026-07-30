@@ -1,0 +1,17 @@
+{
+    "light.nad_lozkiem": [
+        "light.yeelight_colorc_0x1e367055",
+        "light.yeelight_colorc_0x1e36bbb7",
+        "light.yeelight_colorc_0x1e3615bc"
+    ],
+    "light.nad_komputerem": [
+        "light.yeelight_colorc_0x1e367376",
+        "light.yeelight_colorc_0x1e36d192",
+        "light.yeelight_colorc_0x1e36370e",
+        "light.yeelight_colorc_0x1e36361a"
+    ],
+    "light.pracownia_glowna": [
+        "light.nad_lozkiem",
+        "light.nad_komputerem"
+    ]
+}

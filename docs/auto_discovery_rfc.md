@@ -1,7 +1,7 @@
 # RFC: Auto-Discovery (Zero-Conf) i Generowanie Konfiguracji
 
 ## 1. Opis Problemu
-W miarę jak architektura Regis-Core staje się coraz bardziej rozproszona, proces wdrażania Węzłów Roboczych (Workers) oraz Satelitów napotkał na barierę zwaną "hardkodowaniem". Obecnie każde urządzenie peryferyjne musi ręcznie otrzymać statyczny adres IP Kontrolera (Malinki) w swoim pliku środowiskowym lub profilu JSON (`controller_url`). 
+W miarę jak architektura Regis staje się coraz bardziej rozproszona, proces wdrażania Węzłów Roboczych (Workers) oraz Satelitów napotkał na barierę zwaną "hardkodowaniem". Obecnie każde urządzenie peryferyjne musi ręcznie otrzymać statyczny adres IP Kontrolera (Malinki) w swoim pliku środowiskowym lub profilu JSON (`controller_url`). 
 Jeśli router zmieni adres IP Kontrolera (np. z powodu wygaśnięcia dzierżawy DHCP lub przemieszczenia sprzętu), wszystkie satelity i węzły tracą z nim łączność, wymuszając ręczną rekonfigurację każdego urządzenia. Dodatkowo manualne budowanie plików `.env` i `.json` przez użytkownika po każdej kompilacji spowalnia instalację "Plug-and-Play".
 
 ## 2. Proponowane Rozwiązanie: UDP Broadcast (Regis-Radar)

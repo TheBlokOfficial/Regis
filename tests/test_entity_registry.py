@@ -39,9 +39,9 @@ def test_tool_execution_request_custom_tier():
     req = ToolExecutionRequest(
         tool_name="execute_ha_action",
         arguments={"action": "turn_on", "entity_id": "light.salon"},
-        tier="prime"
+        tier="regis"
     )
-    assert req.tier == "prime"
+    assert req.tier == "regis"
 
 
 # ─── Testy logiki wyboru węzła ─────────────────────────────────────────────
@@ -53,7 +53,7 @@ def _build_registry(*workers: dict) -> dict[str, dict]:
 
 def _pick_worker_from(registry: dict) -> dict | None:
     """Lokalny odpowiednik _pick_worker z controller/main.py."""
-    TIER_PRIORITY = {"prime": 3, "regis": 2, "butler": 1}
+    TIER_PRIORITY = {"regis": 2, "butler": 1}
     if not registry:
         return None
     return max(registry.values(), key=lambda w: TIER_PRIORITY.get(w["tier"], 0))
@@ -77,14 +77,7 @@ def test_pick_worker_prefers_higher_tier():
     assert best["id"] == "w-regis"
 
 
-def test_pick_worker_prime_wins():
-    registry = _build_registry(
-        {"id": "w-regis", "host": "10.0.0.1", "port": 8001, "tier": "regis",  "model_name": "q14b",  "base_url": "http://10.0.0.1:8001"},
-        {"id": "w-prime", "host": "10.0.0.2", "port": 8001, "tier": "prime",  "model_name": "q32b",  "base_url": "http://10.0.0.2:8001"},
-        {"id": "w-butler","host": "10.0.0.3", "port": 8001, "tier": "butler", "model_name": "q1.5b", "base_url": "http://10.0.0.3:8001"},
-    )
-    best = _pick_worker_from(registry)
-    assert best["id"] == "w-prime"
+ 
 
 
 # ─── Testy RemoteToolsRegistry ────────────────────────────────────────────────

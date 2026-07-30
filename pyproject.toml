@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "regis-core"
+name = "regis"
 version = "0.1.0"
 description = "Lekka warstwa abstrakcji miedzy uzytkownikiem a systemem Smart Home"
 requires-python = ">=3.11"
@@ -18,21 +18,19 @@ controller = [
     "uvicorn>=0.30.1",
     "pydantic>=2.7.4",
     "python-multipart>=0.0.9",
+    "websockets>=12.0",
 ]
 worker = [
-    "faster-whisper>=1.0.0",
+    "vosk>=0.3.45",
     "numpy>=1.26.0",
     "pydantic>=2.7.4",
 ]
-satellite = [
-    "sounddevice>=0.4.6",
-    "soundfile>=0.12.1",
-    "numpy>=1.26.0",
-]
+
 node = [
     "pystray>=0.19.5",
     "pillow>=10.0.0",
-    "faster-whisper>=1.0.0",
+    "vosk>=0.3.45",
+    "openwakeword>=0.6.0",
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",
     "numpy>=1.26.0",
@@ -40,6 +38,9 @@ node = [
     "uvicorn>=0.30.1",
     "pydantic>=2.7.4",
     "python-multipart>=0.0.9",
+    "psutil>=5.9.0",
+    "rich==13.7.0",
+    "questionary==2.0.1",
 ]
 dev = [
     "rich==13.7.0",
@@ -49,18 +50,18 @@ dev = [
     "build>=1.2.1",
 ]
 all = [
-    "regis-core[controller]",
-    "regis-core[worker]",
-    "regis-core[satellite]",
-    "regis-core[node]",
-    "regis-core[dev]",
+    "regis[controller]",
+    "regis[worker]",
+
+    "regis[node]",
+    "regis[dev]",
 ]
 
 [project.scripts]
-regis-controller = "regis_controller.main:start"
-regis-worker     = "regis_worker.node:start"
-regis-node       = "regis_node.main:main"
+regis-controller = "controller.main:start"
+regis-worker     = "controller.worker.node:start"
+regis            = "node.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["core*", "integrations*", "regis_*"]
+include = ["core*", "integrations*", "controller*", "node*"]

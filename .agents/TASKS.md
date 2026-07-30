@@ -3,55 +3,40 @@
 Plik służy do śledzenia postępów w zaplanowanych zadaniach programistycznych i konfiguracyjnych.
 Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 
+---
+
 ## Aktywne Zadania
 
-### [ARCH] Restrukturyzacja do Dwóch Usług (plan: `docs/arch_restrukturyzacja_2025.md`)
-- [x] [Sesja A] Sprzątanie i weryfikacja bazy: `__init__.py` w satellite, weryfikacja terminal, pytest bazowy
-- [x] [Sesja B] Refaktoryzacja `regis_controller/main.py` na podmoduły (registry, router, tools, app) — zero zmian w API
-- [ ] [Sesja C] Stworzenie `regis_node/` (tray app Windows): wizard, tray, worker, satellite, node - UWAGA: błędy w trybie uruchomieniowym zasobnika.
-- [ ] [Sesja D] Dokumentacja, usunięcie starych pakietów (regis_worker, regis_satellite, regis_terminal), finalne testy
+### [ARCH] Dystrybucja
+
+- [ ] [Sesja E] Nowy system dystrybucji Windows (Regis): zbudowanie instalatora Inno Setup (`RegisNodeSetup.exe`) + Python systemowy jako prerequisite (szczegóły: `docs/distribution_rfc.md`)
+
+### [FEATURE] Funkcje
+
+- [ ] Integracja systemu WakeWord (oczekiwanie na paczki próbek użytkownika do modelu)
+- [ ] Zaprojektowanie i wdrożenie nowej Pamięci Długoterminowej (np. wektorowej)
+
+### [UX / Wstrzymane]
+
+- [ ] (Wstrzymane) Wdrożenie "Checklisty Zadań" w monologach modeli, by poprawić zdolności analityczne na wzór Scratchpadu.
 
 ---
 
-- [x] Naprawa regresji Tool Callingu: Przywrócenie Sandwichingu i Stop Tokens w `core/llm_engine.py` dla modeli Qwen 7B.
-- [ ] (Wstrzymane) Wdrożenie "Checklisty Zadań" w monologach modeli, by poprawić zdolności analityczne na wzór Scratchpadu.
-- [x] Opracowanie i wdrożenie zautomatyzowanej architektury komunikacji agentowej (Handoffs & State Protocols w `AGENTS.md`).
-- [x] Rozwój CLI: Usunięcie błędów renderowania, wprowadzenie pętli REPL (Infinite Scrolling) bez utraty danych.
-- [x] Kuloodporność modelu (Solid-State AI): Dedukcja narzędzi The Warden i ekstrakcja promptów psychologicznych.
-- [x] Wdrożenie funkcji narzędziowych dla Regis: Odczytywanie Czasu (`get_current_time`) oraz Pogody z sieci (`get_weather`).
-- [x] Uproszczenie architektury i wdrożenie Zasady Apple: rezygnacja z profili na rzecz sztywnych warstw (Recepcjonista i Szef).
-- [x] Stabilizacja Tool Callingu: Wdrożenie Chain of Thought w Fazi Myśli i adaptacja architektoniczna pod modele 7B i 14B (afirmatywny prompt, array support).
-- [x] Całkowite wycięcie starego systemu Notatnika (Pamięć Długoterminowa / Brudnopis) w celu zastąpienia go nowym rozwiązaniem.
-- [ ] Zaprojektowanie i wdrożenie nowej Pamięci Długoterminowej (np. wektorowej).
-- [x] Wdrożenie testowej integracji Gemini API (silnik `GeminiEngine`) obsługującej pobieranie modeli z publicznego API i obsługę restrykcyjnego formatu function-callingu Google.
-- [x] Przejście na modele `qwen2.5:7b-instruct` i `qwen2.5:14b-instruct` (warianty Instruct lepsze do tool callingu i instruction following).
-- [x] Usunięcie Two-Pass Generation — uproszczenie do single-pass ReAct z jedną stałą temperaturą.
-- [x] Przebudowa promptów systemowych na format wypunktowanych list (lepsze instruction following dla Instruct).
-- [x] Wdrożenie wewnętrznego monologu `<thought>...</thought>` z real-time streamingiem w CLI.
-- [x] Refaktoryzacja pętli konwersacyjnej ReAct na architekturę Event-Driven ze StreamingTokenParserem.
-- [x] Zaawansowany Prompt Engineering: Wdrożenie checklist, pętli self-correction i 3-warstwowej ochrony przed halucynacjami Parallel Tool Calling (w tym Prompt Anchoring) dla Qwen 2.5.
-- [x] Stabilizacja logiki konsolidacji pamięci: Rozwiązanie State-History Conflict poprzez wzorzec Atomic Actions oraz całkowite zlikwidowanie halucynacji Qwen 2.5 poprzez Positive Framing.
-- [x] Refaktoryzacja architektury (Droga A): Usunięcie natywnego function-callingu Ollamy, usunięcie systemu biurka, kondensacja historii do pełnych tur.
-- [x] Konfiguracja środowiska sprzętowego na Raspberry Pi 5 (OS, PCIe Gen 3, Ollama).
-- [x] Zmiana architektury Lokaja ze ślamazarnego modelu 7B na błyskawiczny 3B.
-- [x] Przeniesienie skryptów Pythona (Regis-Core) fizycznie na Raspberry Pi 5 jako natywna usługa systemowa.
-- [x] Szlifowanie promptów dla modelu 3B (ewaluacja zejścia do modelu 1.5B).
-- [x] Implementacja Wirtualnych Grup (virtual_groups.json).
-- [x] Przebudowa kodu na architekturę Monorepo (`core/`, `apps/`, `integrations/`).
-- [x] Wdrożenie mechanizmu "Structured Outputs" (JSON Schema) dla modelu 1.5B (Butler).
-- [x] Konfiguracja Raspberry Pi 5 jako dysku sieciowego NAS (Samba) wykorzystującego dysk NVMe.
-- [ ] Integracja systemu WakeWord (oczekiwanie na paczki próbek użytkownika do modelu).
-- [/] Integracja systemu Speech-To-Text i Text-To-Speech (Zrealizowano scentralizowane STT na serwerze API).
-- [x] Restrukturyzacja dokumentacji projektu: stworzenie MANIFEST.md, ONBOARDING.md, AGENT_GUIDE.md i aktualizacja protokołów w AGENTS.md.
-- [x] [ARCH] Rozdzielenie `apps/server/main.py` na Kontroler i Węzeł Roboczy (krytyczny dług architektoniczny).
-- [x] [ARCH] Przeniesienie hardcode'owanych adresów IP do `data/settings.json`.
-- [x] [ARCH] Dodanie `pyproject.toml` z extras (`[controller]`, `[worker]`, `[satellite]`).
-- [x] [ARCH] Implementacja Rejestru Encji (Satelity i Węzły rejestrują się w Kontrolerze z metadanymi).
-- [x] [ARCH] Implementacja Spatial Context Filtering (filtrowanie urządzeń HA per pokój na podstawie metadanych Satelity).
-- [x] [ARCH] Uodpornienie rejestru Kontrolera za pomocą procedury "Continuous Registration" na Węzłach.
-- [x] [ARCH] Zniwelowanie długu dystrybucyjnego (profilowanie `settings.json` na instancje i utworzenie binarek Satelity).
-- [x] Implementacja Auto-Discovery dla Węzłów (UDP Broadcast Zero-Conf) i auto-generowanie plików konfiguracyjnych po kompilacji.
-- [x] Refaktoryzacja monorepo: wypłaszczenie i standaryzacja przedrostków `regis_` w celu poprawy przejrzystości.
-- [x] Implementacja architektury Portable App (wydzielone foldery `system/` i `data/`) dla dystrybucji Windows wraz z instrukcją `Smart Pause`.
-- [x] Stworzenie i integracja pełnoprawnego modułu zarządzającego projektem `regis_cli` w Pythonie (zastąpienie starych skryptów wsadowych `.bat`).
-- [x] Zmiana architektury projektu na standard "src layout" (katalog `src/` grupujący cały kod źródłowy dla poprawy czytelności).
+## Zarchiwizowane (Historia Sesji)
+
+Poniżej skrócone podsumowanie kategorii ukończonych prac. Szczegółowa historia dostępna w `git log`.
+
+### Architektura i Restrukturyzacja
+Ukończono pełną restrukturyzację monorepo do układu `src/` z trzema usługami produkcyjnymi (`controller`, `controller.worker`, `node`). Rozwiązano dług dystrybucyjny — system `.whl` dla RPi5 i Portable App dla Windows. Wdrożono Auto-Discovery (UDP Broadcast Zero-Conf). Wdrożono Rejestr Encji (Satelity i Węzły), Spatial Context Filtering, Continuous Registration. Przeprowadzono pełny re-branding kodu na "Regis".
+
+### LLM i Prompt Engineering
+Przejście przez kolejne generacje modeli: 7B → 3B → 1.5B (Butler NLU) oraz 7B → 14B → 9B (ReAct Agent). Wdrożono architekturę "Droga A" (narzędzia jako XML w prompcie, bez natywnego `tools` API Ollamy). Stop token `</action>`. Pętla ReAct ze `<thought>` i streamingiem. Structured Outputs (JSON Schema) dla Butlera. Naprawiono halucynacje, few-shot poisoning, amnezję przy długich sesjach.
+
+### Audio i Satelita
+Wdrożono STT (Whisper/faster-whisper) scentralizowane na węźle. WakeWord (openwakeword). VAD energetyczny. TTS. Natywny feedback dźwiękowy Windows. Inteligentne filtrowanie czasowe i auto-amnezja bufora.
+
+### UX i CLI
+Monitor konwersacji (SSE). Refaktoryzacja traya na `service.py` z HTTP API. Dashboard jako klient HTTP. Live Dashboard (Monitor Głosowy). Pętla REPL z infinite scrolling. Unifikacja wizualna (rich, questionary).
+
+### Integracje HA
+Narzędzia `get_device_state`, `execute_action`, `get_current_time`, `get_weather`. Wirtualne Grupy, aliasy. Zabezpieczenie przed urządzeniami `unavailable`. Toggle, logika jasności. Spatial Context (filtrowanie urządzeń per pokój). Pobieranie stanu baterii telefonu (z tłumaczeniem stanów bezpośrednio w warstwie integracji).

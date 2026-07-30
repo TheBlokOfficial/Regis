@@ -1,10 +1,10 @@
-# Regis-Core: Manifest Projektu
+# Regis: Manifest Projektu
 
-Ten dokument definiuje duszę projektu Regis-Core. Służy jako najwyższy kompas dla programistów oraz agentów AI pracujących przy kodzie. Jeśli jakakolwiek nowa funkcja, narzędzie lub decyzja architektoniczna jest sprzeczna z tym dokumentem — należy ją odrzucić.
+Ten dokument definiuje duszę projektu Regis. Służy jako najwyższy kompas dla programistów oraz agentów AI pracujących przy kodzie. Jeśli jakakolwiek nowa funkcja, narzędzie lub decyzja architektoniczna jest sprzeczna z tym dokumentem — należy ją odrzucić.
 
 ---
 
-## 1. Czym jest Regis-Core?
+## 1. Czym jest Regis?
 
 Projekt to **lekka i błyskawiczna warstwa abstrakcji** pomiędzy domownikami a urządzeniami Smart Home.
 Jego siłą napędową nie jest paląca potrzeba, lecz czysta, technologiczna pasja (hobby). Celem samym w sobie jest zbudowanie **autonomicznej, modularnej i perfekcyjnie zorganizowanej architektury** zarządzania domem. Z tego powodu jakość, spójność i czystość kodu są tu ważniejsze niż szybkie dostarczanie funkcji (tzw. "dowożenie").
@@ -19,28 +19,33 @@ Największym grzechem w tym projekcie jest implementacja funkcji "na siłę", ty
 
 ---
 
-## 3. Architektura: Dwie Usługi Produkcyjne
+## 3. Architektura (Stan Obecny)
 
-System składa się z dwóch oddzielnych, luźno powiązanych usług produkcyjnych. Każda jest niezależnie instalowana na dedykowanym urządzeniu.
+Poniższy opis odnosi się do **aktualnej, przejściowej konfiguracji** deweloperskiej i testowej. Docelowa architektura opisana jest w §3.6. Obecny układ wynika z ograniczeń sprzętowych RPi5 — nie jest to finalna wizja projektu.
 
-### 3.1 Kontroler (`regis_controller`)
+### 3.1 Kontroler (`controller`)
 - **Rola:** Mózg systemu i jedyne źródło prawdy. Zarządza rejestrem aktywnych węzłów roboczych, routingiem sesji oraz wykonywaniem narzędzi Home Assistant.
 - **Deployment:** Zawsze i tylko Raspberry Pi 5 (Linux). Singleton — może istnieć dokładnie jedna instancja. Dystrybuowany jako pakiet `.whl`.
 - **Kluczowa zasada:** Kontroler to lekki daemon — nigdy nie hostuje modelu LLM. Jest jedynym punktem komunikacji z Home Assistant; węzły robocze nigdy nie mają dostępu do HA bezpośrednio.
-- **Migracja kontekstu:** Przy pojawieniu się mocniejszego węzła, Kontroler czeka na zakończenie aktywnych konwersacji na słabszym węźle, a nowe sesje od razu kieruje do mocniejszego. Downgrade uznawany jest za edge case pomijalny.
+- **Routing:** Kontroler wybiera najlepszy dostępny węzeł (preferuje wyższy tier) dla każdej nowej sesji. Graceful migration między aktywnymi sesjami nie jest zaimplementowana — system działa na zasadzie best-effort.
 
-### 3.2 Węzeł (`regis_node`)
-- **Rola:** Zunifikowana usługa Windows łącząca rolę Węzła Roboczego i Satelity w jednej aplikacji.
-- **Deployment:** Instalowany na dowolnym Windows PC zdolnym do uruchomienia modelu (desktop, laptop). Dystrybuowany jako **Portable App** (folder z binarką PyInstaller + `Uruchom.bat`).
-- **Forma:** Aplikacja **System Tray** — działa jako ikona w pasku zadań. Worker LLM i Satellite audio to ukryte procesy w tle zarządzane przez panel tray.
-- **Koegzystencja:** Worker (inferencja LLM) i Satellite (przechwytywanie audio) mogą działać jednocześnie na tym samym PC — nie wykluczają się.
-- **Uwaga:** Sam RPi 5 jest jednocześnie Kontrolerem i węzłem roboczym (fallback z najmniejszym modelem). Jeśli nie ma innych węzłów — RPi 5 przejmuje całość.
+### 3.2 Węzeł roboczy (`controller.worker`) — Linux / RPi5 *(komponent przejściowy)*
+- **Rola:** Lekki, headless worker LLM uruchamiany na Raspberry Pi 5 jako usługa systemd. Fallback gdy żaden węzeł Windows nie jest dostępny. Obsługuje inferencję tekstową (model 1.5B butler) oraz przetwarzanie audio — przyjmuje surowe pakiety dźwiękowe nadesłane przez Satelity (np. ESP32) i transkrybuje je przez STTEngine.
+- **Deployment:** Pakiet `.whl` instalowany przez `pip` na RPi5 (Linux). Brak UI — czysty serwer HTTP.
+- **Uwaga:** RPi5 nie ma podłączonego mikrofonu — **nie nagrywa dźwięku samodzielnie**. STT działa wyłącznie na danych strumieniowanych przez Satelity.
+- **Status:** Komponent przejściowy. W docelowej architekturze (§3.6) Worker przenosi się na mini PC, a rola RPi5 jako oddzielnego urządzenia odpada.
 
-### 3.3 Satelita — typy interfejsów
+### 3.3 Węzeł (`node`) — Windows PC
+- **Rola:** Pełnoprawna **aplikacja Windows** z interfejsem terminalowym. Łączy trzy warstwy w jedną całość: UI (dashboard, monitor konwersacji), Worker LLM (inferencja 9B) i Satellite (przechwytywanie audio). Nie jest to wyłącznie "usługa w tle" — terminal UI jest pierwszorzędnym elementem. Ikona w pasku zadań to jedynie mechanizm życia procesu.
+- **Deployment:** Dystrybuowany jako **Windows Installer** (`RegisNodeSetup.exe`, Inno Setup) — wymaga Python zainstalowanego w systemie.
+- **Koegzystencja:** Worker (inferencja LLM) i Satellite (przechwytywanie audio) mogą działać jednocześnie — nie wykluczają się.
+- **Status przejściowy:** W docelowej architekturze (§3.6) Worker odpada z `node` — Windows staje się czystą Satelitą z UI, a inferencja przenosi się na dedykowane centrum.
+
+### 3.4 Satelita — typy interfejsów
 Każdy interfejs użytkownika jest architektonicznie Satelitą — różnią się medium:
-  - **ESP32** — miniaturowy, dedykowany sprzęt w domu; robi tylko VAD i strumieniowanie.
-  - **Windows PC** (`regis_node`) — aplikacja tray; robi VAD + WakeWord lokalnie, resztę deleguje.
-  - **Android** *(niepewna, odległa przyszłość)* — aplikacja mobilna.
+  - **ESP32** — miniaturowy, dedykowany sprzęt w domu; robi VAD i strumieniowanie audio. Tani, niskoprądowy, idealny do stałego montażu.
+  - **Windows PC** (`node`) — aplikacja z UI terminalowym; robi VAD + WakeWord lokalnie, resztę deleguje do centrum.
+  - **Linux** — wariant headless lub terminalowy.
 
 ### 3.4 Pipeline Przetwarzania Audio (Rozstrzygnięte)
 
@@ -96,6 +101,35 @@ Przyszłe integracje mogą obejmować m.in.:
 
 ---
 
+## 3.6 Wizja Docelowa
+
+Cel projektu: **pełna centralizacja na jednym dedykowanym urządzeniu** (np. mini PC klasy Minisforum UM760, Ryzen 5 / 16 GB RAM), które zastępuje obecny układ RPi5 + Windows.
+
+```
+┌──────────────────────────────────────────┐
+│              CENTRUM (Mini PC)           │
+│                                          │
+│  [Controller]  ←──→  [Worker]            │
+│   routing              LLM 9B+           │
+│   rejestr              STT (Whisper)     │
+│   proxy HA             TTS               │
+│                                          │
+│  [Home Assistant / inne integracje]      │
+└──────────────────────────────────────────┘
+         ↑              ↑            ↑
+      [ESP32]       [Windows]     [Linux]
+   VAD+stream     VAD+WW+UI      terminal
+              Satelity — cienkie klienty
+```
+
+**Kluczowe właściwości docelowego centrum:**
+- Controller i Worker to **oddzielne serwisy** komunikujące się przez HTTP — nawet jeśli siedzą na tej samej maszynie. Separacja odpowiedzialności jest zachowana.
+- Mini PC jest zawsze włączony → Butler (1.5B fallback) staje się zbędny → jeden model, jedna jakość.
+- `node` na Windows traci komponent Worker → staje się czystą Satelitą z UI.
+- RPi5 nie ma roli w tej architekturze.
+
+---
+
 ## 4. Rejestr Encji (Entity Registry)
 
 Kontroler jest jedynym źródłem prawdy. Wszystkie procesy w systemie — Satelity i Węzły Robocze — **rejestrują się** w Kontrolerze przy starcie oraz cyklicznie odnawiają swą rejestrację w tle (Continuous Registration). Dostarczają mu w ten sposób metadanych o sobie, a dzięki pętli ponawiania uodpornione są na restarty Kontrolera. Kontroler używa tych metadanych do podejmowania decyzji routingowych i budowania kontekstu dla modelu.
@@ -111,9 +145,9 @@ Każda Satelita przy rejestracji podaje:
 ### Metadane Węzła Roboczego
 Każdy Węzeł Roboczy przy rejestracji podaje:
 - `id` — unikalny identyfikator
-- `model_tier` — poziom możliwości (`low` / `medium` / `high`)
-- `model_name` — konkretny model Ollamy (np. `qwen2.5:14b-instruct`)
-- `vram_available` — dostępna moc obliczeniowa (VRAM lub RAM)
+- `host` / `port` — adres sieciowy węzła
+- `model_name` — konkretny model Ollamy (np. `qwen3.5:9b`)
+- `tier` — klasa modelu (`butler` lub `regis`)
 
 ### Kontekst Przestrzenny (Spatial Context Filtering)
 
@@ -131,21 +165,23 @@ Kontroler przechowuje i dystrybuuje:
 
 ---
 
-## 5. Dwa Tryby Pracy (Rozstrzygnięta Decyzja Produktowa)
+## 5. Dwa Tryby Pracy (Przejściowy Kompromis Sprzętowy)
 
-Na Raspberry Pi 5 model 3B generuje tokeny zbyt wolno przy braku GPU — wzrost inteligencji nie jest proporcjonalny do kosztów. Model 1.5B nadaje się tylko do parsera NLU. Tworzy to przepaść, nie płynną skalę.
+Dwa tryby pracy **nie są świadomą decyzją projektową — są chwilowym kompromisem wynikającym z ograniczeń sprzętowych.** RPi5 nie jest w stanie uruchomić modelu 9B. Gdyby mógł, nie byłoby podziału na tryby — istniałby jeden model, jedno centrum.
 
-**Decyzja: Zaakceptować przepaść, nie walczyć z nią.** Regis ma dwa tryby pracy i jest to świadomy wybór projektowy, nie defekt.
+Butler (1.5B) pełni rolę **ostatniej linii obrony**: działa gdy żaden mocniejszy węzeł nie jest dostępny. Nie jest równorzędną alternatywą dla Regis Agent — jest fallbackiem.
 
-| | Regis-Baseline (1.5B, RPi5) | Regis-Agent (14B, Desktop) |
+**Stan obecny (konfiguracja przejściowa):**
+
+| | Regis-Baseline (1.5B, RPi5) | Regis-Agent (9B, Desktop) |
 |---|---|---|
-| **Rola** | Deterministyczny parser komend | Myślący agent z pętlą ReAct |
-| **Dostępność** | 24/7, zawsze | Tylko gdy desktop jest włączony |
+| **Model** | Qwen 2.5 1.5B Instruct *(planowana migracja na Qwen 3.5)* | Qwen 3.5 9B |
+| **Rola** | Deterministyczny parser komend — fallback | Myślący agent z pętlą ReAct — cel |
+| **Dostępność** | 24/7, zawsze | Tylko gdy węzeł Windows jest włączony |
 | **Zakres** | Komendy urządzeń z danego pokoju | Pełny zakres narzędzi i rozmowa |
-| **Odpowiedź na pytania poza zasięgiem** | *"To przekracza moje obecne możliwości."* — zwięźle, bez tłumaczeń | Obsługuje |  
+| **Odpowiedź poza zasięgiem** | *"To przekracza moje obecne możliwości."* — zwięźle | Obsługuje |
 
-**Dlaczego przepaść jest akceptowalna:**
-Użycie głosowe i użycie konwersacyjne są naturalnie rozdzielone w czasie. Gdy użytkownik chce sterować domem głosem, siedzi na kanapie — komputer jest wyłączony. Gdy chce rozmawiać z agentem, siedzi przy komputerze — który jest włączony. Korelacja jest naturalna. Użytkownik przez doświadczenie uczy się oczekiwań bez żadnych komunikatów technicznych.
+**Cel docelowy:** jeden model (9B+) na dedykowanym centrum, dostępny 24/7. Patrz §3.6.
 
 ---
 
@@ -163,13 +199,15 @@ Regis jest **charakterny, rzeczowy i bezpośredni.** Nie owija w bawełnę. Prio
 
 ---
 
-## 7. Dług Architektoniczny (Stan Obecny vs. Wizja)
+## 7. Aktualny Dług Architektoniczny
 
-Mimo że `apps/controller/` i `apps/worker/` są dziś rozdzielnymi procesami API połączonymi przez Rejestr Encji, cały projekt zderzył się ze ścianą monolitycznej dystrybucji kodu i plików konfiguracyjnych.
+**Zrealizowano (historycznie):**
+- Rozbicie monolitu na trzy niezależne usługi (`controller`, `controller.worker`, `node`)
+- Izolacja konfiguracji na profile per instancja (pliki `.env`)
+- Auto-Discovery węzłów (UDP Broadcast Zero-Conf, `core/discovery.py`)
+- Rejestr Encji (Satelity i Węzły rejestrują się w Kontrolerze)
 
-**Problem Monolitu i Konfiguracji (Priorytet Architektoniczny)**
-**Rozwiązany Dług Dystrybucyjny i Konfiguracyjny (Zrealizowano)**
-W początkowej fazie projektu wszystkie procesy dzieliły zcentralizowane pliki konfiguracyjne, a transfer kodu źródłowego na węzły brzegowe prowadził do nadpisywania ich tożsamości. Problem ten, opisany w raporcie `docs/architectural_debt_report.md`, został już pomyślnie i permanentnie rozwiązany. 
-System został rozbity na w pełni wyizolowane instancje — konfiguracja opiera się teraz na profilach ładowanych z plików `.env` (np. `settings.rpi5-worker.json`), a przestarzałą dystrybucję kodu zastąpiono hermetycznymi paczkami instalacyjnymi (`.whl` dla Linuksa oraz `.exe` przez PyInstaller dla Windows). To ostatecznie uczyniło architekturę modularną.
-**Problem Hardkodowania IP i Auto-Konfiguracji (Oczekujące na realizację)**
-Obecnie rozwiązano problem nadpisywania tożsamości urządzeń, ale proces wciąż posiada defekt "hardkodowanych IP". Wymusza to ręczne ustawianie adresu IP Malinki na każdym urządzeniu satelitarnym. Został przygotowany dokument `docs/auto_discovery_rfc.md` szczegółowo opisujący plan wdrożenia protokołu **Zero-Conf (UDP Broadcast)** oraz zautomatyzowanego generowania plików po kompilacji. Będzie to kolejny kluczowy krok w ewolucji systemu.
+**Aktualny dług (oczekuje realizacji):**
+- **Dystrybucja Windows:** Inno Setup (`RegisNodeSetup.exe`) jest zaprojektowany (`docs/distribution_rfc.md`) ale instalator nie jest jeszcze zbudowany produkcyjnie — patrz `TASKS.md`.
+- **Pamięć Długoterminowa:** Stary system Notatnika wycięty. Nowe rozwiązanie (np. wektorowe) nie zostało jeszcze zaprojektowane — patrz `TASKS.md`.
+- **Dead code `frozen`:** `core/config.py` zawiera pozostałość po epoce PyInstaller (`if getattr(sys, 'frozen', False)`). Do usunięcia w oddzielnej sesji.

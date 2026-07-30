@@ -1,1 +1,0 @@
-"""regis_satellite package"""

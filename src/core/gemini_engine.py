@@ -50,8 +50,9 @@ class GeminiEngine:
 
     def _build_system_prompt(self) -> str:
         """Dynamicznie wczytuje prompt bazowy i warstwy z plików."""
-        base_path = os.path.join("data", "prompts", "base_system.md")
-        tier_path = os.path.join("data", "prompts", f"tier_{self.tier}.md")
+        from core import config
+        base_path = os.path.join(config.CONFIG_DIR, "prompts", "base_system.md")
+        tier_path = os.path.join(config.CONFIG_DIR, "prompts", f"tier_{self.tier}.md")
         
         base_prompt = "Jesteś asystentem domowym."
         tier_prompt = "Wykonujesz polecenia."

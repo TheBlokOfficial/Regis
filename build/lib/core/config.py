@@ -14,7 +14,10 @@ else:
 DATA_DIR = os.getenv("REGIS_DATA_DIR", os.path.join(WORK_DIR, "data"))
 PROFILE = os.getenv("ACTIVE_PROFILE", "default")
 
-SETTINGS_FILE = os.path.join(DATA_DIR, f"settings.{PROFILE}.json")
+if PROFILE == "default":
+    SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+else:
+    SETTINGS_FILE = os.path.join(DATA_DIR, f"settings.{PROFILE}.json")
 ALIASES_FILE = os.path.join(DATA_DIR, "aliases.json")
 def load_settings() -> dict[str, Any]:
     """Ładuje główne ustawienia programu z fallbackiem na wartości domyślne.

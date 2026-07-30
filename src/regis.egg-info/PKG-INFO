@@ -1,0 +1,43 @@
+Metadata-Version: 2.4
+Name: regis
+Version: 0.1.0
+Summary: Lekka warstwa abstrakcji miedzy uzytkownikiem a systemem Smart Home
+Requires-Python: >=3.11
+Requires-Dist: requests>=2.31.0
+Requires-Dist: python-dotenv>=1.0.0
+Provides-Extra: controller
+Requires-Dist: fastapi>=0.111.0; extra == "controller"
+Requires-Dist: uvicorn>=0.30.1; extra == "controller"
+Requires-Dist: pydantic>=2.7.4; extra == "controller"
+Requires-Dist: python-multipart>=0.0.9; extra == "controller"
+Requires-Dist: websockets>=12.0; extra == "controller"
+Provides-Extra: worker
+Requires-Dist: vosk>=0.3.45; extra == "worker"
+Requires-Dist: numpy>=1.26.0; extra == "worker"
+Requires-Dist: pydantic>=2.7.4; extra == "worker"
+Provides-Extra: node
+Requires-Dist: pystray>=0.19.5; extra == "node"
+Requires-Dist: pillow>=10.0.0; extra == "node"
+Requires-Dist: vosk>=0.3.45; extra == "node"
+Requires-Dist: openwakeword>=0.6.0; extra == "node"
+Requires-Dist: sounddevice>=0.4.6; extra == "node"
+Requires-Dist: soundfile>=0.12.1; extra == "node"
+Requires-Dist: numpy>=1.26.0; extra == "node"
+Requires-Dist: fastapi>=0.111.0; extra == "node"
+Requires-Dist: uvicorn>=0.30.1; extra == "node"
+Requires-Dist: pydantic>=2.7.4; extra == "node"
+Requires-Dist: python-multipart>=0.0.9; extra == "node"
+Requires-Dist: psutil>=5.9.0; extra == "node"
+Requires-Dist: rich==13.7.0; extra == "node"
+Requires-Dist: questionary==2.0.1; extra == "node"
+Provides-Extra: dev
+Requires-Dist: rich==13.7.0; extra == "dev"
+Requires-Dist: questionary==2.0.1; extra == "dev"
+Requires-Dist: pytest>=7.4.3; extra == "dev"
+Requires-Dist: pyinstaller>=6.9.0; extra == "dev"
+Requires-Dist: build>=1.2.1; extra == "dev"
+Provides-Extra: all
+Requires-Dist: regis[controller]; extra == "all"
+Requires-Dist: regis[worker]; extra == "all"
+Requires-Dist: regis[node]; extra == "all"
+Requires-Dist: regis[dev]; extra == "all"

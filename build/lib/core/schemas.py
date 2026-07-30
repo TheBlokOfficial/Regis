@@ -6,28 +6,6 @@ BASE_TOOLS_SCHEMA = [
         "type": "function",
         "required_tier": "butler",
         "function": {
-            "name": "get_devices",
-            "description": "Zwraca listę dostępnych urządzeń w systemie (np. nazwy świateł, przełączników). Zawsze używaj tego narzędzia przed próbą manipulacji nowym urządzeniem, by poznać poprawne entity_id.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Opcjonalna domena, np. 'light' lub 'media_player', aby przefiltrować urządzenia."
-                    },
-                    "room": {
-                        "type": "string",
-                        "description": "Optional room filter, e.g. 'salon' or 'sypialnia'. By default returns devices from the user's current room. Use this to access devices in a different room when the user explicitly requests it."
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "required_tier": "butler",
-        "function": {
             "name": "get_device_state",
             "description": "Zwraca dokładny obecny stan urządzenia dla podanego entity_id.",
             "parameters": {
@@ -49,8 +27,8 @@ BASE_TOOLS_SCHEMA = [
         "type": "function",
         "required_tier": "butler",
         "function": {
-            "name": "execute_ha_action",
-            "description": "Wykonuje fizyczną akcję na urządzeniach. Nigdy nie zgaduj entity_id — zawsze najpierw wywołaj get_devices. Jeśli ustawiasz parametry (np. jasność), akcja musi być 'turn_on'.",
+            "name": "execute_action",
+            "description": "Wykonuje akcję na urządzeniu. Bierz entity_id wyłącznie ze swojego Globalnego Menu. Jeśli ustawiasz parametry (np. jasność), akcja musi być 'turn_on'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -68,7 +46,7 @@ BASE_TOOLS_SCHEMA = [
                     },
                     "parameters": {
                         "type": "object",
-                        "description": "Dodatkowe parametry akcji, np. zmiana jasności."
+                        "description": "Opcjonalne parametry natywne Home Assistant (np. 'brightness' w skali 0-255, 'brightness_pct' w skali 0-100)."
                     }
                 },
                 "required": ["action", "entity_id"]

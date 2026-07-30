@@ -17,3 +17,17 @@ ENV/
 
 # Project specific local data
 data/*.json
+
+# Build outputs
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+*.onnx
+*.pt
+*.bin
+*.pkg
+*.pyz
+*.pyc

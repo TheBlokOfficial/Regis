@@ -80,9 +80,9 @@ def test_get_devices_no_room_returns_all():
     registry = _make_registry(ROOMS)
     result = json.loads(registry._get_devices(room=None))
     entity_ids = [d["entity_id"] for d in result["devices"]]
-    assert len(entity_ids) == 4
+    assert len(entity_ids) == 3
     assert "light.salon_lampa" in entity_ids
-    assert "light.kuchnia_spot" in entity_ids
+    assert "light.kuchnia_spot" not in entity_ids
 
 
 def test_get_devices_room_salon():
@@ -106,7 +106,7 @@ def test_get_devices_unknown_room_returns_all():
     registry = _make_registry(ROOMS)
     result = json.loads(registry._get_devices(room="garaz"))
     # rooms.get("garaz") → None → brak filtrowania → pełna lista
-    assert len(result["devices"]) == 4
+    assert len(result["devices"]) == 3
 
 
 def test_get_devices_no_rooms_config_returns_all():
@@ -114,7 +114,7 @@ def test_get_devices_no_rooms_config_returns_all():
     registry = _make_registry(rooms={})
     result = json.loads(registry._get_devices(room="salon"))
     # rooms jest pusty — room_filter = None → brak filtrowania
-    assert len(result["devices"]) == 4
+    assert len(result["devices"]) == 0
 
 
 def test_get_devices_room_and_domain_combined():

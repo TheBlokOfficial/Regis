@@ -25,6 +25,16 @@ class RemoteToolsRegistry:
         self.tier = tier
         self.room = room
 
+    def get_global_menu(self) -> str:
+        """Pobiera skompilowane Globalne Menu od Kontrolera."""
+        try:
+            response = requests.get(f"{self.controller_url}/v1/tools/menu", timeout=10)
+            response.raise_for_status()
+            return response.text
+        except requests.RequestException as e:
+            logging.error(f"Błąd pobierania Globalnego Menu z Kontrolera: {e}")
+            return "BRAK URZĄDZEŃ (BŁĄD ZASOBÓW)"
+
     def execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
         """Deleguje wywołanie narzędzia do Kontrolera przez HTTP POST.
 

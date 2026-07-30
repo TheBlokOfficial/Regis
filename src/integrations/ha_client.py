@@ -60,18 +60,86 @@ class HomeAssistantClient:
                 if domain not in allowed_domains:
                     continue
                 
-                original_name = entity["attributes"].get("friendly_name", "Nieznana Nazwa")
+                attrs = entity.get("attributes", {})
+                original_name = attrs.get("friendly_name")
+                if not original_name:
+                    # Kiedy encja nie ma nazwy, wyciągnij ładną z entity_id
+                    original_name = entity_id.split(".")[-1].replace("_", " ").title()
+                
                 friendly_name = self.aliases.get(entity_id, original_name)
                 
-                filtered_state[entity_id] = {
+                state_dict = {
                     "state": entity["state"],
                     "friendly_name": friendly_name
                 }
+                
+                # Tylko z góry określone, lekkie klucze by nie marnować tokenów
+                important_keys = ["brightness", "color_temp", "rgb_color", "temperature", "current_temperature", "volume_level", "media_title"]
+                extracted_attrs = {}
+                for k in important_keys:
+                    if k in attrs and attrs[k] is not None:
+                        val = attrs[k]
+                        # Zamiana z 0-255 na procenty od razu w backendzie
+                        if k == "brightness":
+                            val = round((val / 255.0) * 100)
+                            extracted_attrs["brightness_pct"] = val
+                        else:
+                            extracted_attrs[k] = val
+                
+                # Wymuszamy dodanie słownika atrybutów (nawet jeśli pusty), 
+                # aby Węzeł na Windowsie łatwiej wstrzykiwał jednolity format
+                state_dict["attributes"] = extracted_attrs
+                    
+                filtered_state[entity_id] = state_dict
                     
             return filtered_state
         except RequestException as e:
             logging.error(f"[BŁĄD HA] Nie udało się pobrać stanu: {e}")
             raise HomeAssistantConnectionError(f"Nie można pobrać stanów HA: {e}")
+    def get_phone_battery(self) -> dict[str, str]:
+        """Pobiera i tłumaczy stan baterii telefonu dla LLM."""
+        url_lvl = f"{self.url}/api/states/sensor.pixel_9a_battery_level"
+        url_state = f"{self.url}/api/states/sensor.pixel_9a_battery_state"
+        
+        try:
+            resp_lvl = self.session.get(url_lvl, timeout=5)
+            resp_state = self.session.get(url_state, timeout=5)
+            
+            level = resp_lvl.json().get("state", "unknown") if resp_lvl.status_code == 200 else "unknown"
+            raw_status = resp_state.json().get("state", "unknown") if resp_state.status_code == 200 else "unknown"
+            
+            # Mapowanie stanów na czystsze i łatwiejsze do zrozumienia dla LLM
+            state_mapping = {
+                "discharging": "not_charging",
+                "charging": "charging",
+                "full": "full",
+                "not_charging": "not_charging"
+            }
+            status = state_mapping.get(raw_status, raw_status)
+            
+            return {
+                "battery_level": f"{level}%" if level != "unknown" else level,
+                "battery_state": status
+            }
+        except RequestException as e:
+            logging.error(f"[BŁĄD HA] Nie udało się pobrać baterii: {e}")
+            return {"battery_level": "unknown", "battery_state": "error"}
+
+    def _flatten_entities(self, entity_ids: str | list[str]) -> list[str]:
+        """Rekurencyjnie spłaszcza grupy wirtualne do listy fizycznych encji."""
+        if isinstance(entity_ids, str):
+            entity_ids = [entity_ids]
+            
+        flat_list = []
+        for eid in entity_ids:
+            if eid in self.virtual_groups:
+                for child in self._flatten_entities(self.virtual_groups[eid]):
+                    if child not in flat_list:
+                        flat_list.append(child)
+            else:
+                if eid not in flat_list:
+                    flat_list.append(eid)
+        return flat_list
 
     def execute_action(self, action: str, entity_id: str | list[str], parameters: dict[str, Any] | None = None) -> bool:
         """Wysyła polecenie zmiany stanu do fizycznego Home Assistanta.
@@ -89,20 +157,33 @@ class HomeAssistantClient:
         if parameters is None:
             parameters = {}
             
-        if isinstance(entity_id, str) and entity_id in self.virtual_groups:
-            entity_id = self.virtual_groups[entity_id]
-            
-        if not isinstance(entity_id, (str, list)):
-            logging.warning("[HA CLIENT] Oczekiwano stringa lub listy jako entity_id.")
+        entity_id = self._flatten_entities(entity_id)
+        if not entity_id:
+            logging.warning("[HA CLIENT] Pusta lista encji po rozpakowaniu.")
             return False
             
         # HA obsługuje listę entity_id domyślnie, nie trzeba robić pętli!
         domain = entity_id[0].split(".")[0] if isinstance(entity_id, list) else entity_id.split(".")[0]
         
+        # Weryfikacja fizycznej dostępności urządzeń przed wysłaniem komendy
+        for eid in entity_id:
+            try:
+                state_resp = self.session.get(f"{self.url}/api/states/{eid}", timeout=2)
+                if state_resp.status_code == 200:
+                    state_data = state_resp.json()
+                    if state_data.get("state") == "unavailable":
+                        raise ValueError(f"Urządzenie '{eid}' jest aktualnie niedostępne (unavailable / offline).")
+            except ValueError as ve:
+                raise ve
+            except Exception as e:
+                logging.warning(f"[HA CLIENT] Nie udało się zweryfikować stanu dla {eid}: {e}")
+                
         if action == "turn_on":
             service = "turn_on"
         elif action == "turn_off":
             service = "turn_off"
+        elif action == "toggle":
+            service = "toggle"
         else:
             logging.warning(f"[HA CLIENT] Nie obsługiwana akcja: {action}")
             return False

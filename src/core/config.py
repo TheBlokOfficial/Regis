@@ -12,10 +12,14 @@ else:
     WORK_DIR = os.getcwd()
 
 DATA_DIR = os.getenv("REGIS_DATA_DIR", os.path.join(WORK_DIR, "data"))
+CONFIG_DIR = os.getenv("REGIS_CONFIG_DIR", os.path.join(WORK_DIR, "config"))
 PROFILE = os.getenv("ACTIVE_PROFILE", "default")
 
-SETTINGS_FILE = os.path.join(DATA_DIR, f"settings.{PROFILE}.json")
-ALIASES_FILE = os.path.join(DATA_DIR, "aliases.json")
+if PROFILE == "default":
+    SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+else:
+    SETTINGS_FILE = os.path.join(DATA_DIR, f"settings.{PROFILE}.json")
+ALIASES_FILE = os.path.join(CONFIG_DIR, "aliases.json")
 def load_settings() -> dict[str, Any]:
     """Ładuje główne ustawienia programu z fallbackiem na wartości domyślne.
     
@@ -71,7 +75,7 @@ def load_virtual_groups() -> dict[str, list[str]]:
     Returns:
         dict[str, list[str]]: Słownik grup, np. {"light.moj_pokoj": ["light.id1", "light.id2"]}
     """
-    groups_file = os.path.join(DATA_DIR, "virtual_groups.json")
+    groups_file = os.path.join(CONFIG_DIR, "virtual_groups.json")
     if not os.path.exists(groups_file):
         return {}
     with open(groups_file, "r", encoding="utf-8") as f:
@@ -90,7 +94,7 @@ def load_rooms() -> dict[str, list[str]]:
         dict[str, list[str]]: Słownik mapujący nazwę pokoju na listę entity_id,
         np. {"salon": ["light.salon_lampa", "switch.salon_tv"]}
     """
-    rooms_file = os.path.join(DATA_DIR, "rooms.json")
+    rooms_file = os.path.join(CONFIG_DIR, "rooms.json")
     if not os.path.exists(rooms_file):
         return {}
     with open(rooms_file, "r", encoding="utf-8") as f:

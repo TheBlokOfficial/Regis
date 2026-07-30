@@ -6,35 +6,13 @@ BASE_TOOLS_SCHEMA = [
         "type": "function",
         "required_tier": "butler",
         "function": {
-            "name": "get_devices",
-            "description": "Zwraca listę dostępnych urządzeń w systemie (np. nazwy świateł, przełączników). Zawsze używaj tego narzędzia przed próbą manipulacji nowym urządzeniem, by poznać poprawne entity_id.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "domain": {
-                        "type": "string",
-                        "description": "Opcjonalna domena, np. 'light' lub 'media_player', aby przefiltrować urządzenia."
-                    },
-                    "room": {
-                        "type": "string",
-                        "description": "Optional room filter, e.g. 'salon' or 'sypialnia'. By default returns devices from the user's current room. Use this to access devices in a different room when the user explicitly requests it."
-                    }
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "required_tier": "butler",
-        "function": {
             "name": "get_device_state",
             "description": "Zwraca dokładny obecny stan urządzenia dla podanego entity_id.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "entity_id": {
-                        "type": ["string", "array"],
+                        "type": "array",
                         "items": {
                             "type": "string"
                         },
@@ -49,8 +27,8 @@ BASE_TOOLS_SCHEMA = [
         "type": "function",
         "required_tier": "butler",
         "function": {
-            "name": "execute_ha_action",
-            "description": "Wykonuje fizyczną akcję na urządzeniach. Nigdy nie zgaduj entity_id — zawsze najpierw wywołaj get_devices. Jeśli ustawiasz parametry (np. jasność), akcja musi być 'turn_on'.",
+            "name": "execute_action",
+            "description": "Wykonuje akcję na urządzeniu. Bierz entity_id wyłącznie ze swojego Globalnego Menu. Jeśli ustawiasz parametry (np. jasność), akcja musi być 'turn_on'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -60,15 +38,15 @@ BASE_TOOLS_SCHEMA = [
                         "description": "Typ akcji: 'turn_on', 'turn_off' lub 'toggle'."
                     },
                     "entity_id": {
-                        "type": ["string", "array"],
+                        "type": "array",
                         "items": {
                             "type": "string"
                         },
-                        "description": "Dokładne ID encji (np. 'light.salon') lub lista ID."
+                        "description": "Dokładne ID encji (np. 'light.salon') lub lista. Architektura systemu: Sterowanie nadrzędną Grupą automatycznie kaskaduje akcję do wszystkich urządzeń podrzędnych. Podawanie w liście urządzeń podrzędnych obok ich Grupy jest powielaniem polecenia - podawaj tylko Grupę."
                     },
                     "parameters": {
                         "type": "object",
-                        "description": "Dodatkowe parametry akcji, np. zmiana jasności."
+                        "description": "Opcjonalne parametry natywne Home Assistant (np. 'brightness' w skali 0-255, 'brightness_pct' w skali 0-100)."
                     }
                 },
                 "required": ["action", "entity_id"]
@@ -105,6 +83,19 @@ BASE_TOOLS_SCHEMA = [
                 "required": ["location"]
             }
         }
+    },
+    {
+        "type": "function",
+        "required_tier": "butler",
+        "function": {
+            "name": "get_phone_battery",
+            "description": "Zwraca aktualny poziom baterii w telefonie użytkownika (Pixel 9a). Zwraca wartość w procentach oraz informację, czy się ładuje.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
     }
 ]
 
@@ -112,7 +103,7 @@ BASE_TOOLS_SCHEMA = [
 def get_tools_for_tier(tier: str) -> list[dict]:
     """Filtruje schematy narzędzi na podstawie poziomu uprawnień (tier).
     Zwraca kopię bez niestandardowego pola 'required_tier'."""
-    tier_clearance = {"butler": 1, "regis": 2, "prime": 3}
+    tier_clearance = {"butler": 1, "regis": 2}
     current_clearance = tier_clearance.get(tier, 1)
     
     filtered = []
@@ -139,10 +130,11 @@ You may call one or more functions to assist with the user query. You are provid
 <tools>
 {tools_json}
 </tools>
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
-<tool_call>
+For each function call, return a json object with function name and arguments within <action></action> XML tags:
+<action>
 {{"name": <function-name>, "arguments": <args-json-object>}}
-</tool_call>"""
+</action>
+The result of the tool execution will be provided to you within <tool_response></tool_response> tags."""
 
 
 # ─── Modele Rejestru Encji ─────────────────────────────────────────────────
@@ -153,7 +145,7 @@ class WorkerRegistrationRequest(BaseModel):
     host: str
     port: int
     model_name: str
-    tier: str  # butler | regis | prime
+    tier: str  # butler | regis
 
 
 class ToolExecutionRequest(BaseModel):

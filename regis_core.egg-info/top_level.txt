@@ -1,6 +1,0 @@
-core
-integrations
-regis_controller
-regis_satellite
-regis_terminal
-regis_worker

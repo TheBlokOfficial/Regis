@@ -1,6 +1,6 @@
-# Regis-Core
+# Regis
 
-Projekt Regis-Core to centralny serwer prywatnego asystenta głosowego (LLM-based) służący do sterowania infrastrukturą Home Assistant. Projekt jest zamknięty, przeznaczony na użytek prywatny i zaprojektowany pod kątem działania w odizolowanym środowisku LAN. Nie jest to oprogramowanie typu Open Source.
+Projekt Regis to centralny serwer prywatnego asystenta głosowego (LLM-based) służący do sterowania infrastrukturą Home Assistant. Projekt jest zamknięty, przeznaczony na użytek prywatny i zaprojektowany pod kątem działania w odizolowanym środowisku LAN. Nie jest to oprogramowanie typu Open Source.
 
 ## Topologia sprzętowa
 

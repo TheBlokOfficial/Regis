@@ -1,8 +1,8 @@
-# Regis-Core Workspace Rules
+# Regis Workspace Rules
 
 - **KRYTYCZNE:** Model pracujący w tym projekcie nie może wprowadzać ŻADNYCH zmian w kodzie, chyba że użytkownik wyraźnie i jednoznacznie mu to nakaże.
 - **Unikaj nadmiernego używania emotikon (ikonek) w interfejsie CLI i logach.**
-- Używaj ich tylko tam, gdzie są niezbędne do kierowania wzrokiem lub faktycznie poprawiają czytelność (np. krzyżyk oznaczający wyjście/błąd, ptaszek oznaczający sukces). Dodawanie ikon do absolutnie każdej opcji menu wygląda nieprofesjonalnie. Interfejs Regis-Core ma docelowo pozostać stonowany i ascetyczny.
+- Używaj ich tylko tam, gdzie są niezbędne do kierowania wzrokiem lub faktycznie poprawiają czytelność (np. krzyżyk oznaczający wyjście/błąd, ptaszek oznaczający sukces). Dodawanie ikon do absolutnie każdej opcji menu wygląda nieprofesjonalnie. Interfejs Regis ma docelowo pozostać stonowany i ascetyczny.
 
 ## Zalecenia dotyczące UX (CLI)
 Poniższe wytyczne stanowią zbiór dobrych praktyk wypracowanych podczas refaktoryzacji interfejsu (są to luźne propozycje na przyszłość pomagające utrzymać spójność, a nie sztywne reguły):
@@ -11,7 +11,7 @@ Poniższe wytyczne stanowią zbiór dobrych praktyk wypracowanych podczas refakt
 - **Lżejsza struktura**: Zamiast otaczać bloki tekstu masywnymi panelami z obramowaniami (`Panel`), używaj pogrubionych tytułów oddzielonych delikatnymi liniami poziomymi (`Rule(style="dim")`).
 - **Niestandardowe motywy w promptach**: Przy korzystaniu z bibliotek wyboru (np. `questionary`) warto aplikować własny, wyciszony motyw stylów (np. stosując `fg:ansigray`), aby pozbyć się "krzykliwych", domyślnych niebieskich lub żółtych highlightów.
 
-## Protokoły Pracy Agenta (Regis-Core)
+## Protokoły Pracy Agenta (Regis)
 
 **[PROCEDURA STARTOWA - OBOWIĄZKOWA]**
 Zanim rozpoczniesz realizację pierwszego polecenia użytkownika w nowej sesji, MASZ OBOWIĄZEK w pierwszej kolejności użyć narzędzi do czytania plików w tle, aby zapoznać się z plikami w następującej kolejności:
