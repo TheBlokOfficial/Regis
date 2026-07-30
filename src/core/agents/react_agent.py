@@ -10,6 +10,8 @@ from core.exceptions import LLMConnectionError
 from core import config
 from core.schemas import BASE_TOOLS_SCHEMA
 
+logger = logging.getLogger(__name__)
+
 class ReActAgent:
     """Agent wykonujący pętlę ReAct (Reasoning and Acting) dla modeli takich jak Regis."""
 
@@ -107,11 +109,17 @@ class ReActAgent:
                 }
             }
 
+            logger.debug(
+                f"ReAct iter {iteration_count}/{max_iterations} | model={self.model_name} "
+                f"| wiadomości w kontekście: {len(messages)} | POST {chat_url}"
+            )
+
             try:
                 inference_start = time.perf_counter()
                 first_token_received = False
                 response = requests.post(chat_url, json=payload, timeout=300, stream=True)
                 response.raise_for_status()
+                logger.debug(f"Ollama odpowiedź: {response.status_code} | iter {iteration_count}")
 
                 full_content = ""
                 try:
@@ -142,7 +150,20 @@ class ReActAgent:
 
                 inference_time = time.perf_counter() - inference_start
                 response_text = full_content
+                logger.debug(
+                    f"ReAct iter {iteration_count} zakończona | "
+                    f"TTFT={int(locals().get('ttft', 0) * 1000)}ms "
+                    f"| łącznie={int(inference_time * 1000)}ms "
+                    f"| tokeny wyjścia: {len(response_text.split())}"
+                )
                 tool_call, cleaned_text = self._parse_tool_call_from_text(response_text)
+
+                if not tool_call:
+                    logger.debug(
+                        f"ReAct iter {iteration_count}: brak wywołania narzędzia — "
+                        f"fragment odpowiedzi: {response_text[:300]!r}"
+                    )
+
 
                 if tool_call:
                     # Poprawka: Odbudowujemy czysty komunikat dla modelu, unikając zepsutego formatu z fallbacku
@@ -206,4 +227,8 @@ class ReActAgent:
                 logging.error(f"Błąd połączenia LLMEngine: {error_details}")
                 raise LLMConnectionError(f"Nie udało się połączyć z usługą. {error_details}")
         
+        logger.warning(
+            f"ReAct: przekroczono max_iterations ({max_iterations}) "
+            f"dla modelu {self.model_name}. Przerywam pętlę."
+        )
         return "Przerwano zapytanie. Przekroczono maksymalną liczbę wywołań narzędzi (timeout pętli ReAct)."

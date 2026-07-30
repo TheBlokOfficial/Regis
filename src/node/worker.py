@@ -16,7 +16,8 @@ from core import config
 from node.node import WorkerNode
 from core.remote_tools_registry import RemoteToolsRegistry
 
-logging.basicConfig(level=logging.INFO)
+from core.logger import setup_logging
+setup_logging("node")
 
 # Globalne instancje — inicjalizowane w lifespan
 worker_node: WorkerNode | None = None

@@ -40,3 +40,6 @@ Monitor konwersacji (SSE). Refaktoryzacja traya na `service.py` z HTTP API. Dash
 
 ### Integracje HA
 Narzędzia `get_device_state`, `execute_action`, `get_current_time`, `get_weather`. Wirtualne Grupy, aliasy. Zabezpieczenie przed urządzeniami `unavailable`. Toggle, logika jasności. Spatial Context (filtrowanie urządzeń per pokój). Pobieranie stanu baterii telefonu (z tłumaczeniem stanów bezpośrednio w warstwie integracji).
+
+### Debugowanie i Obserwowalność
+Wdrożono system logowania warstwy I/O (`core/logger.py`). Logi DEBUG trafiają do `logs/<usługa>_YYYY-MM-DD.log` (FileHandler), konsola pozostaje na INFO. Pokryte: żądania HTTP do HA (przed/po `state_mapping`), iteracje pętli ReAct (TTFT, czas, rozmiar kontekstu), ciche błędy NLU (`JSONDecodeError`), decyzje routingowe Kontrolera, timeouty węzłów.

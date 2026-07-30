@@ -14,6 +14,7 @@ import controller.registry as registry
 from controller.registry import _TIER_PRIORITY
 
 router_chat = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _build_system_prompt(tier: str, room: str | None = None) -> str:
@@ -74,6 +75,10 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
             worker_url = f"{worker['base_url']}/v1/chat/audio_stream"
         
         logging.info(f"Routowanie żądania do węzła: {worker_id}")
+        logger.debug(
+            f"Router wybrany węzeł: id={worker_id} | tier={tier} "
+            f"| model={worker.get('model_name', 'nieznany')} | url={worker_url}"
+        )
         
         routing_event = {
             "type": "routing_info",
@@ -139,8 +144,9 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
             
             success = True
             break
-        except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
+        except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError) as e:
             logging.warning(f"Węzeł {worker_id} nie odpowiada (Connect błąd). Usuwam z rejestru.")
+            logger.debug(f"Router timeout/conn error | worker_id={worker_id} | url={worker_url} | błąd: {e}")
             if worker_id in registry.worker_registry:
                 del registry.worker_registry[worker_id]
         except Exception as e:

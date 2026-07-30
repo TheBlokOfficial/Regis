@@ -6,6 +6,8 @@ from typing import Any
 
 from core import config
 
+logger = logging.getLogger(__name__)
+
 class NLUAgent:
     """Agent NLU działający w oparciu o strukturalne wyjście z góry narzuconego schematu (JSON Schema)."""
 
@@ -55,9 +57,14 @@ class NLUAgent:
                 except json.JSONDecodeError:
                     pass
             
+            logger.debug(f"NLU surowa odpowiedź modelu: {content!r}")
             try:
                 intent = json.loads(content)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                logger.warning(
+                    f"NLU JSONDecodeError: nie można sparsować odpowiedzi modelu. "
+                    f"Wyjątek: {e} | treść: {content!r}"
+                )
                 intent = {"action": "unknown"}
                 
             action = intent.get("action", "unknown")

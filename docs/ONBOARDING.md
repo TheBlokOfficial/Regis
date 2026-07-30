@@ -133,6 +133,9 @@ Implementuje interfejs zgodny z `LLMEngine`, ale wysyła żądania do Kontrolera
 ### `stt_engine.py` — Silnik STT
 Cienka warstwa na `faster-whisper`. Przyjmuje `BytesIO` z plikiem WAV, zwraca transkrypcję jako string.
 
+### `logger.py` — System Logowania
+Konfiguruje globalny system logowania dla danej usługi (`node` lub `controller`). Wywołaj `setup_logging("node")` raz przy starcie — ustawia dwa handlery: `FileHandler` (poziom DEBUG, zapis do `logs/<usługa>_YYYY-MM-DD.log`) oraz `StreamHandler` (poziom INFO, konsola). Wycisza szum z bibliotek zewnętrznych (urllib3, uvicorn.access). Katalog `logs/` jest wykluczony z Gita.
+
 ### `gemini_engine.py` — Silnik Gemini *(eksperymentalny)*
 Alternatywny silnik LLM używający chmurowego API Google Gemini. Nie produkcyjny.
 
@@ -158,7 +161,7 @@ Konfiguracja per instancja. Profil ładowany przez zmienną `ACTIVE_PROFILE` z `
 ### `prompts/`
 Pliki Markdown definiujące osobowość i instrukcje dla każdego tieru modelu:
 - `tier_butler.md` — model 1.5B, NLU, minimalistyczny prompt Few-Shot JSON
-- `tier_regis.md` — model 14B, pełny agent ReAct z Chain of Thought
+- `tier_regis.md` — model 9B (qwen3.5:9b), pełny agent ReAct z Chain of Thought
  
 
 ### `rooms.json` *(w `config/`, nie w `data/`)*

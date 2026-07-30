@@ -1,10 +1,13 @@
 import json
 import logging
+import time
 import requests
 from requests.exceptions import RequestException
 from typing import Any
 
 from core.exceptions import HomeAssistantConnectionError
+
+logger = logging.getLogger(__name__)
 
 class HomeAssistantClient:
     """Klient zarządzający komunikacją z fizycznym serwerem Home Assistant REST API."""
@@ -44,11 +47,15 @@ class HomeAssistantClient:
             HomeAssistantConnectionError: W przypadku błędu połączenia z HA.
         """
         url = f"{self.url}/api/states"
+        logger.debug(f"HA GET {url}")
+        _t = time.perf_counter()
         
         try:
             response = self.session.get(url, timeout=10)
+            elapsed_ms = int((time.perf_counter() - _t) * 1000)
             response.raise_for_status()
             data = response.json()
+            logger.debug(f"HA response: {response.status_code} OK | {elapsed_ms}ms | encji surowych: {len(data)}")
             
             allowed_domains = ["light", "switch", "climate", "media_player"]
             filtered_state = {}
@@ -92,6 +99,7 @@ class HomeAssistantClient:
                     
                 filtered_state[entity_id] = state_dict
                     
+            logger.debug(f"HA get_all_states: po filtrowaniu {len(filtered_state)} encji (domeny: {allowed_domains})")
             return filtered_state
         except RequestException as e:
             logging.error(f"[BŁĄD HA] Nie udało się pobrać stanu: {e}")
@@ -102,11 +110,18 @@ class HomeAssistantClient:
         url_state = f"{self.url}/api/states/sensor.pixel_9a_battery_state"
         
         try:
+            _t = time.perf_counter()
             resp_lvl = self.session.get(url_lvl, timeout=5)
             resp_state = self.session.get(url_state, timeout=5)
-            
+            elapsed_ms = int((time.perf_counter() - _t) * 1000)
+
             level = resp_lvl.json().get("state", "unknown") if resp_lvl.status_code == 200 else "unknown"
             raw_status = resp_state.json().get("state", "unknown") if resp_state.status_code == 200 else "unknown"
+            logger.debug(
+                f"HA get_phone_battery | {elapsed_ms}ms "
+                f"| level_status={resp_lvl.status_code} raw_level={level!r} "
+                f"| state_status={resp_state.status_code} raw_status={raw_status!r}"
+            )
             
             # Mapowanie stanów na czystsze i łatwiejsze do zrozumienia dla LLM
             state_mapping = {
@@ -116,6 +131,7 @@ class HomeAssistantClient:
                 "not_charging": "not_charging"
             }
             status = state_mapping.get(raw_status, raw_status)
+            logger.debug(f"HA get_phone_battery state_mapping: {raw_status!r} -> {status!r}")
             
             return {
                 "battery_level": f"{level}%" if level != "unknown" else level,
@@ -193,10 +209,14 @@ class HomeAssistantClient:
         payload_dict = {"entity_id": entity_id}
         if parameters:
             payload_dict.update(parameters)
-            
+
+        logger.debug(f"HA POST {url} | payload: {payload_dict}")
+        _t = time.perf_counter()
         try:
             response = self.session.post(url, json=payload_dict, timeout=10)
+            elapsed_ms = int((time.perf_counter() - _t) * 1000)
             response.raise_for_status()
+            logger.debug(f"HA response: {response.status_code} OK | {elapsed_ms}ms | akcja: {service} na {entity_id}")
             logging.debug(f"[HA CLIENT] Pomyślnie wysłano akcję {service} dla {entity_id}.")
             return True
         except RequestException as e:

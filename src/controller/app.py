@@ -2,6 +2,9 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+from core.logger import setup_logging
+setup_logging("controller")
+
 from fastapi import FastAPI
 
 from core import config
@@ -12,7 +15,6 @@ from controller.registry import router_workers, router_satellites
 from controller.tools import router_tools
 from controller.router import router_chat
 
-logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
