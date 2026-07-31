@@ -50,7 +50,7 @@ class RemoteClient:
                             on_thought_token(content)
                         elif ev_type == "content" and on_content_token:
                             on_content_token(content)
-                        elif ev_type == "tool" and on_tool_call:
+                        elif ev_type == "tool_call_raw" and on_tool_call:
                             on_tool_call(content)
                         elif ev_type == "routing_info" and on_routing_info:
                             on_routing_info(event)
@@ -97,7 +97,7 @@ class RemoteClient:
                             on_thought_token(content)
                         elif ev_type == "content" and on_content_token:
                             on_content_token(content)
-                        elif ev_type == "tool" and on_tool_call:
+                        elif ev_type == "tool_call_raw" and on_tool_call:
                             on_tool_call(content)
                         elif ev_type == "done":
                             final_text = content

@@ -1,71 +1,31 @@
 # Przekazanie Sesji (Handoff)
 
-## Ostatnia Sesja: Pivot Architektoniczny — System Providerów LLM
+## Ostatnia Sesja: Wdrożenie i stabilizacja Fazy 1 (System Providerów LLM)
 
 ### Co zostało zrobione w tej sesji:
 
-**Zmiany koncepcyjne i dokumentacyjne (kod NIE był modyfikowany):**
-
-1. **Rewizja filozofii projektu** — z "local only" na "provider-agnostic".
-   System nie jest już lokalny z założenia. Chmura (OpenRouter) i lokalne modele
-   (Ollama) są równorzędnymi providerami. Wybór zależy od dostępności, nie ideologii.
-
-2. **Aktualizacja `docs/MANIFEST.md`:**
-   - §3.2 — RPi5 Worker: nowa rola (Parser offline + awaryjny STT), nie "komponent przejściowy"
-   - §3.3 — Windows Node: opcjonalny lokalny provider, nie wymagany produkcyjnie
-   - §3.6 — Wizja Docelowa: mini PC zastąpiony przez RPi5 + chmura; nowy diagram z warstwą PROVIDERÓW
-   - §5 — "Dwa Tryby Pracy" zastąpione przez "System Providerów i Degradacja":
-     dwustanowa degradacja (pełny / fallback), tabela providerów z priorytetami
-   - §7 — dodano nowy dług techniczny: warstwa abstrakcji `llm_backends/` niezaimplementowana
-
-3. **Aktualizacja `docs/AGENT_GUIDE.md`:**
-   - Tabela "Decyzje Już Podjęte": usunięto "Brak chmurowych API", zaktualizowano
-     opis Parsera i `controller.worker`, dodano 4 nowe decyzje
-   - Błąd #5: zmieniono z "nie proponuj chmury" na "nie tight-couplinguj do providera"
-   - Sekcja LLM: tier = pojęcie promptu, nie routingu; aktualizacja opisu trybu `regis`
-
-4. **Stworzono `docs/llm_providers_rfc.md`** — kompletny plan restrukturyzacji kodu
-   pod nową architekturę. To jest dokument startowy dla następnej sesji implementacyjnej.
+1. **Wdrożenie Fazy 1 na produkcję:**
+   - Zakończono implementację `llm_backends/` (Ollama, OpenRouter).
+   - Skonfigurowano `router.py` i `providers.py` do dynamicznego wybierania LLM-ów.
+   - Usunięto konflikty promptowe: usunięto przestarzałe instrukcje XML (`<action>`) z `tier_regis.md`, wymuszając na OpenRouterze czyste, natywne Function Calling (OpenAI format).
+   
+2. **Naprawa błędów integracyjnych:**
+   - Poprawiono logikę fetchowania narzędzi w `openrouter.py` (użycie `get_tools_for_tier` zamiast błędnej właściwości).
+   - Załatano bug w interfejsie graficznym / CLI (Dashboard / Satelita). Klient `remote_client.py` nasłuchiwał na event typu `"tool"`, podczas gdy backend wysyłał poprawny event `"tool_call_raw"`. Powodowało to niewidzialność logów narzędzi przy włączonym `/verbose`.
+   
+3. **Logika Priorytetyzacji (Fallback):**
+   - Skonfigurowano inteligentny system priorytetów backendów w `providers.py` i `router.py`:
+     1. **Lokalny Worker (tier = 'regis')** — najpotężniejszy lokalny komputer (np. stacjonarka RTX-5070), priorytet darmowego działania.
+     2. **Chmura (OpenRouter)** — główny awaryjny fallback, na wypadek gdyby główny komputer był wyłączony.
+     3. **Lokalny Worker (tier = 'butler')** — ostateczny fallback (np. Raspberry Pi), działający w przypadku braku Internetu i braku głównego komputera.
 
 ### Kluczowe decyzje architektoniczne podjęte w tej sesji:
 
-- **Provider agnosticism:** STT, LLM i TTS mają niezależne rejestry providerów
-- **Priorytet LLM:** Cloud > Lokalny (jakość); STT/TTS: Lokalny > Cloud (koszt)
-- **Dwustanowa degradacja:** pełny tryb gdy komplet providerów, fallback gdy brakuje ≥1
-- **Parser = offline fallback:** nie filtruje w ścieżce krytycznej gdy internet działa
-- **OpenRouter:** domyślny provider LLM (modele OSS przez API)
-- **Klucz OpenRouter:** konfigurowany tylko na RPi5 (`.env` Kontrolera)
-
-### Aktualny stan kodu:
-
-- Kod NIE BYŁ modyfikowany w tej sesji — to była sesja architektoniczna
-- `src/core/llm_engine.py` — nadal Ollama-only (wymaga refaktoryzacji wg RFC)
-- `src/core/gemini_engine.py` — nadal istnieje jako eksperyment (do usunięcia po migracji)
-- `src/controller/router.py` — nadal tier-based routing (wymaga refaktoryzacji wg RFC)
-- `src/controller/registry.py` — nadal ma `_TIER_PRIORITY` (do usunięcia)
+- **Natywne Function Calling w chmurze działa:** Potwierdzono, że nowsze modele (np. Qwen 3.7 Flash) poprawnie interpretują przekazane narzędzia bez potrzeby tworzenia formatu XML. Narzędzia są przesyłane w ustandaryzowanym formacie i odbierane z powrotem.
+- **Odpowiedzialność narzędzi:** Model ma dostęp do inteligentnego `get_device_state`. W przypadku awarii fizycznego urządzenia (np. Yeelight odcięty od prądu), model najpierw to weryfikuje, unikając bezsensownego wysyłania komendy `turn_on`.
 
 ### Wskazówki startowe dla następnego agenta:
 
-1. **PIERWSZY KROK:** Przeczytaj `docs/llm_providers_rfc.md` — to jest kompletny
-   plan implementacyjny gotowy do realizacji. Zawiera kolejność kroków, mapę zależności
-   i plan testów.
-
-2. **Sekwencja implementacji:**
-   ```
-   1. src/core/llm_backends/base.py
-   2. src/core/llm_backends/ollama.py
-   3. src/core/llm_backends/openrouter.py  (wzoruj się na gemini_engine.py)
-   4. src/core/llm_engine.py (refactor na fabrykę)
-   5. src/core/config.py (dodaj OPENROUTER_API_KEY, usuń frozen dead code)
-   6. src/controller/providers.py (nowy moduł)
-   7. src/controller/registry.py (usuń _TIER_PRIORITY)
-   8. src/controller/router.py (provider-based routing)
-   9. .env.example (nowe klucze)
-   10. DELETE src/core/gemini_engine.py
-   ```
-
-3. **Kluczowa uwaga:** Phase 1 RFC dotyczy TYLKO LLM. STT i TTS pozostają bez zmian.
-   Audio pipeline nadal idzie przez workerów. Phase 2 (osobna sesja) doda cloud STT/TTS.
-
-4. **Test weryfikacyjny po wdrożeniu:** Uruchom Kontroler z `OPENROUTER_API_KEY`,
-   bez żadnego workera, wyślij zapytanie tekstowe — powinno odpowiedzieć z chmury.
+1. **ZADANIE DO ROZPOCZĘCIA:** System jest w pełni gotowy do rozpoczęcia **Fazy 2: Abstrakcja STT/TTS backends**. 
+2. Należy przenieść logikę STT i TTS na system "provider-agnostic" na wzór modułu `llm_backends/`. W Kontrolerze docelowo powinno być możliwe korzystanie z TTS w chmurze bez polegania wyłącznie na lokalnym węźle Windows.
+3. Przed zmianą czegokolwiek, skonsultuj plik `docs/llm_providers_rfc.md` (jeśli ma informacje o TTS/STT) lub stwórz nowy dokument RFC dla Fazy 2.

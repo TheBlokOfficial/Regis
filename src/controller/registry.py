@@ -16,8 +16,7 @@ _settings_cache: dict = {}
 conversation_history: list[dict] = []
 last_interaction_time: float = 0.0
 
-# ─── Priorytety tierów do wyboru najlepszego węzła ────────────────────────
-_TIER_PRIORITY = {"regis": 2, "butler": 1}
+# ─── Priorytety tierów usunięto zgodnie z Phase 1 ────────────────────────
 
 router_workers = APIRouter()
 router_satellites = APIRouter()
@@ -48,12 +47,6 @@ async def _heartbeat_loop():
                 if w['id'] in worker_registry:
                     del worker_registry[w['id']]
 
-
-def _pick_worker() -> dict | None:
-    """Wybiera najlepszy dostępny węzeł roboczy (preferuje wyższy tier)."""
-    if not worker_registry:
-        return None
-    return max(worker_registry.values(), key=lambda w: _TIER_PRIORITY.get(w["tier"], 0))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

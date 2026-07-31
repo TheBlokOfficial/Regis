@@ -6,10 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-if getattr(sys, 'frozen', False):
-    WORK_DIR = os.path.dirname(sys.executable)
-else:
-    WORK_DIR = os.getcwd()
+WORK_DIR = os.getcwd()
 
 DATA_DIR = os.getenv("REGIS_DATA_DIR", os.path.join(WORK_DIR, "data"))
 CONFIG_DIR = os.getenv("REGIS_CONFIG_DIR", os.path.join(WORK_DIR, "config"))
