@@ -96,13 +96,16 @@ Poniższe decyzje były świadomie przemyślane i rozstrzygnięte. Propozycja ic
 |---|---|
 | Narzędzia renderowane jako tekst XML w prompcie (`<tools>`), nie jako pole `tools` w API Ollamy | "Droga A" — eliminuje wstrzykiwanie przez Ollamę angielskiego bloku instrukcji, które powoduje "angielski drift" w odpowiedziach modelu |
 | Stop Token `</action>` w API Ollamy | Wymusza liniową pętlę ReAct. Bez tego modele Qwen halucynują równoległe wywołania |
-| Model 1.5B (Butler) używa Structured Outputs (JSON Schema), nie ReAct | Model jest zbyt mały na niezawodny ReAct. JSON Schema wymuszerminuje halucynacje narzędzi deterministycznie |
+| Parser offline (RPi5) używa Structured Outputs (JSON Schema), nie ReAct | Model jest zbyt mały na niezawodny ReAct. JSON Schema wymusza deterministyczne parsowanie komend |
 | Pozytywne ramowanie w promptach zamiast zakazów | Negative framing degraduje zdolności kognitywne małych modeli |
-| Brak chmurowych API (Gemini jest eksperymentalny, nie produkcyjny) | Zasada prywatności i lokalności |
+| System jest agnostyczny wobec providera (LLM, STT, TTS) — chmura i local to równorzędne opcje | Architektura nie zakłada wyłączności żadnego backendu. Wymiana providera nie wymaga zmian poza warstwą abstrakcji |
+| Parser offline (RPi5) jest offline fallbackiem — nie siedzi w ścieżce krytycznej gdy internet działa | Parser-first generował opóźnienie dla każdego zapytania które on odrzucał. Chmurowy LLM obsługuje proste komendy równie dobrze i szybko |
+| OpenRouter jest domyślnym providerem LLM w produkcji — preferowane modele OSS | Ekonomika: cloud API jest tańszy niż dedykowany sprzęt lokalny przy obecnych cenach RAM i GPU |
+| Dwustanowa degradacja: pełny tryb gdy komplet providerów, fallback gdy brakuje choćby jednego | Prostota i przewidywalność. Stany częściowe (np. LLM bez TTS) tworzą nieintuicyjne zachowania |
 | Ascetyczny styl CLI (bez jaskrawych kolorów, minimalne emoji) | Zasada estetyczna projektu. Opisana w `AGENTS.md` |
 | Historia konwersacji przechowuje tylko pełne tury (user+assistant), nie ślad ReAct | Ślad ReAct (myśli + wywołania) zaśmieca kontekst i powoduje amnezję przy długich sesjach |
 | Dystrybucja Windows = Inno Setup Installer + Python systemowy (nie PyInstaller) | PyInstaller odrzucony: black box, podejrzany wygląd, opóźnienia startu. Szczegóły: `docs/distribution_rfc.md` |
-| `controller.worker` zostaje jako headless worker dla Linux/RPi5 | RPi5 nie ma audio, pełni rolę serwera. `node` = tylko Windows. Dwa oddzielne deployment targety. |
+| `controller.worker` na RPi5 hostuje Parser offline i awaryjny STT — nie jest production LLM workerem | RPi5 pełni rolę centrum bezpieczeństwa (last resort). Produkcyjny LLM pochodzi od providera (cloud lub Windows Node). |
 
 ---
 
@@ -122,16 +125,16 @@ Poniższe decyzje były świadomie przemyślane i rozstrzygnięte. Propozycja ic
 
 ## Architektura LLM — Co Musisz Rozumieć
 
-Ten projekt ma dwa fundamentalnie różne tryby pracy modelu. Pomylenie ich przy pracy z promptami jest krytycznym błędem.
+Ten projekt ma dwa fundamentalnie różne tryby pracy modelu. **Tier to pojęcie promptu i zdolności modelu — nie mechanizm routingu.** Kontroler wybiera providera na podstawie dostępności (patrz §5 MANIFEST.md), nie na podstawie tieru. Pomylenie trybów pracy przy modyfikacji promptów jest krytycznym błędem.
 
-### Tryb NLU — tier `butler` (model 1.5B)
+### Tryb NLU — tier `butler` (lekki model na RPi5)
 - Model działa jak **klasyczny parser intencji**.
 - Nie używa pętli ReAct ani wewnętrznego monologu `<thought>`.
 - Dostaje krótki prompt z przykładami Few-Shot i zwraca deterministycznie JSON zgodny ze schematem narzuconym przez Ollamę (JSON Schema / Structured Outputs).
 - Prompt w `data/prompts/tier_butler.md` jest ekstremalnie uproszczony. Celowo.
 - **Nie dodawaj do niego ReAct-owych instrukcji.** Nie obsłuży ich i zepsuje się.
 
-### Tryb ReAct — tier `regis` (Qwen 3.5 9B)
+### Tryb ReAct — tier `regis` (domyślnie: OpenRouter cloud, awaryjnie: Ollama lokalnie)
 - Model działa jako **pełnoprawny agent** z pętlą Reasoning → Acting.
 - Obowiązkowo używa tagu `<thought>...</thought>` do wewnętrznego rozumowania przed każdą akcją.
 - Pętla trwa dopóki model wywołuje narzędzia. Gdy nie wywołuje — to jest finalna odpowiedź.
@@ -157,7 +160,7 @@ Lista błędów, które agenty popełniają regularnie w tym projekcie:
 2. **Dodawanie emoji do CLI** — sprzeczne z estetyką projektu.
 3. **Pisanie kodu bez polecenia** — projekt ma zasadę "żadnych zmian bez wyraźnego nakazu". Jeśli nie jesteś pewien czy masz pozwolenie — zapytaj.
 4. **Implementowanie "Drogi B" (ciężki fallback parser) dla słabszych modeli** — filozofia projektu zabrania ratowania słabych modeli skomplikowanym kodem. Jeśli model nie działa, zmień model lub zmień prompt.
-5. **Proponowanie rozwiązań chmurowych** — projekt jest lokalny z założenia.
+5. **Tight-coupling do konkretnego providera LLM/STT/TTS** — system jest agnostyczny wobec backendu. Wywołania bezpośrednio do OpenRouter lub Ollamy poza warstwą abstrakcji są błędem. Każdy provider musi implementować wspólny interfejs.
 6. **Refaktoryzacja bez zgody** — zmiana struktury kodu wymaga planu i akceptacji, nie jest "przy okazji".
 7. **Ignorowanie hardcode'owanych adresów IP** — są świadomie tymczasowe. Nie "naprawiaj" ich bez polecenia.
 8. **Brak izolacji przy tworzeniu konfiguracji** — architektura znajduje się obecnie w trakcie ewolucji z powodu długu dystrybucyjnego. Scentralizowane pliki z `data/` (jak `settings.json`) powodują konflikty podczas deploymentu i są wycofywane na rzecz specyficznych profili (`settings.<PROFILE>.json`) lub lokalnych zmiennych `.env`. Zapoznaj się z raportem `docs/architectural_debt_report.md` zanim zaczniesz rzeźbić w ogólnej konfiguracji.
@@ -172,4 +175,4 @@ Gdy modyfikujesz pliki w `data/prompts/`:
 - **Sandwiching działa.** Kluczowe zasady powtarzaj zarówno na początku jak i na końcu promptu.
 - **Nie używaj negatywnego framingu.** Zamiast "Nie wywołuj narzędzi bez myśli" napisz "Zawsze zacznij od bloku `<thought>` przed każdą akcją".
 - **Few-Shot przykłady muszą być kontrastujące.** Jeden przykład pokazujący użycie narzędzia, jeden przykład pokazujący odpowiedź BEZ narzędzia. Model musi widzieć oba wzorce.
-- **Testuj na modelu docelowym.** Prompt zoptymalizowany pod 14B często zepsuje 1.5B i odwrotnie.
+- **Testuj na modelu docelowym.** Prompt zoptymalizowany pod duży model chmurowy często zepsuje lekki parser na RPi5 i odwrotnie.

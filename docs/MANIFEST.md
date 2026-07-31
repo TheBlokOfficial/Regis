@@ -21,7 +21,7 @@ Największym grzechem w tym projekcie jest implementacja funkcji "na siłę", ty
 
 ## 3. Architektura (Stan Obecny)
 
-Poniższy opis odnosi się do **aktualnej, przejściowej konfiguracji** deweloperskiej i testowej. Docelowa architektura opisana jest w §3.6. Obecny układ wynika z ograniczeń sprzętowych RPi5 — nie jest to finalna wizja projektu.
+Poniższy opis odnosi się do **aktualnej konfiguracji** systemu. Architektura docelowa opisana jest w §3.6 — jest zbliżona do obecnej, z tym że Windows Node pełni rolę opcjonalnego, lokalnego providera zamiast wymaganego węzła produkcyjnego.
 
 ### 3.1 Kontroler (`controller`)
 - **Rola:** Mózg systemu i jedyne źródło prawdy. Zarządza rejestrem aktywnych węzłów roboczych, routingiem sesji oraz wykonywaniem narzędzi Home Assistant.
@@ -29,17 +29,20 @@ Poniższy opis odnosi się do **aktualnej, przejściowej konfiguracji** dewelope
 - **Kluczowa zasada:** Kontroler to lekki daemon — nigdy nie hostuje modelu LLM. Jest jedynym punktem komunikacji z Home Assistant; węzły robocze nigdy nie mają dostępu do HA bezpośrednio.
 - **Routing:** Kontroler wybiera najlepszy dostępny węzeł (preferuje wyższy tier) dla każdej nowej sesji. Graceful migration między aktywnymi sesjami nie jest zaimplementowana — system działa na zasadzie best-effort.
 
-### 3.2 Węzeł roboczy (`controller.worker`) — Linux / RPi5 *(komponent przejściowy)*
-- **Rola:** Lekki, headless worker LLM uruchamiany na Raspberry Pi 5 jako usługa systemd. Fallback gdy żaden węzeł Windows nie jest dostępny. Obsługuje inferencję tekstową (model 1.5B butler) oraz przetwarzanie audio — przyjmuje surowe pakiety dźwiękowe nadesłane przez Satelity (np. ESP32) i transkrybuje je przez STTEngine.
+### 3.2 Węzeł roboczy (`controller.worker`) — Linux / RPi5
+- **Rola:** Zawsze uruchomiony na RPi5 komponent bezpieczeństwa systemu. Hostuje dwa serwisy offline:
+  1. **Parser offline** — lekki model zdolny do pracy na RPi5, z Structured Outputs. Obsługuje proste komendy urządzeń gdy żaden pełny provider LLM nie jest dostępny.
+  2. **Awaryjny STT** — lekki model Whisper do transkrypcji audio w trybie offline.
 - **Deployment:** Pakiet `.whl` instalowany przez `pip` na RPi5 (Linux). Brak UI — czysty serwer HTTP.
 - **Uwaga:** RPi5 nie ma podłączonego mikrofonu — **nie nagrywa dźwięku samodzielnie**. STT działa wyłącznie na danych strumieniowanych przez Satelity.
-- **Status:** Komponent przejściowy. W docelowej architekturze (§3.6) Worker przenosi się na mini PC, a rola RPi5 jako oddzielnego urządzenia odpada.
+- **Status:** Parser i awaryjny STT są ostatnią linią obrony — aktywowane gdy system przechodzi w tryb fallback (brak przynajmniej jednego providera spośród STT, LLM, TTS). Nie są częścią normalnej ścieżki produkcyjnej.
 
 ### 3.3 Węzeł (`node`) — Windows PC
-- **Rola:** Pełnoprawna **aplikacja Windows** z interfejsem terminalowym. Łączy trzy warstwy w jedną całość: UI (dashboard, monitor konwersacji), Worker LLM (inferencja 9B) i Satellite (przechwytywanie audio). Nie jest to wyłącznie "usługa w tle" — terminal UI jest pierwszorzędnym elementem. Ikona w pasku zadań to jedynie mechanizm życia procesu.
+- **Rola:** Pełnoprawna **aplikacja Windows** z interfejsem terminalowym. Łączy trzy warstwy w jedną całość: UI (dashboard, monitor konwersacji), Worker LLM (inferencja lokalna) i Satellite (przechwytywanie audio). Nie jest to wyłącznie "usługa w tle" — terminal UI jest pierwszorzędnym elementem. Ikona w pasku zadań to jedynie mechanizm życia procesu.
 - **Deployment:** Dystrybuowany jako **Windows Installer** (`RegisNodeSetup.exe`, Inno Setup) — wymaga Python zainstalowanego w systemie.
+- **Rola producencyjna:** Opcjonalna. W typowej produkcji Windows Node nie jest uruchomiony — system korzysta z providerów chmurowych. Gdy jest aktywny, automatycznie rejestruje się jako lokalny provider STT, LLM i TTS.
+- **Główne zastosowania:** Środowisko deweloperskie (lokalny LLM, tańszy STT/TTS), awaryjny fallback gdy chmura jest niedostępna.
 - **Koegzystencja:** Worker (inferencja LLM) i Satellite (przechwytywanie audio) mogą działać jednocześnie — nie wykluczają się.
-- **Status przejściowy:** W docelowej architekturze (§3.6) Worker odpada z `node` — Windows staje się czystą Satelitą z UI, a inferencja przenosi się na dedykowane centrum.
 
 ### 3.4 Satelita — typy interfejsów
 Każdy interfejs użytkownika jest architektonicznie Satelitą — różnią się medium:
@@ -103,30 +106,36 @@ Przyszłe integracje mogą obejmować m.in.:
 
 ## 3.6 Wizja Docelowa
 
-Cel projektu: **pełna centralizacja na jednym dedykowanym urządzeniu** (np. mini PC klasy Minisforum UM760, Ryzen 5 / 16 GB RAM), które zastępuje obecny układ RPi5 + Windows.
+Cel projektu: **RPi5 jako lekkie, stałe centrum** z chmurą jako domyślnym dostawcą mocy obliczeniowej. Zakup dedykowanego sprzętu (mini PC) nie jest wymagany — architektura skaluje się przez wymianę providerów, nie przez kupowanie sprzętu.
 
 ```
 ┌──────────────────────────────────────────┐
-│              CENTRUM (Mini PC)           │
+│           CENTRUM (RPi5, 24/7)           │
 │                                          │
-│  [Controller]  ←──→  [Worker]            │
-│   routing              LLM 9B+           │
-│   rejestr              STT (Whisper)     │
-│   proxy HA             TTS               │
-│                                          │
-│  [Home Assistant / inne integracje]      │
+│  [Controller]  ←──→  [Parser offline]      │
+│   routing              offline fallback  │
+│   rejestr              STT awaryjny      │
+│   proxy HA                               │
 └──────────────────────────────────────────┘
-         ↑              ↑            ↑
-      [ESP32]       [Windows]     [Linux]
-   VAD+stream     VAD+WW+UI      terminal
-              Satelity — cienkie klienty
+          ↑              ↑            ↑
+       [ESP32]       [Windows]     [Linux]
+    VAD+stream     VAD+WW+UI      terminal
+               Satelity — cienkie klienty
+                         ↕
+         ┌───────────────────────────────┐
+         │     PROVIDERY (dynamiczne)    │
+         │                               │
+         │  LLM:  OpenRouter / Ollama    │
+         │  STT:  Cloud API / Whisper    │
+         │  TTS:  Cloud API / Piper      │
+         └───────────────────────────────┘
 ```
 
-**Kluczowe właściwości docelowego centrum:**
-- Controller i Worker to **oddzielne serwisy** komunikujące się przez HTTP — nawet jeśli siedzą na tej samej maszynie. Separacja odpowiedzialności jest zachowana.
-- Mini PC jest zawsze włączony → Butler (1.5B fallback) staje się zbędny → jeden model, jedna jakość.
-- `node` na Windows traci komponent Worker → staje się czystą Satelitą z UI.
-- RPi5 nie ma roli w tej architekturze.
+**Kluczowe właściwości docelowego układu:**
+- RPi5 jest zawsze włączony. Hostuje tylko Controller i Parser — nic ciężkiego obliczeniowo.
+- Chmura (OpenRouter + cloud STT/TTS) jest domyślnym providerem — bez zakupu dodatkowego sprzętu.
+- Windows Node rejestruje się jako lokalny provider gdy uruchomiony (dev, emergency). System automatycznie z niego korzysta.
+- Gdy chmura podrożeje lub pojawi się sensowny sprzęt lokalny — podmiana providera nie wymaga zmian w architekturze.
 
 ---
 
@@ -153,7 +162,7 @@ Każdy Węzeł Roboczy przy rejestracji podaje:
 
 To jest kluczowy mechanizm umożliwiający efektywną pracę małych modeli.
 
-Gdy Satelita z pomieszczenia `salon` wysyła żądanie, Kontroler **nie podaje modelowi pełnej listy urządzeń domowych**. Zamiast tego filtruje ją do urządzeń przypisanych do pokoju `salon` i buduje dla modelu wąski, precyzyjny kontekst. Model 1.5B operuje wtedy na liście 5 urządzeń zamiast 50 — to nie jest ograniczenie, to jest precyzja.
+Gdy Satelita z pomieszczenia `salon` wysyła żądanie, Kontroler **nie podaje modelowi pełnej listy urządzeń domowych**. Zamiast tego filtruje ją do urządzeń przypisanych do pokoju `salon` i buduje dla modelu wąski, precyzyjny kontekst. Lekki parser operuje wtedy na liście 5 urządzeń zamiast 50 — to nie jest ograniczenie, to jest precyzja.
 
 **Otwarta kwestia — cross-room commands:** Co gdy użytkownik w salonie mówi "wyłącz światło w sypialni"? Propozycja: model dostaje domyślnie swój pokój, ale posiada narzędzie `get_devices(room=...)` pozwalające mu sięgnąć po inne pomieszczenie gdy wyraźnie o to prosi. Większy model na desktopie może od razu otrzymywać pełną listę urządzeń. **Nierozstrzygnięte — wymaga dalszej dyskusji.**
 
@@ -165,23 +174,35 @@ Kontroler przechowuje i dystrybuuje:
 
 ---
 
-## 5. Dwa Tryby Pracy (Przejściowy Kompromis Sprzętowy)
+## 5. System Providerów i Degradacja
 
-Dwa tryby pracy **nie są świadomą decyzją projektową — są chwilowym kompromisem wynikającym z ograniczeń sprzętowych.** RPi5 nie jest w stanie uruchomić modelu 9B. Gdyby mógł, nie byłoby podziału na tryby — istniałby jeden model, jedno centrum.
+System działa w oparciu o **rejestr providerów** dla trzech krytycznych komponentów. Provider to dowolny serwis zdolny obsłużyć dany komponent — niezależnie od tego czy jest lokalny czy chmurowy. Dla Kontrolera nie ma znaczenia skąd pochodzi provider — tylko czy jest dostępny i zarejestrowany.
 
-Butler (1.5B) pełni rolę **ostatniej linii obrony**: działa gdy żaden mocniejszy węzeł nie jest dostępny. Nie jest równorzędną alternatywą dla Regis Agent — jest fallbackiem.
-
-**Stan obecny (konfiguracja przejściowa):**
-
-| | Regis-Baseline (1.5B, RPi5) | Regis-Agent (9B, Desktop) |
+| Komponent | Przykładowi providerzy | Priorytet między providerami |
 |---|---|---|
-| **Model** | Qwen 2.5 1.5B Instruct *(planowana migracja na Qwen 3.5)* | Qwen 3.5 9B |
-| **Rola** | Deterministyczny parser komend — fallback | Myślący agent z pętlą ReAct — cel |
-| **Dostępność** | 24/7, zawsze | Tylko gdy węzeł Windows jest włączony |
-| **Zakres** | Komendy urządzeń z danego pokoju | Pełny zakres narzędzi i rozmowa |
-| **Odpowiedź poza zasięgiem** | *"To przekracza moje obecne możliwości."* — zwięźle | Obsługuje |
+| **STT** | Cloud Whisper API, lokalny Faster-Whisper (Windows) | Lokalny > Cloud (koszt) |
+| **LLM** | OpenRouter cloud, Ollama lokalnie (Windows) | Cloud > Lokalny (jakość) |
+| **TTS** | Cloud TTS API, lokalny Piper/XTTS (Windows) | Lokalny > Cloud (koszt) |
 
-**Cel docelowy:** jeden model (9B+) na dedykowanym centrum, dostępny 24/7. Patrz §3.6.
+### Dwustanowa degradacja
+
+System zna tylko dwa stany operacyjne:
+
+**Tryb pełny** — każdy komponent ma przynajmniej jednego dostępnego providera:
+```
+STT: [≥1 provider] AND LLM: [≥1 provider] AND TTS: [≥1 provider]
+→ pełny agent ReAct, pełna rozmowa głosowa z TTS
+```
+
+**Tryb fallback** — brakuje providera dla choćby jednego komponentu:
+```
+STT: [0] LUB LLM: [0] LUB TTS: [0]
+→ Parser offline (RPi5, lekki model), tylko proste komendy urządzeń, brak TTS
+```
+
+Przejście na fallback jest atomowe — system nie operuje w stanach częściowych. Użytkownik zawsze wie w jakim trybie jest system i czego może oczekiwać.
+
+**Uwaga architektoniczna:** Parser (RPi5) jest osobnym, zawsze dostępnym mechanizmem bezpieczeństwa — nie jest częścią systemu providerów i nie wymaga rejestracji.
 
 ---
 
@@ -211,3 +232,4 @@ Regis jest **charakterny, rzeczowy i bezpośredni.** Nie owija w bawełnę. Prio
 - **Dystrybucja Windows:** Inno Setup (`RegisNodeSetup.exe`) jest zaprojektowany (`docs/distribution_rfc.md`) ale instalator nie jest jeszcze zbudowany produkcyjnie — patrz `TASKS.md`.
 - **Pamięć Długoterminowa:** Stary system Notatnika wycięty. Nowe rozwiązanie (np. wektorowe) nie zostało jeszcze zaprojektowane — patrz `TASKS.md`.
 - **Dead code `frozen`:** `core/config.py` zawiera pozostałość po epoce PyInstaller (`if getattr(sys, 'frozen', False)`). Do usunięcia w oddzielnej sesji.
+- **System Providerów (LLM/STT/TTS):** Architektura providerów opisana w §5 jest rozstrzygnięta konceptualnie, ale warstwa abstrakcji (`llm_backends/`) w Kontrolerze nie jest jeszcze zaimplementowana. Aktualny kod używa bezpośrednich wywołań Ollamy. Implementacja wymaga osobnej sesji.

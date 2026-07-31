@@ -16,6 +16,8 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 - [ ] Migracja TTS na model Coqui XTTS v2 ("Incepcja Głosowa" / CPU)
 - [ ] Integracja systemu WakeWord (oczekiwanie na paczki próbek użytkownika do modelu)
 - [ ] Zaprojektowanie i wdrożenie nowej Pamięci Długoterminowej (np. wektorowej)
+- [ ] **[ARCH — Phase 1]** Restrukturyzacja pod system providerów LLM: `llm_backends/`, OpenRouter, refaktoryzacja routera (szczegóły: `docs/llm_providers_rfc.md`)
+- [ ] **[ARCH — Phase 2]** Abstrakcja STT/TTS backends + split audio pipeline w Kontrolerze (cloud STT/TTS bez Windows Node)
 
 ### [UX / Wstrzymane]
 

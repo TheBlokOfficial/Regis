@@ -1,29 +1,71 @@
 # Przekazanie Sesji (Handoff)
 
-## Ostatnia Sesja: Wdrożenie TTS (Text-to-Speech) - Faza 1 (Piper)
+## Ostatnia Sesja: Pivot Architektoniczny — System Providerów LLM
 
 ### Co zostało zrobione w tej sesji:
 
-- **Architektura Przesyłu Dźwięku (Base64 + SSE):**
-  - Stworzono nowy moduł `src/core/tts_engine.py` (początkowo na silniku `piper-tts`), który generuje mowę w locie i koduje ją do formatu Base64 (`.wav`).
-  - W `src/node/worker.py` (pętla ReAct) dodano przechwytywanie ostatecznego tekstu odpowiedzi, syntezę audio i wysyłkę zdarzenia `"tts_audio"` przez Server-Sent Events do Kontrolera (tuż przed zdarzeniem `"done"`).
-  - W `src/node/satellite.py` zaimplementowano obsługę `"tts_audio"`: dekodowanie Base64 i synchroniczne odtwarzanie przez bibliotekę `sounddevice`. Synchroniczność (`sd.wait()`) zapobiega nagrywaniu własnej mowy przez Satelitę jako nowej komendy.
+**Zmiany koncepcyjne i dokumentacyjne (kod NIE był modyfikowany):**
 
-- **Rozwiązane problemy techniczne:**
-  - Zdiagnozowano i naprawiono błąd z `ModuleNotFoundError` (paczki instalowane globalnie zamiast w izolowanym środowisku projektu `.venv`).
-  - Zdiagnozowano problem z Zaporą systemu Windows (Firewall), która blokowała "Heartbeat" od Kontrolera na porcie `8001` po zmianie ścieżki pliku `python.exe` na ten z `.venv` (skutkowało to kodem HTTP 503).
-  - Naprawiono różnice w API paczki `piper-tts` (użyto poprawnej metody `synthesize_wav`).
+1. **Rewizja filozofii projektu** — z "local only" na "provider-agnostic".
+   System nie jest już lokalny z założenia. Chmura (OpenRouter) i lokalne modele
+   (Ollama) są równorzędnymi providerami. Wybór zależy od dostępności, nie ideologii.
 
-- **Decyzje projektowe i pivot technologiczny:**
-  - Użytkownik przetestował model Piper (głosy "gosia" oraz "darkman"), jednak całkowicie odrzucił jakość brzmienia jako "zbyt nienaturalną i przypominającą robota po wylewie".
-  - Zaplanowano przejście na model **Coqui XTTS v2** działający w 100% offline na procesorze głównym (CPU). Użytkownik dysponuje procesorem Ryzen 5 9600X, co zniweluje narzut czasowy do około 1-1.5s na generację.
-  - Opracowano koncepcję **"Incepcji Głosowej"** dla XTTS v2: użytkownik nie chciał klonować prawdziwej osoby, więc próbką referencyjną będzie *syntetyczne, wygenerowane uprzednio przez stary model Piper nagranie*. XTTS v2 użyje go jako ziarna, by stworzyć płynny, głęboki, ale w 100% oryginalny, nienależący do żadnego żywego człowieka głos AI.
+2. **Aktualizacja `docs/MANIFEST.md`:**
+   - §3.2 — RPi5 Worker: nowa rola (Parser offline + awaryjny STT), nie "komponent przejściowy"
+   - §3.3 — Windows Node: opcjonalny lokalny provider, nie wymagany produkcyjnie
+   - §3.6 — Wizja Docelowa: mini PC zastąpiony przez RPi5 + chmura; nowy diagram z warstwą PROVIDERÓW
+   - §5 — "Dwa Tryby Pracy" zastąpione przez "System Providerów i Degradacja":
+     dwustanowa degradacja (pełny / fallback), tabela providerów z priorytetami
+   - §7 — dodano nowy dług techniczny: warstwa abstrakcji `llm_backends/` niezaimplementowana
+
+3. **Aktualizacja `docs/AGENT_GUIDE.md`:**
+   - Tabela "Decyzje Już Podjęte": usunięto "Brak chmurowych API", zaktualizowano
+     opis Parsera i `controller.worker`, dodano 4 nowe decyzje
+   - Błąd #5: zmieniono z "nie proponuj chmury" na "nie tight-couplinguj do providera"
+   - Sekcja LLM: tier = pojęcie promptu, nie routingu; aktualizacja opisu trybu `regis`
+
+4. **Stworzono `docs/llm_providers_rfc.md`** — kompletny plan restrukturyzacji kodu
+   pod nową architekturę. To jest dokument startowy dla następnej sesji implementacyjnej.
+
+### Kluczowe decyzje architektoniczne podjęte w tej sesji:
+
+- **Provider agnosticism:** STT, LLM i TTS mają niezależne rejestry providerów
+- **Priorytet LLM:** Cloud > Lokalny (jakość); STT/TTS: Lokalny > Cloud (koszt)
+- **Dwustanowa degradacja:** pełny tryb gdy komplet providerów, fallback gdy brakuje ≥1
+- **Parser = offline fallback:** nie filtruje w ścieżce krytycznej gdy internet działa
+- **OpenRouter:** domyślny provider LLM (modele OSS przez API)
+- **Klucz OpenRouter:** konfigurowany tylko na RPi5 (`.env` Kontrolera)
 
 ### Aktualny stan kodu:
-- System działa pomyślnie z modelem `piper-tts`. Zależności, przesył SSE, dekodowanie i odtwarzacz w Satelicie są gotowe. Kod znajduje się na masterze.
+
+- Kod NIE BYŁ modyfikowany w tej sesji — to była sesja architektoniczna
+- `src/core/llm_engine.py` — nadal Ollama-only (wymaga refaktoryzacji wg RFC)
+- `src/core/gemini_engine.py` — nadal istnieje jako eksperyment (do usunięcia po migracji)
+- `src/controller/router.py` — nadal tier-based routing (wymaga refaktoryzacji wg RFC)
+- `src/controller/registry.py` — nadal ma `_TIER_PRIORITY` (do usunięcia)
 
 ### Wskazówki startowe dla następnego agenta:
-1. **PIERWSZY KROK:** Następną iterację należy rozpocząć od zastąpienia modułu Piper w `src/core/tts_engine.py` pakietem `TTS` (Coqui) i modelem `xtts_v2` inicjalizowanym z flagą `gpu=False`.
-2. Zaktualizuj plik `implementation_plan.md` jeśli uzyskasz zgodę użytkownika na wdrożenie "Incepcji Głosowej" (opisanej w logach z poprzedniej sesji).
-3. Do próbki referencyjnej należy najpierw jednorazowo wygenerować starym Piperem plik `.wav` (np. ze zdaniem "Regis gotowy do pracy, proszę pana"), zapisać go w `data/models/voice_sample.wav` i podać jako referencję (parametr `speaker_wav`) do XTTS v2. Następnie usunąć zależność `piper-tts` z projektu.
-4. Przed jakimikolwiek modyfikacjami upewnij się, że instalujesz nowe pakiety w lokalnym środowisku wirtualnym: `.\.venv\Scripts\pip install ...`.
+
+1. **PIERWSZY KROK:** Przeczytaj `docs/llm_providers_rfc.md` — to jest kompletny
+   plan implementacyjny gotowy do realizacji. Zawiera kolejność kroków, mapę zależności
+   i plan testów.
+
+2. **Sekwencja implementacji:**
+   ```
+   1. src/core/llm_backends/base.py
+   2. src/core/llm_backends/ollama.py
+   3. src/core/llm_backends/openrouter.py  (wzoruj się na gemini_engine.py)
+   4. src/core/llm_engine.py (refactor na fabrykę)
+   5. src/core/config.py (dodaj OPENROUTER_API_KEY, usuń frozen dead code)
+   6. src/controller/providers.py (nowy moduł)
+   7. src/controller/registry.py (usuń _TIER_PRIORITY)
+   8. src/controller/router.py (provider-based routing)
+   9. .env.example (nowe klucze)
+   10. DELETE src/core/gemini_engine.py
+   ```
+
+3. **Kluczowa uwaga:** Phase 1 RFC dotyczy TYLKO LLM. STT i TTS pozostają bez zmian.
+   Audio pipeline nadal idzie przez workerów. Phase 2 (osobna sesja) doda cloud STT/TTS.
+
+4. **Test weryfikacyjny po wdrożeniu:** Uruchom Kontroler z `OPENROUTER_API_KEY`,
+   bez żadnego workera, wyślij zapytanie tekstowe — powinno odpowiedzieć z chmury.
