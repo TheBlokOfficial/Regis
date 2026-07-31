@@ -13,6 +13,7 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 
 ### [FEATURE] Funkcje
 
+- [ ] Migracja TTS na model Coqui XTTS v2 ("Incepcja Głosowa" / CPU)
 - [ ] Integracja systemu WakeWord (oczekiwanie na paczki próbek użytkownika do modelu)
 - [ ] Zaprojektowanie i wdrożenie nowej Pamięci Długoterminowej (np. wektorowej)
 

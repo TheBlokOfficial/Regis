@@ -225,6 +225,11 @@ async def chat_stream(request: ChatRequest):
                 on_profiler=on_profiler
             )
             elapsed_ms = int((time.perf_counter() - _start) * 1000)
+            
+            b64_audio = worker_node.tts_engine.synthesize_to_base64(response_text)
+            if b64_audio:
+                loop.call_soon_threadsafe(q.put_nowait, {"type": "tts_audio", "content": b64_audio})
+                
             loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": response_text, "elapsed_ms": elapsed_ms})
         except Exception as e:
             logging.exception("Błąd generacji odpowiedzi")
@@ -299,6 +304,10 @@ async def chat_audio_stream(
             if response_text == "Nie rozpoznano żadnego tekstu ze strumienia audio.":
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": response_text})
             else:
+                b64_audio = worker_node.tts_engine.synthesize_to_base64(response_text)
+                if b64_audio:
+                    loop.call_soon_threadsafe(q.put_nowait, {"type": "tts_audio", "content": b64_audio})
+                    
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": response_text, "elapsed_ms": elapsed_ms})
         except Exception as e:
             logging.exception("Błąd generacji odpowiedzi z audio")

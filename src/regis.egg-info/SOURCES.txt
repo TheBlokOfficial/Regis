@@ -14,7 +14,9 @@ src/core/config.py
 src/core/discovery.py
 src/core/exceptions.py
 src/core/gemini_engine.py
+src/core/history_utils.py
 src/core/llm_engine.py
+src/core/logger.py
 src/core/remote_client.py
 src/core/remote_tools_registry.py
 src/core/schemas.py

@@ -1,30 +1,29 @@
 # Przekazanie Sesji (Handoff)
 
-## Ostatnia Sesja: Implementacja Systemu Logowania Warstwy I/O
+## Ostatnia Sesja: Wdrożenie TTS (Text-to-Speech) - Faza 1 (Piper)
 
 ### Co zostało zrobione w tej sesji:
 
-- **Nowy moduł `core/logger.py`:** Centralny punkt konfiguracji logowania dla całego projektu. Wywołanie `setup_logging("node")` lub `setup_logging("controller")` przy starcie usługi konfiguruje dwa handlery: FileHandler (DEBUG → plik) i StreamHandler (INFO → konsola). Wycisza szum z bibliotek zewnętrznych (urllib3, uvicorn.access, httpx). Katalog `logs/` dodany do `.gitignore`.
+- **Architektura Przesyłu Dźwięku (Base64 + SSE):**
+  - Stworzono nowy moduł `src/core/tts_engine.py` (początkowo na silniku `piper-tts`), który generuje mowę w locie i koduje ją do formatu Base64 (`.wav`).
+  - W `src/node/worker.py` (pętla ReAct) dodano przechwytywanie ostatecznego tekstu odpowiedzi, syntezę audio i wysyłkę zdarzenia `"tts_audio"` przez Server-Sent Events do Kontrolera (tuż przed zdarzeniem `"done"`).
+  - W `src/node/satellite.py` zaimplementowano obsługę `"tts_audio"`: dekodowanie Base64 i synchroniczne odtwarzanie przez bibliotekę `sounddevice`. Synchroniczność (`sd.wait()`) zapobiega nagrywaniu własnej mowy przez Satelitę jako nowej komendy.
 
-- **Podłączenie usług pod nowy logger:**
-  - `node/worker.py`: zastąpiono `logging.basicConfig(level=logging.INFO)` wywołaniem `setup_logging("node")`. Logi trafiają do `logs/node_YYYY-MM-DD.log`.
-  - `controller/app.py`: analogicznie `setup_logging("controller")` → `logs/controller_YYYY-MM-DD.log`.
+- **Rozwiązane problemy techniczne:**
+  - Zdiagnozowano i naprawiono błąd z `ModuleNotFoundError` (paczki instalowane globalnie zamiast w izolowanym środowisku projektu `.venv`).
+  - Zdiagnozowano problem z Zaporą systemu Windows (Firewall), która blokowała "Heartbeat" od Kontrolera na porcie `8001` po zmianie ścieżki pliku `python.exe` na ten z `.venv` (skutkowało to kodem HTTP 503).
+  - Naprawiono różnice w API paczki `piper-tts` (użyto poprawnej metody `synthesize_wav`).
 
-- **Szczegółowe DEBUG logi w warstwie I/O:**
-  - `integrations/ha_client.py`: loguje URL + czas każdego żądania HTTP do HA (`get_all_states`, `get_phone_battery`, `execute_action`), surowe wartości baterii **przed** `state_mapping` (kluczowe do debugowania translacji stanów), liczbę encji po filtrowaniu.
-  - `core/agents/react_agent.py`: loguje każdą iterację ReAct (numer, model, liczba wiadomości w kontekście), status HTTP z Ollamy, TTFT + całkowity czas iteracji, fragment surowej odpowiedzi gdy brak wywołania narzędzia, WARNING przy przekroczeniu max_iterations.
-  - `core/agents/nlu_agent.py`: loguje surowy JSON z modelu przed parsowaniem, ujawnia ciche `JSONDecodeError` jako WARNING (wcześniej połykane bez śladu).
-  - `controller/router.py`: loguje wybrany węzeł (id, tier, model, URL) przy każdym routowaniu, pełny błąd przy timeout/connection error.
-
-- **Naprawiony bug:** Błąd `UnboundLocalError: cannot access local variable 'response_text'` w `react_agent.py` — spowodowany błędną kolejnością: `logger.debug` z referencją do `response_text` wstawiony przed przypisaniem `response_text = full_content`. Naprawiono przez zamianę kolejności linii.
-
-- **Aktualizacja dokumentacji:** `docs/ONBOARDING.md` — dodano wpis o `core/logger.py` w sekcji `src/core/`, poprawiono opis modelu `tier_regis.md` z "14B" na "9B (qwen3.5:9b)".
+- **Decyzje projektowe i pivot technologiczny:**
+  - Użytkownik przetestował model Piper (głosy "gosia" oraz "darkman"), jednak całkowicie odrzucił jakość brzmienia jako "zbyt nienaturalną i przypominającą robota po wylewie".
+  - Zaplanowano przejście na model **Coqui XTTS v2** działający w 100% offline na procesorze głównym (CPU). Użytkownik dysponuje procesorem Ryzen 5 9600X, co zniweluje narzut czasowy do około 1-1.5s na generację.
+  - Opracowano koncepcję **"Incepcji Głosowej"** dla XTTS v2: użytkownik nie chciał klonować prawdziwej osoby, więc próbką referencyjną będzie *syntetyczne, wygenerowane uprzednio przez stary model Piper nagranie*. XTTS v2 użyje go jako ziarna, by stworzyć płynny, głęboki, ale w 100% oryginalny, nienależący do żadnego żywego człowieka głos AI.
 
 ### Aktualny stan kodu:
-- System logowania działa. Zweryfikowany na żywym teście — `logs/node_2026-07-30.log` poprawnie rejestruje: start usługi, STT, każdą iterację ReAct z Ollamą, wywołania narzędzi przez Kontroler.
-- Logi z HA (`ha_client.py`) są dostępne tylko po stronie Kontrolera (RPi5) — w tej sesji Kontroler nie był restartowany, więc `logs/controller_2026-07-30.log` pojawi się po następnym starcie Kontrolera.
+- System działa pomyślnie z modelem `piper-tts`. Zależności, przesył SSE, dekodowanie i odtwarzacz w Satelicie są gotowe. Kod znajduje się na masterze.
 
 ### Wskazówki startowe dla następnego agenta:
-1. System logowania jest kompletny i nie wymaga dalszej pracy. Jeśli sesja debugowania ujawni potrzebę dodania logów w innych miejscach — dodawaj tylko `logger.debug()` wg wzorca z tej sesji.
-2. `logs/` nigdy nie trafi do Gita (`.gitignore`). Pliki logów rosną bez rotacji po rozmiarze — jeśli system będzie działał długo, warto rozważyć `RotatingFileHandler` zamiast `FileHandler`. Na razie nie jest to priorytet.
-3. Pozostałe aktywne zadania bez zmian — patrz `TASKS.md`.
+1. **PIERWSZY KROK:** Następną iterację należy rozpocząć od zastąpienia modułu Piper w `src/core/tts_engine.py` pakietem `TTS` (Coqui) i modelem `xtts_v2` inicjalizowanym z flagą `gpu=False`.
+2. Zaktualizuj plik `implementation_plan.md` jeśli uzyskasz zgodę użytkownika na wdrożenie "Incepcji Głosowej" (opisanej w logach z poprzedniej sesji).
+3. Do próbki referencyjnej należy najpierw jednorazowo wygenerować starym Piperem plik `.wav` (np. ze zdaniem "Regis gotowy do pracy, proszę pana"), zapisać go w `data/models/voice_sample.wav` i podać jako referencję (parametr `speaker_wav`) do XTTS v2. Następnie usunąć zależność `piper-tts` z projektu.
+4. Przed jakimikolwiek modyfikacjami upewnij się, że instalujesz nowe pakiety w lokalnym środowisku wirtualnym: `.\.venv\Scripts\pip install ...`.

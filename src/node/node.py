@@ -3,10 +3,12 @@ import json
 import logging
 import datetime
 import asyncio
+from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 
 from core.llm_engine import LLMEngine
 from core.stt_engine import STTEngine
+from core.tts_engine import TTSEngine
 
 
 class WorkerNode:
@@ -36,6 +38,7 @@ class WorkerNode:
             temperature=temperature
         )
         self.stt_engine = STTEngine(model_size="medium", language="pl")
+        self.tts_engine = TTSEngine(model_name="pl_PL-darkman-medium")
         logging.info(f"WorkerNode uruchomiony. Model={model_name}, Tier={tier}")
 
     def handle_chat(

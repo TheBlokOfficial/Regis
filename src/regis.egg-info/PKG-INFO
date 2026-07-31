@@ -15,6 +15,7 @@ Provides-Extra: worker
 Requires-Dist: vosk>=0.3.45; extra == "worker"
 Requires-Dist: numpy>=1.26.0; extra == "worker"
 Requires-Dist: pydantic>=2.7.4; extra == "worker"
+Requires-Dist: piper-tts>=1.2.0; extra == "worker"
 Provides-Extra: node
 Requires-Dist: pystray>=0.19.5; extra == "node"
 Requires-Dist: pillow>=10.0.0; extra == "node"

@@ -5,6 +5,7 @@ import asyncio
 import json
 import time
 import collections
+import base64
 
 if sys.platform == 'win32':
     try:
@@ -262,6 +263,17 @@ class SatelliteNode:
                                 loop.call_soon_threadsafe(self.event_bus.emit, event)
                             elif typ == "content":
                                 loop.call_soon_threadsafe(self.event_bus.emit, event)
+                            elif typ == "tts_audio":
+                                try:
+                                    audio_data = base64.b64decode(content)
+                                    with wave.open(io.BytesIO(audio_data), 'rb') as wf:
+                                        samplerate = wf.getframerate()
+                                        frames = wf.readframes(wf.getnframes())
+                                        audio_array = np.frombuffer(frames, dtype=np.int16)
+                                        sd.play(audio_array, samplerate)
+                                        sd.wait()
+                                except Exception as e:
+                                    loop.call_soon_threadsafe(self.event_bus.log, f"Błąd odtwarzania TTS: {e}")
                             elif typ == "profiler":
                                 loop.call_soon_threadsafe(self.event_bus.emit, event)
                             elif typ == "done":

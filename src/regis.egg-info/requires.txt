@@ -41,3 +41,4 @@ questionary==2.0.1
 vosk>=0.3.45
 numpy>=1.26.0
 pydantic>=2.7.4
+piper-tts>=1.2.0
