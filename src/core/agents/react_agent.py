@@ -137,6 +137,10 @@ class ReActAgent:
                         chunk = json.loads(line)
                         msg_chunk = chunk.get("message", {})
 
+                        if "thinking" in msg_chunk and msg_chunk["thinking"]:
+                            if on_thought_token:
+                                on_thought_token(msg_chunk["thinking"])
+
                         if "content" in msg_chunk and msg_chunk["content"]:
                             piece = msg_chunk["content"]
                             full_content += piece
