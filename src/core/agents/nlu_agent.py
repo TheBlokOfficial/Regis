@@ -35,7 +35,8 @@ class NLUAgent:
             },
             "options": {
                 "temperature": 0.0,
-                "num_predict": 80
+                "num_predict": 80,
+                "think": False
             }
         }
         
