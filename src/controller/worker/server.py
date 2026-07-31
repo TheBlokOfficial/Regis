@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
     active_tier = settings.get("active_tier", "butler")
     tier_config = {
-        "butler": {"model": "qwen2.5:1.5b-instruct", "temperature": 0.1, "history_limit": 0},
+        "butler": {"model": "qwen3:1.7b", "temperature": 0.1, "history_limit": 0},
         "regis":  {"model": "qwen3.5:9b",  "temperature": 0.1, "history_limit": 10},
     }
     tier_cfg = tier_config.get(active_tier, tier_config["butler"])
@@ -226,10 +226,10 @@ async def chat_audio_stream(
         loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": chunk})
 
     def on_tool_call(msg):
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool", "content": msg})
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": msg})
 
     def on_raw_tool_call(data):
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": data})
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_dict", "content": data})
 
     def run_inference():
         try:

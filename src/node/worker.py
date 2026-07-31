@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 
     active_tier = settings.get("active_tier", "butler")
     tier_config = {
-        "butler": {"model": "qwen2.5:1.5b-instruct", "temperature": 0.1},
+        "butler": {"model": "qwen3:1.7b", "temperature": 0.1},
         "regis":  {"model": "qwen3.5:9b",  "temperature": 0.1},
     }
     tier_cfg = tier_config.get(active_tier, tier_config["butler"])
@@ -197,10 +197,10 @@ async def chat_stream(request: ChatRequest):
         loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": chunk})
 
     def on_tool_call(msg):
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool", "content": msg})
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": msg})
 
     def on_raw_tool_call(data):
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": data})
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_dict", "content": data})
 
     def on_profiler(metric_data):
         loop.call_soon_threadsafe(q.put_nowait, {"type": "profiler", "content": metric_data})
