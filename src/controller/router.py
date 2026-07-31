@@ -60,8 +60,72 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
         return
 
     room = base_payload.get("room")
-    
-    if is_audio or not isinstance(backend, OpenRouterBackend):
+    force_worker = False
+
+    if not is_audio and isinstance(backend, OpenRouterBackend):
+        # Phase 1: OpenRouter (chmura) wywoływany bezpośrednio na Kontrolerze (tylko tekst)
+        tier = "regis"
+        system_prompt = _build_system_prompt(tier, room=room, native_tools=True)
+        
+        from core.history_utils import build_messages_from_history
+        messages = build_messages_from_history(
+            system_prompt=system_prompt,
+            history=registry.conversation_history,
+            current_message=base_payload.get("message", "")
+        )
+        
+        logging.info(f"Routowanie żądania bezpośrednio do: OpenRouter")
+        
+        routing_event = {
+            "type": "routing_info",
+            "worker_id": "cloud (OpenRouter)",
+            "model": backend.model_name,
+            "tier": tier,
+        }
+        loop.call_soon_threadsafe(q.put_nowait, routing_event)
+
+        used_tools_logs = []
+
+        def on_content_token(token):
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": token})
+            
+        def on_tool_call(log_msg):
+            used_tools_logs.append(log_msg)
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": log_msg})
+            
+        try:
+            final_content = backend.generate_response(
+                messages, 
+                registry.tools_registry, 
+                tier=tier,
+                on_content_token=on_content_token,
+                on_tool_call=on_tool_call
+            )
+            
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": final_content})
+            
+            now = datetime.datetime.now().strftime("%H:%M:%S")
+            registry.conversation_history.append({
+                "user": base_payload.get("message", ""),
+                "assistant": final_content,
+                "tools": used_tools_logs,
+                "timestamp": now
+            })
+            
+            from core import config
+            limit = config.load_settings().get("history_limit", 3)
+            if limit <= 0:
+                registry.conversation_history.clear()
+            elif len(registry.conversation_history) > limit:
+                del registry.conversation_history[:-limit]
+                
+            return # Zakoncz sukcesem
+
+        except Exception as e:
+            logging.warning(f"Błąd w OpenRouterBackend, próba fallbacku na węzeł: {e}")
+            force_worker = True
+
+    if is_audio or not isinstance(backend, OpenRouterBackend) or force_worker:
         workers = list(registry.worker_registry.values())
         if not workers:
             loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": "Brak dostępnego providera LLM (wymagany worker dla zapytania audio/lokalnego)."})
@@ -160,65 +224,8 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
             logging.exception(f"Inny błąd proxy do węzła {worker_id}")
             loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": str(e)})
 
-    else:
-        # Phase 1: OpenRouter (chmura) wywoływany bezpośrednio na Kontrolerze (tylko tekst)
-        tier = "regis"
-        system_prompt = _build_system_prompt(tier, room=room, native_tools=True)
-        
-        from core.history_utils import build_messages_from_history
-        messages = build_messages_from_history(
-            system_prompt=system_prompt,
-            history=registry.conversation_history,
-            current_message=base_payload.get("message", "")
-        )
-        
-        logging.info(f"Routowanie żądania bezpośrednio do: OpenRouter")
-        
-        routing_event = {
-            "type": "routing_info",
-            "worker_id": "cloud (OpenRouter)",
-            "model": backend.model_name,
-            "tier": tier,
-        }
-        loop.call_soon_threadsafe(q.put_nowait, routing_event)
-
-        used_tools_logs = []
-
-        def on_content_token(token):
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": token})
-            
-        def on_tool_call(log_msg):
-            used_tools_logs.append(log_msg)
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": log_msg})
-            
-        try:
-            final_content = backend.generate_response(
-                messages, 
-                registry.tools_registry, 
-                tier=tier,
-                on_content_token=on_content_token,
-                on_tool_call=on_tool_call
-            )
-            
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": final_content})
-            
-            now = datetime.datetime.now().strftime("%H:%M:%S")
-            registry.conversation_history.append({
-                "user": base_payload.get("message", ""),
-                "assistant": final_content,
-                "tools": used_tools_logs,
-                "timestamp": now
-            })
-            
-            from core import config
-            limit = config.load_settings().get("history_limit", 3)
-            if limit <= 0:
-                registry.conversation_history.clear()
-            elif len(registry.conversation_history) > limit:
-                del registry.conversation_history[:-limit]
-
         except Exception as e:
-            logging.exception("Błąd w OpenRouterBackend")
+            logging.exception(f"Inny błąd proxy do węzła {worker_id}")
             loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": str(e)})
 
 
