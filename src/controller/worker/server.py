@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
     active_tier = settings.get("active_tier", "butler")
     tier_config = {
-        "butler": {"model": "qwen3:1.7b", "temperature": 0.1, "history_limit": 0},
+        "butler": {"model": "qwen2.5:1.5b-instruct", "temperature": 0.1, "history_limit": 0},
         "regis":  {"model": "qwen3.5:9b",  "temperature": 0.1, "history_limit": 10},
     }
     tier_cfg = tier_config.get(active_tier, tier_config["butler"])
