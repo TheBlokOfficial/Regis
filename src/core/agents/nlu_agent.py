@@ -53,8 +53,6 @@ class NLUAgent:
                     chunk = data.get("message", {}).get("content", "")
                     if chunk:
                         content += chunk
-                        if on_thought_token:
-                            on_thought_token(chunk)
                 except json.JSONDecodeError:
                     pass
             
