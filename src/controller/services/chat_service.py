@@ -6,6 +6,8 @@ import time
 
 import requests
 
+import controller.event_bus as event_bus
+
 import controller.providers as providers
 import controller.registry as registry
 from controller.services.prompt_builder import build_system_prompt
@@ -82,6 +84,18 @@ def proxy_sse_to_queue(
                 "tools": used_tools_dicts,
                 "timestamp": now
             })
+
+            # Publikuj zdarzenie do Web UI EventBus
+            asyncio.run_coroutine_threadsafe(
+                event_bus.publish({
+                    "type": "conversation_turn",
+                    "user_text": base_payload.get("message", ""),
+                    "assistant_text": final_content,
+                    "worker_id": "cloud (OpenRouter)",
+                    "tool_count": len(used_tools_dicts),
+                }),
+                loop
+            )
 
             from core import config
             limit = config.load_settings().get("history_limit", 3)
@@ -180,6 +194,19 @@ def proxy_sse_to_queue(
                         "tools": used_tools_dicts,
                         "timestamp": now
                     })
+
+                    # Publikuj zdarzenie do Web UI EventBus
+                    asyncio.run_coroutine_threadsafe(
+                        event_bus.publish({
+                            "type": "conversation_turn",
+                            "user_text": user_msg,
+                            "assistant_text": final_content,
+                            "worker_id": worker_id,
+                            "tool_count": len(used_tools_dicts),
+                        }),
+                        loop
+                    )
+
                     from core import config
                     limit = config.load_settings().get("history_limit", 3)
                     if limit <= 0:

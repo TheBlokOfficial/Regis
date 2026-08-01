@@ -207,12 +207,37 @@ class _ServiceHandler(BaseHTTPRequestHandler):
                     return
                 self._send_json({"worker": "running"})
 
+        elif self.path == "/worker/start":
+            if is_worker_running():
+                self._send_json({"worker": "running", "note": "already running"})
+            else:
+                success = start_worker()
+                if not success:
+                    self._send_json({"error": "Ollama is offline"}, 400)
+                    return
+                self._send_json({"worker": "running"})
+
+        elif self.path == "/worker/stop":
+            stop_worker()
+            self._send_json({"worker": "stopped"})
+
         elif self.path == "/satellite/toggle":
             if is_satellite_running():
                 stop_satellite()
             else:
                 start_satellite()
             self._send_json({"satellite": "running" if is_satellite_running() else "stopped"})
+
+        elif self.path == "/satellite/start":
+            if is_satellite_running():
+                self._send_json({"satellite": "running", "note": "already running"})
+            else:
+                start_satellite()
+                self._send_json({"satellite": "running"})
+
+        elif self.path == "/satellite/stop":
+            stop_satellite()
+            self._send_json({"satellite": "stopped"})
 
         elif self.path == "/satellite/event":
             length = int(self.headers.get("Content-Length", 0))

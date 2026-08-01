@@ -3,22 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Reaktywny panel kontrolny systemu Regis — monitorowanie węzłów, satelit i dziennik zdarzeń na żywo.">
     <title>Regis — Panel Kontrolny</title>
-    <style>
-        body {
-            background: #0f0f0f;
-            color: #e0e0e0;
-            font-family: 'IBM Plex Mono', 'Courier New', monospace;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-        p { color: #555; font-size: 0.9rem; }
-    </style>
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <p>Regis Web UI &mdash; Faza 2 w toku</p>
+<div id="app">
+
+    <!-- Nagłówek -->
+    <header id="header">
+        <h1>Regis &mdash; Panel Kontrolny</h1>
+        <span id="clock" aria-live="polite"></span>
+    </header>
+
+    <!-- Pasek stanu systemu -->
+    <section id="status-bar" aria-label="Stan systemu">
+        <div class="status-item">
+            <span class="label">Home Assistant</span>
+            <span class="dot unknown" id="ha-dot"></span>
+            <span class="badge unknown" id="ha-status">—</span>
+        </div>
+        <div class="status-item">
+            <span class="label">Uptime</span>
+            <span class="value" id="uptime">—</span>
+        </div>
+        <div class="status-item">
+            <span class="label">Węzły</span>
+            <span class="value" id="worker-count">0</span>
+        </div>
+        <div class="status-item">
+            <span class="label">Satelity</span>
+            <span class="value" id="satellite-count">0</span>
+        </div>
+        <div class="status-item" style="margin-left:auto">
+            <span class="dot" id="sse-dot" style="background:var(--text-dim)"></span>
+            <span class="label" id="sse-status">łączenie&hellip;</span>
+        </div>
+    </section>
+
+    <!-- Sekcja główna -->
+    <main id="main">
+
+        <!-- Węzły robocze -->
+        <section class="panel" id="workers-panel" aria-label="Węzły robocze">
+            <div class="panel-header">Węzły robocze</div>
+            <div class="panel-body" id="workers-body">
+                <p class="empty-state">Brak zarejestrowanych węzłów.</p>
+            </div>
+        </section>
+
+        <!-- Satelity -->
+        <section class="panel" id="satellites-panel" aria-label="Satelity">
+            <div class="panel-header">Satelity</div>
+            <div class="panel-body" id="satellites-body">
+                <p class="empty-state">Brak zarejestrowanych satelit.</p>
+            </div>
+        </section>
+
+        <!-- Dziennik zdarzeń -->
+        <section id="log-panel" aria-label="Dziennik zdarzeń na żywo">
+            <div class="panel-header">Dziennik zdarzeń na żywo</div>
+            <div id="log-list" role="log" aria-live="polite" aria-atomic="false"></div>
+        </section>
+
+    </main>
+</div>
+
+<script src="/app.js"></script>
 </body>
 </html>

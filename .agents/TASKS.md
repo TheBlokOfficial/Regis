@@ -22,7 +22,7 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 ### [FEATURE] Web UI (Reaktywny Panel Kontrolny)
 
 - [x] **[WEB UI — Faza 1]** Backend Kontrolera: stworzenie `src/controller/event_bus.py` + router `src/controller/routers/ui.py` (endpointy `/api/events` SSE, `/api/status`, `/api/node/{id}/command`). Rejestracja w `app.py` PRZED `StaticFiles`. Szczegóły: `docs/web_ui_rfc.md` §5.
-- [ ] **[WEB UI — Faza 2]** Frontend: `src/controller/web/` (index.html, style.css, app.js). Reaktywny panel z kartami węzłów, satelit i dziennikiem zdarzeń na żywo. Szczegóły: `docs/web_ui_rfc.md` §7.
+- [x] **[WEB UI — Faza 2]** Frontend: `src/controller/web/` (index.html, style.css, app.js). Reaktywny panel z kartami węzłów, satelit i dziennikiem zdarzeń na żywo. Szczegóły: `docs/web_ui_rfc.md` §7.
 - [ ] **[WEB UI — Faza 3]** Satelita pushuje zdarzenia do Kontrolera (`POST /api/satellite/event`). Modyfikacja `src/node/satellite.py`. Szczegóły: `docs/web_ui_rfc.md` §6.2.
 - [ ] **[WEB UI — Faza 4]** Integracja System Tray: akcja "Otwórz Dashboard" otwiera przeglądarkę (`webbrowser.open()`). Usunięcie `src/node/dashboard.py`. Szczegóły: `docs/web_ui_rfc.md` §6.3.
 
