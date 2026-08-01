@@ -1,42 +1,35 @@
 # Przekazanie Sesji (Handoff)
 
-## Ostatnia Sesja: Modularyzacja Web UI (app.js → ES Modules)
+## Ostatnia Sesja: Faza 3 Web UI — Satelita pushuje zdarzenia do Kontrolera
 
 ### Co zostało zrobione w tej sesji:
 
-1. **Analiza i diagnoza monolitu `app.js`** (448 linii):
-   - Zidentyfikowano 5 oddzielnych odpowiedzialności sklejonych w jednym pliku: globalny stan, warstwa sieciowa, renderowanie DOM, obsługa zdarzeń SSE, sterowanie węzłami.
+1. **Nowy endpoint `POST /api/satellite/event` w `src/controller/routers/ui.py`**:
+   - Dodano model Pydantic `SatelliteEvent` (`satellite_id`, `type`, `data`).
+   - Endpoint odbiera zdarzenia od Satelity i publikuje je na centralnym EventBus Kontrolera z typem `satellite_event`.
+   - Dzięki temu zdarzenia audio (VAD, WakeWord, zmiana stanu) pojawiają się w Web UI w czasie rzeczywistym.
 
-2. **Pełny refactoring `src/controller/web/` na natywne ES Modules** (bez bundlera):
-   - `utils.js` [NEW] — czyste funkcje pomocnicze: `fmtUptime`, `fmtTime`, `escHtml`, `truncate`. Zero zależności.
-   - `state.js` [NEW] — centralny store: `workers`, `satellites` + funkcje mutacji (`upsertWorker`, `setWorkerStatus`, `upsertSatellite`, `removeSatellite`, `workerCount`, `satelliteCount`). Zero zależności.
-   - `renderer.js` [NEW] — pełna warstwa DOM: `initClock`, `updateHAStatus`, `renderWorkerCard`, `markWorkerOffline`, `renderSatelliteCard`, `markSatelliteOffline`, `updateSatelliteVAD`, `appendLog`. Importuje: `state.js`, `utils.js`. Inline `onclick` zastąpiony `addEventListener`.
-   - `events.js` [NEW] — obsługa zdarzeń SSE: `handleEvent` z switchem 8 przypadków. Importuje: `state.js`, `renderer.js`, `utils.js`.
-   - `api.js` [NEW] — warstwa sieciowa: `init`, `connectSSE`, `sendNodeCommand`, prywatna `_startUptimePoller`. Importuje: `state.js`, `renderer.js`, `events.js`, `utils.js`.
-   - `app.js` [MODIFY] — z 448 linii do ~20 linii orchestratora. Eksponuje `window.sendNodeCommand` (wymagane dla event listenerów kart węzłów bez cyklicznych importów).
-   - `index.html` [MODIFY] — jedyna zmiana: `<script type="module" src="/app.js">`.
-   - `style.css` — bez zmian.
+2. **Rozszerzenie `EventBus` w `src/node/satellite.py`**:
+   - `EventBus.__init__` dostał opcjonalne parametry `controller_url` i `satellite_id`.
+   - W `_worker()`: po wysłaniu zdarzenia lokalnie (Monitor Audio na 8099), jeśli `controller_url` ustawiony — filtruje i pushuje wybrane typy do `POST {controller_url}/api/satellite/event`.
+   - **Filtr typów** (`_CONTROLLER_PUSH_TYPES`): `state`, `stt_result`, `done`, `error`. Pomijamy chatty `info`, `stt_partial`, `tool`, `thought` — zbyt duży ruch.
+   - `SatelliteNode.__init__` reorganizowany: `settings` ładowane na początku (przed EventBus), `satellite_id` pobierane z konfiguracji (fallback: `"windows-pc-sat"`), `EventBus` tworzony z pełnymi parametrami.
+   - Usunięto zduplikowany blok `settings = config.load_settings()` który był w środku `__init__` (pozostałość po refactoringu).
 
-### Kluczowe decyzje architektoniczne:
+### Aktualny stan kodu:
 
-- **Natywne ES Modules** — zero bundlera, zero nowych zależności. FastAPI StaticFiles serwuje `.js` z poprawnym MIME type automatycznie.
-- **`window.sendNodeCommand`** — jedyne globalne powiązanie. Wymagane bo `renderer.js` nie może importować z `api.js` (cykl: `api → renderer → api`). Zarejestrowane w `app.js` przed jakimkolwiek renderowaniem.
-- **Graf zależności bez cykli**: `utils`, `state` (brak importów) → `renderer` → `events` → `api` → `app`.
-- **Prywatne funkcje modułu** — konwencja `_` (np. `_startUptimePoller`, `_commandToBtnId`).
+Fazy 1, 2, Refactoring i 3 są ukończone. Pozostaje **Faza 4** (integracja System Tray).
 
 ---
 
 ### Wskazówki startowe dla następnego agenta:
 
-1. **ZADANIE:** Implementacja **Fazy 3 Web UI** (zgodnie z `docs/web_ui_rfc.md` §6.2):
-   - Satelita pushuje zdarzenia do Kontrolera (`POST /api/satellite/event`).
-   - Wymaga modyfikacji `src/node/satellite.py` (dodanie wysyłania eventów VAD/WakeWord do Kontrolera) i dodania endpointu `POST /api/satellite/event` w `src/controller/routers/ui.py`.
-   - Aktualnie satelita wysyła eventy tylko do lokalnego `service.py` (port 8099) — nie trafiają do centralnego EventBusa.
+1. **ZADANIE:** Implementacja **Fazy 4 Web UI** (zgodnie z `docs/web_ui_rfc.md` §6.3):
+   - W `src/node/service.py`: akcja *„Otwórz panel kontrolny"* przestaje otwierać terminal CLI, zamiast tego wywołuje `webbrowser.open(controller_url)`.
+   - Po weryfikacji że nic nie importuje `dashboard.py`: usunąć `src/node/dashboard.py`.
 
-2. **ZADANIE:** Implementacja **Fazy 4 Web UI** (zgodnie z `docs/web_ui_rfc.md` §6.3):
-   - Akcja `open_dashboard()` w `src/node/service.py` otwiera `webbrowser.open(controller_url)` zamiast terminala.
-   - Po weryfikacji: usunięcie `src/node/dashboard.py`.
+2. **Weryfikacja Fazy 3** — wymaga uruchomienia Kontrolera na RPi5/Minisforum i Windows Node lokalnie:
+   - Uruchomić satelitę. Sprawdzić czy w Web UI (karta satelity) pojawiają się zdarzenia: `WAKEWORD`, `LISTENING`, `RESPONDING` przy użyciu głosowym.
+   - Ewentualnie: sprawdzić czy `satellite_id` w `settings.json` węzła jest ustawiony i pasuje do ID zarejestrowanej satelity w rejestrze Kontrolera.
 
-3. **Weryfikacja modularyzacji** — przed kolejnymi zmianami w web UI: wdrożyć na RPi5 przez `tools/build_controller.py` i sprawdzić brak błędów w konsoli przeglądarki. FastAPI StaticFiles powinien serwować nowe pliki `.js` bez zmian w konfiguracji.
-
-4. **Stan kart węzłów** — status inicjalizowany z `/api/status`, aktualizowany przez SSE. Gdy Faza 3 będzie wdrożona, statusy VAD/WakeWord w kartach satelit zaczną działać w czasie rzeczywistym.
+3. **Uwaga dot. `satellite_id`** — `SatelliteNode` ładuje ID z `settings.get("satellite_id", "windows-pc-sat")`. Upewnij się że w `settings.node.env` (lub odpowiednim pliku konfiguracyjnym) jest ustawione `SATELLITE_ID` które zgadza się z ID rejestracji satelity w Kontrolerze — inaczej Web UI nie połączy eventów z kartą satelity.

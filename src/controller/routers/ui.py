@@ -30,6 +30,12 @@ class NodeCommand(BaseModel):
     command: str  # worker_start | worker_stop | satellite_start | satellite_stop | status
 
 
+class SatelliteEvent(BaseModel):
+    satellite_id: str
+    type: str   # state | stt_result | done | error
+    data: dict = {}
+
+
 # ---------------------------------------------------------------------------
 # Mapowanie komend na endpointy węzła (port 8099)
 # ---------------------------------------------------------------------------
@@ -173,3 +179,24 @@ async def node_command(node_id: str, body: NodeCommand):
 
     logging.info(f"[UI] Komenda '{command}' do węzła '{node_id}' wykonana.")
     return {"status": "ok", "node_id": node_id, "command": command, "result": result}
+
+
+# ---------------------------------------------------------------------------
+# Endpoint: zdarzenia Satelity → EventBus Kontrolera
+# ---------------------------------------------------------------------------
+
+@router_ui.post("/api/satellite/event")
+async def satellite_event(body: SatelliteEvent):
+    """Odbiera zdarzenie od Satelity (VAD, WakeWord, zmiana stanu)
+    i publikuje je na centralnym EventBus Kontrolera.
+
+    Dzięki temu zdarzenia audio pojawiają się w czasie rzeczywistym
+    w Web UI bez odpytywania węzła.
+    """
+    await event_bus.publish({
+        "type": "satellite_event",
+        "satellite_id": body.satellite_id,
+        "event_type": body.type,
+        "data": body.data,
+    })
+    return {"status": "ok"}

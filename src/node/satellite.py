@@ -51,9 +51,23 @@ class EnergyVAD:
         return rms >= self.threshold
 
 class EventBus:
-    """Odpowiada za komunikację z UI (Monitorem) przez eventy."""
-    def __init__(self, service_url="http://127.0.0.1:8099"):
+    """Odpowiada za komunikację z UI (Monitorem) przez eventy.
+
+    Wysyła zdarzenia do dwóch odbiorców równolegle:
+    - lokalny serwis (port 8099) — Monitor Audio
+    - Kontroler (POST /api/satellite/event) — centralny Web UI
+    """
+
+    # Typy zdarzeń, które trafiają do centralnego Web UI Kontrolera.
+    # Pomijamy chatty logi (info) i wewnętrzne ślady ReAct.
+    _CONTROLLER_PUSH_TYPES = {"state", "stt_result", "done", "error"}
+
+    def __init__(self, service_url="http://127.0.0.1:8099",
+                 controller_url: str | None = None,
+                 satellite_id: str | None = None):
         self.url = service_url
+        self.controller_url = controller_url
+        self.satellite_id = satellite_id
         self.queue = _q.Queue()
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
@@ -62,12 +76,27 @@ class EventBus:
         with requests.Session() as s:
             while True:
                 event = self.queue.get()
+                # 1. Lokalny serwis (Monitor Audio)
                 try:
                     s.post(f"{self.url}/satellite/event", json=event, timeout=0.5)
                 except Exception:
-                    pass # ignorujemy bledy sieci z monitorem
-                finally:
-                    self.queue.task_done()
+                    pass
+                # 2. Centralny EventBus Kontrolera (Web UI)
+                if self.controller_url and event.get("type") in self._CONTROLLER_PUSH_TYPES:
+                    try:
+                        payload = {
+                            "satellite_id": self.satellite_id or "unknown",
+                            "type": event.get("type"),
+                            "data": {k: v for k, v in event.items() if k != "type"},
+                        }
+                        s.post(
+                            f"{self.controller_url}/api/satellite/event",
+                            json=payload,
+                            timeout=0.5,
+                        )
+                    except Exception:
+                        pass
+                self.queue.task_done()
                 
     def emit(self, event: dict):
         try:
@@ -82,7 +111,20 @@ class EventBus:
 
 class SatelliteNode:
     def __init__(self):
-        self.event_bus = EventBus()
+        settings = config.load_settings()
+        self.server_url = settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
+        if self.server_url == "auto":
+            from core.discovery import discover_controller
+            try:
+                self.server_url = discover_controller()
+            except Exception:
+                self.server_url = "http://127.0.0.1:8000"
+
+        self.satellite_id = settings.get("satellite_id", "windows-pc-sat")
+        self.event_bus = EventBus(
+            controller_url=self.server_url,
+            satellite_id=self.satellite_id,
+        )
         self.vad = EnergyVAD(threshold=SILENCE_THRESHOLD)
         self.state = "WAKEWORD" # WAKEWORD, STREAMING, RESPONDING
         
@@ -98,20 +140,12 @@ class SatelliteNode:
         else:
             self.oww_model = Model(wakeword_models=[model_path], inference_framework="onnx")
             
-        settings = config.load_settings()
-        self.server_url = settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
-        if self.server_url == "auto":
-            from core.discovery import discover_controller
-            try:
-                self.server_url = discover_controller()
-            except Exception as e:
-                self.server_url = "http://127.0.0.1:8000"
-                
 
         self.stream = sd.InputStream(
             samplerate=SAMPLE_RATE, channels=1, dtype='int16', 
             blocksize=CHUNK_SIZE, callback=self._audio_callback
         )
+
         
     def _audio_callback(self, indata, frames, time_info, status):
         try:
