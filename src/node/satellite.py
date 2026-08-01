@@ -198,6 +198,10 @@ class SatelliteNode:
             self.event_bus.emit({"type": current_speech_state})
             self._last_wakeword_speech_state = current_speech_state
 
+        # VAD Bramkowanie: Jeśli panuje cisza, nie marnujmy procesora na inferencję ONNX WakeWord
+        if not is_speech:
+            return
+
         pcm16_1d = chunk[:, 0]
         prediction = self.oww_model.predict(pcm16_1d)
         
