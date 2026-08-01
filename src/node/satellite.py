@@ -38,7 +38,7 @@ except ImportError:
 SAMPLE_RATE = 16000
 CHUNK_SIZE = 1600 # 100ms blok dla stabilniejszego liczenia energii (zamiast malych paczek 30ms)
 SILENCE_TIMEOUT_MS = 1500 # 1.5 sekundy mowy (Speech tail) - czas czekania z przerwaniem po wejściu w ciszę
-SILENCE_THRESHOLD = 300   # Próg głośności (RMS) oddzielający ciszę od głosu
+SILENCE_THRESHOLD = 150   # Czuły próg głośności (RMS) wyłapujący nawet miękkie spółgłoski (np. "R" w Regis)
 
 class EnergyVAD:
     """Własny VAD bazujący na energii RMS z wygładzaniem (hangover) zapobiegającym szatkowaniu."""
@@ -205,6 +205,10 @@ class SatelliteNode:
         current_speech_state = "vad_speech" if is_speech else "vad_silence"
         if getattr(self, "_last_wakeword_speech_state", None) != current_speech_state:
             self.event_bus.emit({"type": current_speech_state})
+            # Przy przejściu w mowę nakarm model pre-buforem, aby odbudować spektrogram sprzed ucinania
+            if current_speech_state == "vad_speech":
+                for pre_chunk in list(self.ring_buffer):
+                    self.oww_model.predict(pre_chunk[:, 0])
             self._last_wakeword_speech_state = current_speech_state
 
         # VAD Bramkowanie: Jeśli panuje cisza, nie marnujmy procesora na inferencję ONNX WakeWord
