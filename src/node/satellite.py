@@ -29,6 +29,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 try:
     from openwakeword.model import Model
+    from openwakeword.utils import download_models
 except ImportError:
     logging.info("Brak openwakeword. Zainstaluj: pip install openwakeword")
     sys.exit(1)
@@ -138,6 +139,10 @@ class SatelliteNode:
             logging.info(f"Brak modelu {model_path}. Działanie awaryjne.")
             self.oww_model = None
         else:
+            try:
+                download_models()
+            except Exception:
+                pass
             self.oww_model = Model(wakeword_models=[model_path], inference_framework="onnx")
             
 
