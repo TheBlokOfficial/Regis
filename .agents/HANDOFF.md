@@ -1,6 +1,6 @@
 # Przekazanie Sesji (Handoff)
 
-## Ostatnia Sesja: Faza 4 Web UI — Integracja System Tray & Usunięcie Dashboard CLI
+## Ostatnia Sesja: Faza 4 Web UI — Integracja System Tray, Usunięcie Dashboard CLI & Żywy Uptime Ticker
 
 ### Co zostało zrobione w tej sesji:
 
@@ -12,12 +12,16 @@
    - Usunięto przestarzały plik `src/node/dashboard.py`.
    - Zweryfikowano brak regresji poprzez uruchomienie pełnej paczki testów unit `pytest` (32 passed).
 
-3. **Zaktualizowano plik `TASKS.md`**:
-   - Cały pakiet zadaniowy Reaktywnego Web UI (Fazy 1, 2, Refactoring, Faza 3, Faza 4) został ukończony.
+3. **Żywy zegar Uptime w Web UI (`src/controller/web/api.js`)**:
+   - Zastąpiono statyczny polling żywym 1-sekundowym lokalnym tickerem inkrementującym `uptime` w interfejsie oraz synchronizacją REST z serwerem co 15 sekund.
+
+4. **Poprawka w `tools/build_controller.py` i Deployment na Raspberry Pi**:
+   - Zoptymalizowano zatrzymywanie usługi `regis.service` (z obsłużonym timeoutem przy otwartych strumieniach SSE).
+   - Przeprowadzono pomyślny deployment zaktualizowanego Web UI na Raspberry Pi.
 
 ### Aktualny stan kodu:
 
-Wszystkie Fazy wdrożenia Web UI (1, 2, Refactoring, 3, 4) zostały w pełni zrealizowane i zweryfikowane testami.
+Wszystkie Fazy wdrożenia Web UI (1, 2, Refactoring, 3, 4) zostały w pełni zrealizowane, wdrożone i zweryfikowane.
 
 ---
 
@@ -27,6 +31,3 @@ Wszystkie Fazy wdrożenia Web UI (1, 2, Refactoring, 3, 4) zostały w pełni zre
    - **[ARCH — Phase 2]**: Abstrakcja STT/TTS backends + split audio pipeline w Kontrolerze (cloud STT/TTS bez Windows Node).
    - **[WORKER PROFILE SWAP]**: Mechanizm ręcznego przełączania modelu workera na desktopie Windows między trybem Butler (mały model) a trybem Regis (model 9B).
    - **Migracja TTS na model Coqui XTTS v2** / **Pamięć Długoterminowa** / **Integracja WakeWord**.
-
-2. **Weryfikacja integracji End-to-End**:
-   - Można przetestować w środowisku produkcyjnym/deweloperskim uruchomienie Kontrolera oraz `node.service` na Windowsie – kliknięcie *"Otwórz panel kontrolny"* w ikonie traya powinno otworzyć panel Web UI pod adresem Kontrolera.
