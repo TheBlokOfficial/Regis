@@ -1,6 +1,6 @@
 import logging
 from core.llm_backends.base import LLMBackend
-from core.llm_backends.openrouter import OpenRouterBackend
+from controller.openrouter_backend import OpenRouterBackend
 from core.llm_backends.ollama import OllamaBackend
 import controller.registry as registry
 

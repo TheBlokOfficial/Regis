@@ -105,7 +105,7 @@ Poniższe decyzje były świadomie przemyślane i rozstrzygnięte. Propozycja ic
 | Ascetyczny styl CLI (bez jaskrawych kolorów, minimalne emoji) | Zasada estetyczna projektu. Opisana w `AGENTS.md` |
 | Historia konwersacji przechowuje tylko pełne tury (user+assistant), nie ślad ReAct | Ślad ReAct (myśli + wywołania) zaśmieca kontekst i powoduje amnezję przy długich sesjach |
 | Dystrybucja Windows = Inno Setup Installer + Python systemowy (nie PyInstaller) | PyInstaller odrzucony: black box, podejrzany wygląd, opóźnienia startu. Szczegóły: `docs/distribution_rfc.md` |
-| `controller.worker` na RPi5 hostuje Parser offline i awaryjny STT — nie jest production LLM workerem | RPi5 pełni rolę centrum bezpieczeństwa (last resort). Produkcyjny LLM pochodzi od providera (cloud lub Windows Node). |
+| `controller.embedded_worker` na RPi5 hostuje Parser offline i awaryjny STT — nie jest production LLM workerem | RPi5 pełni rolę centrum bezpieczeństwa (last resort). Produkcyjny LLM pochodzi od providera (cloud lub Windows Node). |
 
 ---
 

@@ -10,8 +10,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from core.schemas import SatelliteRegistrationRequest, ToolExecutionRequest
-from core.tools_registry import ToolsRegistry
-from core.remote_tools_registry import RemoteToolsRegistry
+from controller.tools_registry import ToolsRegistry
+from node.remote_tools_registry import RemoteToolsRegistry
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────

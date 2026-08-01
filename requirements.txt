@@ -1,2 +1,5 @@
-# Instaluje regis-core z pełnym zestawem zależności deweloperskich
+# Instaluje regis z pełnym zestawem zależności deweloperskich
 -e .[all]
+
+uvicorn
+uvicorn

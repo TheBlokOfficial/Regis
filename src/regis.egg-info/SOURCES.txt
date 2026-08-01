@@ -3,6 +3,7 @@ pyproject.toml
 src/controller/__init__.py
 src/controller/app.py
 src/controller/main.py
+src/controller/providers.py
 src/controller/registry.py
 src/controller/router.py
 src/controller/tools.py
@@ -13,7 +14,6 @@ src/core/__init__.py
 src/core/config.py
 src/core/discovery.py
 src/core/exceptions.py
-src/core/gemini_engine.py
 src/core/history_utils.py
 src/core/llm_engine.py
 src/core/logger.py
@@ -23,8 +23,13 @@ src/core/schemas.py
 src/core/stream_parser.py
 src/core/stt_engine.py
 src/core/tools_registry.py
+src/core/tts_engine.py
 src/core/agents/nlu_agent.py
 src/core/agents/react_agent.py
+src/core/llm_backends/__init__.py
+src/core/llm_backends/base.py
+src/core/llm_backends/ollama.py
+src/core/llm_backends/openrouter.py
 src/integrations/__init__.py
 src/integrations/ha_client.py
 src/integrations/ha_mock.py
@@ -51,6 +56,7 @@ tests/test_config.py
 tests/test_discovery.py
 tests/test_entity_registry.py
 tests/test_ha_mock.py
+tests/test_llm_backends.py
 tests/test_local_discovery.py
 tests/test_pi_discovery.py
 tests/test_spatial_context.py

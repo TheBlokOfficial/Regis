@@ -29,7 +29,7 @@ Poniższy opis odnosi się do **aktualnej konfiguracji** systemu. Architektura d
 - **Kluczowa zasada:** Kontroler to lekki daemon — nigdy nie hostuje modelu LLM. Jest jedynym punktem komunikacji z Home Assistant; węzły robocze nigdy nie mają dostępu do HA bezpośrednio.
 - **Routing:** Kontroler wybiera najlepszy dostępny węzeł (preferuje wyższy tier) dla każdej nowej sesji. Graceful migration między aktywnymi sesjami nie jest zaimplementowana — system działa na zasadzie best-effort.
 
-### 3.2 Węzeł roboczy (`controller.worker`) — Linux / RPi5
+### 3.2 Węzeł roboczy (`controller.embedded_worker`) — Linux / RPi5
 - **Rola:** Zawsze uruchomiony na RPi5 komponent bezpieczeństwa systemu. Hostuje dwa serwisy offline:
   1. **Parser offline** — lekki model zdolny do pracy na RPi5, z Structured Outputs. Obsługuje proste komendy urządzeń gdy żaden pełny provider LLM nie jest dostępny.
   2. **Awaryjny STT** — lekki model Whisper do transkrypcji audio w trybie offline.

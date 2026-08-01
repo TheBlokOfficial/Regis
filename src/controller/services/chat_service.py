@@ -1,59 +1,29 @@
 import asyncio
+import datetime
 import json
 import logging
-import threading
-import datetime
-import os
+import time
 
 import requests
-from fastapi import APIRouter, UploadFile, File, Form
-from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
 
-import controller.registry as registry
 import controller.providers as providers
-from core.llm_backends.openrouter import OpenRouterBackend
+import controller.registry as registry
+from controller.services.prompt_builder import build_system_prompt
+from controller.openrouter_backend import OpenRouterBackend
 
-router_chat = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _build_system_prompt(tier: str, room: str | None = None, native_tools: bool = False) -> str:
-    from core import config
-    tier_path = os.path.join(config.CONFIG_DIR, "prompts", f"tier_{tier}.md")
-    tier_prompt = "Jesteś asystentem domowym."
-    try:
-        with open(tier_path, "r", encoding="utf-8") as f:
-            tier_prompt = f.read().strip()
-    except Exception as e:
-        logging.warning(f"Błąd ładowania {tier_path}: {e}")
-        
-    global_menu = ""
-    if registry.tools_registry:
-        global_menu = registry.tools_registry.get_global_menu()
-        
-    room_context = f"\n\nOBECNY POKÓJ: {room}" if room else ""
-        
-    if tier == "butler" or native_tools:
-        return f"{tier_prompt}\n\n{global_menu}{room_context}"
-
-    from core.schemas import render_tools_for_prompt
-    tools_text = render_tools_for_prompt(tier)
-    
-    return f"{tools_text}\n\n{global_menu}{room_context}\n\n{tier_prompt}"
-
-
-class ChatRequest(BaseModel):
-    message: str
-    satellite_id: str | None = None
-    room: str | None = None
-
-
-def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.AbstractEventLoop, is_audio: bool = False, audio_bytes: bytes = None):
-    """Pomocnik: odczytuje SSE z Workerów lub odpytuje chmurę bezpośrednio i umieszcza eventy w asyncio.Queue."""
-    import time
+def proxy_sse_to_queue(
+    base_payload: dict,
+    q: asyncio.Queue,
+    loop: asyncio.AbstractEventLoop,
+    is_audio: bool = False,
+    audio_bytes: bytes = None
+):
+    """Odczytuje SSE z Workerów lub odpytuje chmurę bezpośrednio i umieszcza eventy w asyncio.Queue."""
     registry.last_interaction_time = time.time()
-    
+
     backend = providers.get_llm_backend()
     if backend is None:
         loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": "Brak dostępnego providera LLM."})
@@ -65,17 +35,17 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
     if not is_audio and isinstance(backend, OpenRouterBackend):
         # Phase 1: OpenRouter (chmura) wywoływany bezpośrednio na Kontrolerze (tylko tekst)
         tier = "regis"
-        system_prompt = _build_system_prompt(tier, room=room, native_tools=True)
-        
+        system_prompt = build_system_prompt(tier, room=room, native_tools=True)
+
         from core.history_utils import build_messages_from_history
         messages = build_messages_from_history(
             system_prompt=system_prompt,
             history=registry.conversation_history,
             current_message=base_payload.get("message", "")
         )
-        
-        logging.info(f"Routowanie żądania bezpośrednio do: OpenRouter")
-        
+
+        logging.info("Routowanie żądania bezpośrednio do: OpenRouter")
+
         routing_event = {
             "type": "routing_info",
             "worker_id": "cloud (OpenRouter)",
@@ -88,22 +58,22 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
 
         def on_content_token(token):
             loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": token})
-            
+
         def on_tool_call(log_msg):
             used_tools_logs.append(log_msg)
             loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": log_msg})
-            
+
         try:
             final_content = backend.generate_response(
-                messages, 
-                registry.tools_registry, 
+                messages,
+                registry.tools_registry,
                 tier=tier,
                 on_content_token=on_content_token,
                 on_tool_call=on_tool_call
             )
-            
+
             loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": final_content})
-            
+
             now = datetime.datetime.now().strftime("%H:%M:%S")
             registry.conversation_history.append({
                 "user": base_payload.get("message", ""),
@@ -111,15 +81,15 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
                 "tools": used_tools_logs,
                 "timestamp": now
             })
-            
+
             from core import config
             limit = config.load_settings().get("history_limit", 3)
             if limit <= 0:
                 registry.conversation_history.clear()
             elif len(registry.conversation_history) > limit:
                 del registry.conversation_history[:-limit]
-                
-            return # Zakoncz sukcesem
+
+            return  # Zakończ sukcesem
 
         except Exception as e:
             logging.warning(f"Błąd w OpenRouterBackend, próba fallbacku na węzeł: {e}")
@@ -128,17 +98,20 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
     if is_audio or not isinstance(backend, OpenRouterBackend) or force_worker:
         workers = list(registry.worker_registry.values())
         if not workers:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": "Brak dostępnego providera LLM (wymagany worker dla zapytania audio/lokalnego)."})
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "error", "content": "Brak dostępnego providera LLM (wymagany worker dla zapytania audio/lokalnego)."}
+            )
             return
-            
+
         # Priorytetyzacja: szukamy workera z tier='regis', a jeśli nie ma, bierzemy dowolnego (np. butler)
         regis_workers = [w for w in workers if w.get("tier") == "regis"]
         worker = regis_workers[0] if regis_workers else workers[0]
         worker_id = worker["id"]
         tier = worker.get("tier", "butler")
-        
-        system_prompt = _build_system_prompt(tier, room=room)
-        
+
+        system_prompt = build_system_prompt(tier, room=room)
+
         if not is_audio:
             worker_url = f"{worker['base_url']}/v1/chat/stream"
             payload = dict(base_payload)
@@ -146,13 +119,13 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
             payload["history"] = registry.conversation_history
         else:
             worker_url = f"{worker['base_url']}/v1/chat/audio_stream"
-        
+
         logging.info(f"Routowanie żądania do węzła: {worker_id}")
         logger.debug(
             f"Router wybrany węzeł: id={worker_id} | tier={tier} "
             f"| model={worker.get('model_name', 'nieznany')} | url={worker_url}"
         )
-        
+
         routing_event = {
             "type": "routing_info",
             "worker_id": worker_id,
@@ -163,9 +136,8 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
 
         final_content = ""
         stt_content = ""
-
         used_tools_logs = []
-        
+
         try:
             if not is_audio:
                 resp = requests.post(worker_url, json=payload, stream=True, timeout=(1.0, 300.0))
@@ -175,7 +147,7 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
                 data["system_prompt"] = system_prompt
                 data["history"] = json.dumps(registry.conversation_history)
                 resp = requests.post(worker_url, files=files, data=data, stream=True, timeout=(1.0, 300.0))
-                
+
             resp.raise_for_status()
             for line in resp.iter_lines():
                 if not line:
@@ -190,13 +162,13 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
                             used_tools_logs.append(event.get("content"))
                         elif event.get("type") == "done":
                             final_content = event.get("content", "")
-                            
+
                         loop.call_soon_threadsafe(q.put_nowait, event)
                         if event.get("type") in ("done", "error"):
                             break
                     except json.JSONDecodeError:
                         pass
-            
+
             if final_content:
                 user_msg = stt_content if is_audio else base_payload.get("message", "")
                 if user_msg and final_content != "Przerwano zapytanie. Przekroczono maksymalną liczbę wywołań narzędzi (timeout pętli ReAct).":
@@ -213,7 +185,7 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
                         registry.conversation_history.clear()
                     elif len(registry.conversation_history) > limit:
                         del registry.conversation_history[:-limit]
-            
+
         except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError) as e:
             logging.warning(f"Węzeł {worker_id} nie odpowiada (Connect błąd). Usuwam z rejestru.")
             logger.debug(f"Router timeout/conn error | worker_id={worker_id} | url={worker_url} | błąd: {e}")
@@ -224,104 +196,13 @@ def _proxy_sse_to_queue(base_payload: dict, q: asyncio.Queue, loop: asyncio.Abst
             logging.exception(f"Inny błąd proxy do węzła {worker_id}")
             loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": str(e)})
 
-        except Exception as e:
-            logging.exception(f"Inny błąd proxy do węzła {worker_id}")
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": str(e)})
 
-
-@router_chat.post("/v1/chat/stream")
-async def chat_stream(request: ChatRequest):
-    if not providers.has_llm_provider():
-        return JSONResponse(
-            {"error": "Brak dostępnego providera LLM."},
-            status_code=503
-        )
-
-    controller_url = registry._settings_cache.get("controller_url", "auto")
-    if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
-        from core.discovery import get_local_ip
-        controller_url = f"http://{get_local_ip()}:8000"
-
-    room = request.room
-    if not room and request.satellite_id and request.satellite_id in registry.satellite_registry:
-        room = registry.satellite_registry[request.satellite_id].get("room")
-
-    payload = {"message": request.message, "controller_url": controller_url, "room": room}
-
-    loop = asyncio.get_event_loop()
-    q: asyncio.Queue = asyncio.Queue()
-
-    thread = threading.Thread(target=_proxy_sse_to_queue, args=(payload, q, loop, False, None))
-    thread.start()
-
-    async def event_generator():
-        while True:
-            item = await q.get()
-            yield f"data: {json.dumps(item)}\n\n"
-            if item["type"] in ("done", "error"):
-                break
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
-@router_chat.post("/v1/chat/audio_stream")
-async def chat_audio_stream(
-    file: UploadFile = File(...),
-    room: str | None = Form(default=None),
-    satellite_id: str | None = Form(default=None)
-):
-    if not providers.has_llm_provider():
-        return JSONResponse(
-            {"error": "Brak dostępnego providera LLM."},
-            status_code=503
-        )
-
-    audio_bytes = await file.read()
-    controller_url = registry._settings_cache.get("controller_url", "auto")
-    if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
-        from core.discovery import get_local_ip
-        controller_url = f"http://{get_local_ip()}:8000"
-
-    if not room and satellite_id and satellite_id in registry.satellite_registry:
-        room = registry.satellite_registry[satellite_id].get("room")
-
-    payload = {"controller_url": controller_url}
-    if room:
-        payload["room"] = room
-
-    loop = asyncio.get_event_loop()
-    q: asyncio.Queue = asyncio.Queue()
-
-    thread = threading.Thread(target=_proxy_sse_to_queue, args=(payload, q, loop, True, audio_bytes))
-    thread.start()
-
-    async def event_generator():
-        while True:
-            item = await q.get()
-            yield f"data: {json.dumps(item)}\n\n"
-            if item["type"] in ("done", "error"):
-                break
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
-@router_chat.post("/v1/clear_history")
-async def clear_history():
-    """Resetuje historię konwersacji w pamięci Kontrolera."""
+def clear_conversation_history():
+    """Resetuje historię konwersacji w pamięci Kontrolera oraz powiązanych Węzłach."""
     registry.conversation_history.clear()
-    
-    # Wywołanie legacy na Workerach (na wszelki wypadek)
+
     for worker in list(registry.worker_registry.values()):
         try:
             requests.post(f"{worker['base_url']}/v1/clear_history", timeout=2)
-        except:
+        except Exception:
             pass
-            
-    return {"status": "ok"}
-
-
-@router_chat.get("/v1/rooms")
-async def get_rooms():
-    from core import config
-    rooms_data = config.load_rooms()
-    return {"rooms": list(rooms_data.keys())}

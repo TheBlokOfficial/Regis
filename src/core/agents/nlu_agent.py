@@ -19,23 +19,17 @@ class NLUAgent:
         settings = config.load_settings()
         chat_url = f"{settings.get('ollama_url', 'http://127.0.0.1:11434')}/api/chat"
 
+        nlu_messages = list(messages)
+        nlu_messages.append({"role": "assistant", "content": "{"})
+
         payload = {
             "model": self.model_name,
-            "messages": messages,
+            "messages": nlu_messages,
             "stream": True,
             "keep_alive": -1,
-            "format": {
-                "type": "object",
-                "properties": {
-                    "action": {"type": "string", "enum": ["turn_on", "turn_off", "toggle", "set_value", "unknown"]},
-                    "entity_id": {"type": "string"},
-                    "parameter_value": {"type": "integer"}
-                },
-                "required": ["action", "entity_id"]
-            },
             "options": {
                 "temperature": 0.0,
-                "num_predict": 512,
+                "num_predict": 200,
                 "think": False
             }
         }
@@ -44,7 +38,7 @@ class NLUAgent:
             response = requests.post(chat_url, json=payload, stream=True, timeout=30)
             response.raise_for_status()
             
-            content = ""
+            content = "{"
             for line in response.iter_lines():
                 if not line:
                     continue

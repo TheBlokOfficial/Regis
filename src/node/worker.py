@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from core import config
 from node.node import WorkerNode
-from core.remote_tools_registry import RemoteToolsRegistry
+from node.remote_tools_registry import RemoteToolsRegistry
 
 from core.logger import setup_logging
 setup_logging("node")
@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 
     active_tier = settings.get("active_tier", "butler")
     tier_config = {
-        "butler": {"model": "qwen3:1.7b", "temperature": 0.1},
+        "butler": {"model": "qwen3.5:0.8b", "temperature": 0.1},
         "regis":  {"model": "qwen3.5:9b",  "temperature": 0.1},
     }
     tier_cfg = tier_config.get(active_tier, tier_config["butler"])

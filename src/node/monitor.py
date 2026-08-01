@@ -58,7 +58,7 @@ def _stream_and_display(prompt: str, server_url: str) -> None:
     """Odbiera zdarzenia SSE poprzez Satelitę (RemoteClient) i renderuje turę."""
     global _verbose
 
-    from core.remote_client import RemoteClient
+    from node.remote_client import RemoteClient
     from core.config import load_settings
     from node.monitor_core import render_user_turn, TurnRenderer
 

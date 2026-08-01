@@ -1,11 +1,11 @@
 import pytest
 import os
-from integrations.ha_mock import HomeAssistantMock
+from controller.integrations.ha_mock import HomeAssistantMock
 
 @pytest.fixture
 def mock_client(tmp_path):
     # Overwrite the state file to use a temporary one
-    from integrations import ha_mock
+    from controller.integrations import ha_mock
     original_state_file = ha_mock.STATE_FILE
     test_state_file = tmp_path / "test_ha_state.json"
     ha_mock.STATE_FILE = str(test_state_file)

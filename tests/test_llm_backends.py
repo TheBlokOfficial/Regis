@@ -3,7 +3,7 @@ from unittest.mock import patch
 import os
 
 from core.llm_backends.ollama import OllamaBackend
-from core.llm_backends.openrouter import OpenRouterBackend
+from controller.openrouter_backend import OpenRouterBackend
 import controller.providers as providers
 import controller.registry as registry
 
