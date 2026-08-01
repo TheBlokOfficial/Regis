@@ -18,6 +18,7 @@ import {
     updateSatelliteVAD, appendLog,
 } from './renderer.js';
 import { fmtTime, truncate } from './utils.js';
+import { getActiveSatelliteId, appendTurnToChat } from './chat.js';
 
 export function handleEvent(event) {
     const now = fmtTime(event.timestamp || null);
@@ -81,6 +82,17 @@ export function handleEvent(event) {
             const wid   = event.worker_id ? ` · ${event.worker_id}` : "";
             const tools = event.tool_count ? ` · ${event.tool_count} narzędzi` : "";
             appendLog(now, "[turn]", `Wykonano turę konwersacji${wid}${tools}`, "conversation_turn");
+
+            const activeSat = getActiveSatelliteId();
+            const eventSat = event.satellite_id || "web_ui";
+            if (activeSat === eventSat) {
+                appendTurnToChat({
+                    user: event.user_text,
+                    assistant: event.assistant_text,
+                    timestamp: now,
+                    tools: event.tool_count ? new Array(event.tool_count) : []
+                });
+            }
             break;
         }
 

@@ -14,8 +14,8 @@ worker_registry: dict[str, dict] = {}
 satellite_registry: dict[str, dict] = {}
 integration_registry: dict[str, BaseIntegration] = {}
 _settings_cache: dict = {}
-conversation_history: list[dict] = []
-last_interaction_time: float = 0.0
+conversation_sessions: dict[str, list[dict]] = {}
+session_last_interaction_times: dict[str, float] = {}
 controller_start_time: float = time.time()
 
 
@@ -24,20 +24,52 @@ def register_integration(integration: BaseIntegration) -> None:
     integration_registry[integration.id] = integration
     logging.info(f"Zarejestrowano integrację: {integration.name} ({integration.id})")
 
-# Priorytety tierów usunięto zgodnie z Phase 1
+
+def get_session_history(satellite_id: str | None = None) -> list[dict]:
+    """Pobiera historię konwersacji dla określonej Satelity / sesji."""
+    sid = satellite_id or "default"
+    return conversation_sessions.get(sid, [])
+
+
+def append_to_session(satellite_id: str | None, turn: dict) -> None:
+    """Dodaje turę konwersacji do sesji i uaktualnia czas interakcji."""
+    sid = satellite_id or "default"
+    if sid not in conversation_sessions:
+        conversation_sessions[sid] = []
+    conversation_sessions[sid].append(turn)
+    session_last_interaction_times[sid] = time.time()
+
+
+def clear_session_history(satellite_id: str | None = None) -> None:
+    """Czyszczenie pamięci konkretnej sesji lub wszystkich sesji."""
+    if satellite_id:
+        conversation_sessions.pop(satellite_id, None)
+        session_last_interaction_times.pop(satellite_id, None)
+    else:
+        conversation_sessions.clear()
+        session_last_interaction_times.clear()
+
+
+# Kompatybilność wsteczna dla właściwości globalnej
+@property
+def conversation_history():
+    return get_session_history("default")
+
 
 async def _heartbeat_loop():
-    """W tle sprawdza dostępność węzłów, usuwa martwe i czyści historię po 60s bezczynności."""
-    import time
-    global last_interaction_time
-    
+    """W tle sprawdza dostępność węzłów, usuwa martwe i czyści nieaktywne sesje po 60s bezczynności."""
     while True:
         await asyncio.sleep(30)
         
-        # 1. Automatyczne czyszczenie pamięci
-        if conversation_history and (time.time() - last_interaction_time > 60.0):
-            logging.info("Brak interakcji przez 60 sekund. Automatyczne czyszczenie pamięci (historii).")
-            conversation_history.clear()
+        # 1. Automatyczne czyszczenie nieaktywnych sesji
+        now = time.time()
+        expired_sids = [
+            sid for sid, t in list(session_last_interaction_times.items())
+            if now - t > 60.0
+        ]
+        for sid in expired_sids:
+            logging.info(f"Brak interakcji przez 60 sekund w sesji '{sid}'. Automatyczne czyszczenie pamięci.")
+            clear_session_history(sid)
             
         # 2. Sprawdzanie zdrowia węzłów
         workers = list(worker_registry.values())

@@ -17,6 +17,7 @@
 
 import { initClock }                       from './renderer.js';
 import { init, connectSSE, sendNodeCommand } from './api.js';
+import { initChat }                           from './chat.js';
 
 // Eksponuj sendNodeCommand na window — wymagane przez event listenery kart węzłów w renderer.js
 window.sendNodeCommand = sendNodeCommand;
@@ -24,3 +25,4 @@ window.sendNodeCommand = sendNodeCommand;
 initClock();
 init();
 connectSSE();
+initChat();

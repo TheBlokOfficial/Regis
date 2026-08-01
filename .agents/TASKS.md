@@ -27,6 +27,14 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 - [x] **[WEB UI — Faza 3]** Satelita pushuje zdarzenia do Kontrolera (`POST /api/satellite/event`). Modyfikacja `src/node/satellite.py`. Szczegóły: `docs/web_ui_rfc.md` §6.2.
 - [x] **[WEB UI — Faza 4]** Integracja System Tray: akcja "Otwórz Dashboard" otwiera przeglądarkę (`webbrowser.open()`). Usunięcie `src/node/dashboard.py`. Szczegóły: `docs/web_ui_rfc.md` §6.3.
 
+### [FEATURE] Web UI — Wielosesyjność & Dedykowana Zakładka Czatu
+
+- [ ] **[FAZA 1 — Backend: Słownik Sesji per Satelita]**: Refaktoryzacja `src/controller/registry.py` (zamiana `conversation_history` na `conversation_sessions: dict[str, list[dict]]`), obsługa `satellite_id` / `room` w `src/controller/services/chat_service.py` oraz dodanie endpointu `/v1/sessions` w `src/controller/routers/chat.py`.
+- [ ] **[FAZA 2 — Frontend: Nawigacja Zakładkowa & Wygląd Czatu]**: Modyfikacja `src/controller/web/index.html` i `style.css` (przełącznik `Dashboard` / `Czat & Konwersacje`, stylizacja bąbelków czatu `.msg-bubble`, kontenera `#chat-messages` oraz paska wpisywania).
+- [ ] **[FAZA 3 — Frontend: Moduł Czatu & Strumieniowanie]**: Utworzenie `src/controller/web/chat.js` (zarządzanie zakładkami, podłączanie pod wybraną Satelitę z menu rozwijanego, wysyłanie wiadomości pod `POST /v1/chat/stream` z wybranym `satellite_id` i `room`, czyszczenie historii `/v1/clear_history`).
+- [ ] **[FAZA 4 — Frontend: Integracja SSE & Przestrzeń Wirtualna]**: Aktualizacja `src/controller/web/events.js` i `app.js` (reagowanie na `conversation_turn` per sesję, automatyczne przełączanie kontekstu i auto-scroll do dna).
+- [ ] **[FAZA 5 — Testy, Weryfikacja i Deployment]**: Uruchomienie testów `pytest`, wdrożenie na Raspberry Pi (`build_controller.py`), test wirtualnego pisania z kontekstem Łazienki/Salonu w przeglądarce i zapis w Git.
+
 ### [FEATURE] Funkcje
 
 - [x] **[NLU / STABILITY]** Naprawa pętli awarii workera RPi5, usunięcie przestarzałego `regis-stt.service`, wdrożenie oficjalnego `format: json` w Ollamie i przywrócenie profilera czasowego w NLU

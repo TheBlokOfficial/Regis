@@ -96,10 +96,31 @@ async def chat_audio_stream(
 
 
 @router_chat.post("/v1/clear_history")
-async def clear_history():
-    """Resetuje historię konwersacji w pamięci Kontrolera."""
-    clear_conversation_history()
+async def clear_history(satellite_id: str | None = None):
+    """Resetuje historię konwersacji (danej sesji lub wszystkich) w pamięci Kontrolera."""
+    clear_conversation_history(satellite_id)
     return {"status": "ok"}
+
+
+@router_chat.get("/v1/chat/history")
+async def get_history(satellite_id: str | None = None):
+    """Zwraca historię konwersacji dla wybranej Satelity / sesji."""
+    history = registry.get_session_history(satellite_id)
+    return {"satellite_id": satellite_id or "default", "history": history}
+
+
+@router_chat.get("/v1/sessions")
+async def get_sessions():
+    """Zwraca listę aktywnych sesji konwersacji."""
+    active_sessions = []
+    for sid, turns in registry.conversation_sessions.items():
+        last_t = registry.session_last_interaction_times.get(sid, 0.0)
+        active_sessions.append({
+            "id": sid,
+            "turns_count": len(turns),
+            "last_interaction": last_t
+        })
+    return {"sessions": active_sessions}
 
 
 @router_chat.get("/v1/rooms")

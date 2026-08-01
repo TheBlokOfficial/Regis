@@ -12,68 +12,100 @@
 
     <!-- Nagłówek -->
     <header id="header">
-        <h1>Regis &mdash; Panel Kontrolny</h1>
+        <div class="header-left">
+            <h1>Regis &mdash; Panel Kontrolny</h1>
+            <nav class="tabs">
+                <button class="tab-btn active" id="tab-btn-dashboard" data-tab="dashboard">Dashboard</button>
+                <button class="tab-btn" id="tab-btn-chat" data-tab="chat">Czat &amp; Konwersacje</button>
+            </nav>
+        </div>
         <span id="clock" aria-live="polite"></span>
     </header>
 
-    <!-- Pasek stanu systemu -->
-    <section id="status-bar" aria-label="Stan systemu">
-        <div class="status-item">
-            <span class="label">Uptime</span>
-            <span class="value" id="uptime">—</span>
-        </div>
-        <div class="status-item">
-            <span class="label">Węzły</span>
-            <span class="value" id="worker-count">0</span>
-        </div>
-        <div class="status-item">
-            <span class="label">Satelity</span>
-            <span class="value" id="satellite-count">0</span>
-        </div>
-        <div class="status-item">
-            <span class="label">Integracje</span>
-            <span class="value" id="integration-count">0</span>
-        </div>
-        <div class="status-item" style="margin-left:auto">
-            <span class="dot" id="sse-dot" style="background:var(--text-dim)"></span>
-            <span class="label" id="sse-status">łączenie&hellip;</span>
-        </div>
-    </section>
-
-    <!-- Sekcja główna -->
-    <main id="main">
-
-        <!-- Węzły robocze -->
-        <section class="panel" id="workers-panel" aria-label="Węzły robocze">
-            <div class="panel-header">Węzły robocze</div>
-            <div class="panel-body" id="workers-body">
-                <p class="empty-state">Brak zarejestrowanych węzłów.</p>
+    <!-- ZAKŁADKA 1: DASHBOARD -->
+    <div id="view-dashboard" class="tab-view active">
+        <!-- Pasek stanu systemu -->
+        <section id="status-bar" aria-label="Stan systemu">
+            <div class="status-item">
+                <span class="label">Uptime</span>
+                <span class="value" id="uptime">—</span>
+            </div>
+            <div class="status-item">
+                <span class="label">Węzły</span>
+                <span class="value" id="worker-count">0</span>
+            </div>
+            <div class="status-item">
+                <span class="label">Satelity</span>
+                <span class="value" id="satellite-count">0</span>
+            </div>
+            <div class="status-item">
+                <span class="label">Integracje</span>
+                <span class="value" id="integration-count">0</span>
+            </div>
+            <div class="status-item" style="margin-left:auto">
+                <span class="dot" id="sse-dot" style="background:var(--text-dim)"></span>
+                <span class="label" id="sse-status">łączenie&hellip;</span>
             </div>
         </section>
 
-        <!-- Satelity -->
-        <section class="panel" id="satellites-panel" aria-label="Satelity">
-            <div class="panel-header">Satelity</div>
-            <div class="panel-body" id="satellites-body">
-                <p class="empty-state">Brak zarejestrowanych satelit.</p>
+        <!-- Sekcja główna -->
+        <main id="main">
+            <!-- Węzły robocze -->
+            <section class="panel" id="workers-panel" aria-label="Węzły robocze">
+                <div class="panel-header">Węzły robocze</div>
+                <div class="panel-body" id="workers-body">
+                    <p class="empty-state">Brak zarejestrowanych węzłów.</p>
+                </div>
+            </section>
+
+            <!-- Satelity -->
+            <section class="panel" id="satellites-panel" aria-label="Satelity">
+                <div class="panel-header">Satelity</div>
+                <div class="panel-body" id="satellites-body">
+                    <p class="empty-state">Brak zarejestrowanych satelit.</p>
+                </div>
+            </section>
+
+            <!-- Integracje -->
+            <section class="panel" id="integrations-panel" aria-label="Integracje">
+                <div class="panel-header">Integracje</div>
+                <div class="panel-body" id="integrations-body">
+                    <p class="empty-state">Brak skonfigurowanych integracji.</p>
+                </div>
+            </section>
+
+            <!-- Dziennik techniczny -->
+            <section id="log-panel" aria-label="Dziennik techniczny na żywo">
+                <div class="panel-header">Dziennik techniczny na żywo</div>
+                <div id="log-list" role="log" aria-live="polite" aria-atomic="false"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ZAKŁADKA 2: CZAT & KONWERSACJE -->
+    <div id="view-chat" class="tab-view" style="display:none">
+        <section id="chat-panel">
+            <div class="chat-header-bar">
+                <div class="chat-header-left">
+                    <span class="chat-title">Czat &amp; Konwersacje</span>
+                    <label for="chat-satellite-select" class="sat-select-label">Podłączona Satelita / Pokój:</label>
+                    <select id="chat-satellite-select" class="sat-select">
+                        <option value="web_ui" data-room="">Wirtualna Satelita — Web UI (Klawiatura)</option>
+                    </select>
+                </div>
+                <button class="btn danger" id="clear-chat-btn">Wyczyść tę sesję</button>
             </div>
-        </section>
-
-        <!-- Integracje -->
-        <section class="panel" id="integrations-panel" aria-label="Integracje">
-            <div class="panel-header">Integracje</div>
-            <div class="panel-body" id="integrations-body">
-                <p class="empty-state">Brak skonfigurowanych integracji.</p>
+            
+            <div id="chat-messages" class="chat-messages-body">
+                <p class="empty-state" style="text-align:center; padding:30px 0;">Brak historii konwersacji w tej sesji.</p>
             </div>
-        </section>
 
-        <!-- Dziennik techniczny -->
-        <section id="log-panel" aria-label="Dziennik techniczny na żywo">
-            <div class="panel-header">Dziennik techniczny na żywo</div>
-            <div id="log-list" role="log" aria-live="polite" aria-atomic="false"></div>
+            <form id="chat-form" class="chat-input-bar">
+                <input type="text" id="chat-input" placeholder="Wpisz wiadomość do Regisa... (Enter aby wysłać)" autocomplete="off">
+                <button type="submit" id="chat-send-btn" class="btn">Wyślij</button>
+            </form>
         </section>
-
-    </main>
+    </div>
 </div>
 
 <script type="module" src="/app.js"></script>

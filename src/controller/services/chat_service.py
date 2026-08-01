@@ -32,6 +32,8 @@ def proxy_sse_to_queue(
         return
 
     room = base_payload.get("room")
+    satellite_id = base_payload.get("satellite_id") or "web_ui"
+    session_history = registry.get_session_history(satellite_id)
     force_worker = False
 
     if not is_audio and isinstance(backend, OpenRouterBackend):
@@ -41,7 +43,7 @@ def proxy_sse_to_queue(
         from core.history_utils import build_messages_from_history
         messages = build_messages_from_history(
             system_prompt=system_prompt,
-            history=registry.conversation_history,
+            history=session_history,
             current_message=base_payload.get("message", "")
         )
 
@@ -78,12 +80,15 @@ def proxy_sse_to_queue(
             loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": final_content})
 
             now = datetime.datetime.now().strftime("%H:%M:%S")
-            registry.conversation_history.append({
+            turn = {
                 "user": base_payload.get("message", ""),
                 "assistant": final_content,
                 "tools": used_tools_dicts,
-                "timestamp": now
-            })
+                "timestamp": now,
+                "satellite_id": satellite_id,
+                "room": room
+            }
+            registry.append_to_session(satellite_id, turn)
 
             # Publikuj zdarzenie do Web UI EventBus
             asyncio.run_coroutine_threadsafe(
@@ -92,6 +97,8 @@ def proxy_sse_to_queue(
                     "user_text": base_payload.get("message", ""),
                     "assistant_text": final_content,
                     "worker_id": "cloud (OpenRouter)",
+                    "satellite_id": satellite_id,
+                    "room": room,
                     "tool_count": len(used_tools_dicts),
                 }),
                 loop
@@ -99,10 +106,11 @@ def proxy_sse_to_queue(
 
             from core import config
             limit = config.load_settings().get("history_limit", 3)
+            hist = registry.get_session_history(satellite_id)
             if limit <= 0:
-                registry.conversation_history.clear()
-            elif len(registry.conversation_history) > limit:
-                del registry.conversation_history[:-limit]
+                registry.clear_session_history(satellite_id)
+            elif len(hist) > limit:
+                del hist[:-limit]
 
             return  # Zakończ sukcesem
 
@@ -131,7 +139,7 @@ def proxy_sse_to_queue(
             worker_url = f"{worker['base_url']}/v1/chat/stream"
             payload = dict(base_payload)
             payload["system_prompt"] = system_prompt
-            payload["history"] = registry.conversation_history
+            payload["history"] = session_history
         else:
             worker_url = f"{worker['base_url']}/v1/chat/audio_stream"
 
@@ -160,7 +168,7 @@ def proxy_sse_to_queue(
                 files = {"file": ("audio.wav", audio_bytes, "audio/wav")}
                 data = dict(base_payload)
                 data["system_prompt"] = system_prompt
-                data["history"] = json.dumps(registry.conversation_history)
+                data["history"] = json.dumps(session_history)
                 resp = requests.post(worker_url, files=files, data=data, stream=True, timeout=(1.0, 300.0))
 
             resp.raise_for_status()
@@ -188,12 +196,15 @@ def proxy_sse_to_queue(
                 user_msg = stt_content if is_audio else base_payload.get("message", "")
                 if user_msg and final_content != "Przerwano zapytanie. Przekroczono maksymalną liczbę wywołań narzędzi (timeout pętli ReAct).":
                     now = datetime.datetime.now().strftime("%H:%M:%S")
-                    registry.conversation_history.append({
+                    turn = {
                         "user": user_msg,
                         "assistant": final_content,
                         "tools": used_tools_dicts,
-                        "timestamp": now
-                    })
+                        "timestamp": now,
+                        "satellite_id": satellite_id,
+                        "room": room
+                    }
+                    registry.append_to_session(satellite_id, turn)
 
                     # Publikuj zdarzenie do Web UI EventBus
                     asyncio.run_coroutine_threadsafe(
@@ -202,6 +213,8 @@ def proxy_sse_to_queue(
                             "user_text": user_msg,
                             "assistant_text": final_content,
                             "worker_id": worker_id,
+                            "satellite_id": satellite_id,
+                            "room": room,
                             "tool_count": len(used_tools_dicts),
                         }),
                         loop
@@ -209,10 +222,11 @@ def proxy_sse_to_queue(
 
                     from core import config
                     limit = config.load_settings().get("history_limit", 3)
+                    hist = registry.get_session_history(satellite_id)
                     if limit <= 0:
-                        registry.conversation_history.clear()
-                    elif len(registry.conversation_history) > limit:
-                        del registry.conversation_history[:-limit]
+                        registry.clear_session_history(satellite_id)
+                    elif len(hist) > limit:
+                        del hist[:-limit]
 
         except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError) as e:
             logging.warning(f"Węzeł {worker_id} nie odpowiada (Connect błąd). Usuwam z rejestru.")
@@ -225,9 +239,9 @@ def proxy_sse_to_queue(
             loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": str(e)})
 
 
-def clear_conversation_history():
+def clear_conversation_history(satellite_id: str | None = None):
     """Resetuje historię konwersacji w pamięci Kontrolera oraz powiązanych Węzłach."""
-    registry.conversation_history.clear()
+    registry.clear_session_history(satellite_id)
 
     for worker in list(registry.worker_registry.values()):
         try:
