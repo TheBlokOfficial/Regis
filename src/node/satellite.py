@@ -60,8 +60,7 @@ class EventBus:
     """
 
     # Typy zdarzeń, które trafiają do centralnego Web UI Kontrolera.
-    # Pomijamy chatty logi (info) i wewnętrzne ślady ReAct.
-    _CONTROLLER_PUSH_TYPES = {"state", "stt_result", "done", "error"}
+    _CONTROLLER_PUSH_TYPES = {"state", "stt_result", "done", "error", "vad_speech", "vad_silence", "wakeword"}
 
     def __init__(self, service_url="http://127.0.0.1:8099",
                  controller_url: str | None = None,
@@ -224,6 +223,7 @@ class SatelliteNode:
                     if os.path.exists(snd_path):
                         winsound.PlaySound(snd_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
                     
+                self.event_bus.emit({"type": "wakeword", "score": score})
                 self.event_bus.emit({"type": "state", "state": "LISTENING"})
                 self.event_bus.log(f"Wykryto Wake Word '{mdl}' z wynikiem: {score:.2f}! Start nagrywania...")
                 # Usunięto _empty_queue aby nie ucinać pierwszych sylab!
@@ -236,6 +236,7 @@ class SatelliteNode:
         silence_frames = 0
         max_silence_frames = max(1, int((SILENCE_TIMEOUT_MS / 1000.0) * SAMPLE_RATE / CHUNK_SIZE))
         collected_chunks = []
+        last_speech_state = None
         
         # 1. Zbieramy pre-rekord
         while self.ring_buffer:
@@ -248,12 +249,18 @@ class SatelliteNode:
                 is_speech = self.vad.is_speech(chunk)
                 collected_chunks.append(chunk.tobytes())
                 
+                current_speech_state = "vad_speech" if is_speech else "vad_silence"
+                if current_speech_state != last_speech_state:
+                    self.event_bus.emit({"type": current_speech_state})
+                    last_speech_state = current_speech_state
+
                 if not is_speech:
                     silence_frames += 1
                 else:
                     silence_frames = 0
                     
                 if silence_frames > max_silence_frames:
+                    self.event_bus.emit({"type": "vad_silence"})
                     self.event_bus.log(f"Wykryto {SILENCE_TIMEOUT_MS}ms ciszy. Koniec nagrywania.")
                     self._set_state("RESPONDING")
                     self.event_bus.emit({"type": "state", "state": "RESPONDING"})
