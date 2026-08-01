@@ -14,6 +14,8 @@ import { fmtUptime, fmtTime } from './utils.js';
 
 // ── Inicjalizacja stanu z /api/status ──────────────────────────────────────
 
+let _currentUptimeS = 0;
+
 export async function init() {
     try {
         const resp = await fetch("/api/status");
@@ -23,7 +25,8 @@ export async function init() {
         const ctrl = data.controller || {};
         updateHAStatus(ctrl.ha_status || "unknown");
         if (ctrl.uptime_s !== undefined) {
-            document.getElementById("uptime").textContent = fmtUptime(ctrl.uptime_s);
+            _currentUptimeS = ctrl.uptime_s;
+            document.getElementById("uptime").textContent = fmtUptime(_currentUptimeS);
         }
 
         (data.workers || []).forEach(w => {
@@ -36,7 +39,7 @@ export async function init() {
             renderSatelliteCard(satellites[s.id]);
         });
 
-        _startUptimePoller();
+        _startUptimeTicker();
 
     } catch (e) {
         console.error("[Regis] Błąd ładowania /api/status:", e);
@@ -44,18 +47,29 @@ export async function init() {
     }
 }
 
-// ── Polling uptime (prywatny — uruchamiany raz przez init) ─────────────────
+// ── Ticker & Sync Uptime (inkrementacja co 1s + sync z REST co 15s) ──────────
 
-function _startUptimePoller() {
+function _startUptimeTicker() {
+    // Lokalny zegar 1-sekundowy
+    setInterval(() => {
+        if (_currentUptimeS > 0) {
+            _currentUptimeS++;
+            document.getElementById("uptime").textContent = fmtUptime(_currentUptimeS);
+        }
+    }, 1000);
+
+    // Synchronizacja z serwerem co 15 sekund
     setInterval(async () => {
         try {
             const data = await fetch("/api/status").then(r => r.json());
             const ctrl = data.controller || {};
-            if (ctrl.uptime_s !== undefined)
-                document.getElementById("uptime").textContent = fmtUptime(ctrl.uptime_s);
+            if (ctrl.uptime_s !== undefined) {
+                _currentUptimeS = ctrl.uptime_s;
+                document.getElementById("uptime").textContent = fmtUptime(_currentUptimeS);
+            }
             updateHAStatus(ctrl.ha_status || "unknown");
         } catch (_) {}
-    }, 60_000);
+    }, 15_000);
 }
 
 // ── Połączenie SSE ─────────────────────────────────────────────────────────

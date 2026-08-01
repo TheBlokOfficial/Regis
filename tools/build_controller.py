@@ -12,7 +12,7 @@ def deploy_to_pi():
     remote_dir = "/home/theblok/regis"
     
     print("1. Zatrzymywanie Kontrolera na Raspberry Pi...")
-    subprocess.run(["ssh", "-t", server, "sudo systemctl stop --timeout=5 regis.service || sudo systemctl kill --signal=SIGKILL regis.service || true"])
+    subprocess.run(["ssh", "-t", server, "sudo timeout 5 systemctl stop regis.service || sudo systemctl kill --signal=SIGKILL regis.service || true"])
     
     print("2. Pakowanie kodu źródłowego i logiki do archiwum ZIP na Windowsie...")
     if os.path.exists("dist"):
