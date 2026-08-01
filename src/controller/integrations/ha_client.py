@@ -38,6 +38,17 @@ class HomeAssistantClient:
             "Content-Type": "application/json"
         }
 
+    def check_connection(self) -> bool:
+        """Sprawdza czy połączenie z serwerem Home Assistant działa prawidłowo."""
+        url = f"{self.url}/api/"
+        try:
+            resp = self.session.get(url, timeout=5)
+            resp.raise_for_status()
+            return True
+        except Exception as e:
+            logger.debug(f"[HA CLIENT] check_connection nie powiodło się: {e}")
+            raise HomeAssistantConnectionError(f"Nie można połączyć z HA: {e}")
+
     def get_all_states(self) -> dict[str, dict[str, Any]]:
         """Pobiera z Home Assistanta listę wszystkich encji i ich stanów.
         
