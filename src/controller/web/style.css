@@ -134,11 +134,11 @@ html, body {
 #main {
     grid-area: main;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     grid-template-rows: auto 1fr;
     grid-template-areas:
-        "workers satellites"
-        "log     log";
+        "workers satellites integrations"
+        "log     log        log";
     gap: 21px;
     min-height: 0;
 }
@@ -176,8 +176,8 @@ html, body {
     padding: 12px 0;
 }
 
-/* ── Karty węzłów i satelit ── */
-.node-card, .satellite-card {
+/* ── Karty węzłów, satelit i integracji ── */
+.node-card, .satellite-card, .integration-card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-card-alt);
@@ -185,7 +185,7 @@ html, body {
     margin-bottom: 12px;
 }
 
-.node-card:last-child, .satellite-card:last-child {
+.node-card:last-child, .satellite-card:last-child, .integration-card:last-child {
     margin-bottom: 0;
 }
 
@@ -335,6 +335,7 @@ html, body {
         grid-template-areas:
             "workers"
             "satellites"
+            "integrations"
             "log";
     }
 

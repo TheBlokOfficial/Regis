@@ -19,11 +19,6 @@
     <!-- Pasek stanu systemu -->
     <section id="status-bar" aria-label="Stan systemu">
         <div class="status-item">
-            <span class="label">Home Assistant</span>
-            <span class="dot unknown" id="ha-dot"></span>
-            <span class="badge unknown" id="ha-status">—</span>
-        </div>
-        <div class="status-item">
             <span class="label">Uptime</span>
             <span class="value" id="uptime">—</span>
         </div>
@@ -34,6 +29,10 @@
         <div class="status-item">
             <span class="label">Satelity</span>
             <span class="value" id="satellite-count">0</span>
+        </div>
+        <div class="status-item">
+            <span class="label">Integracje</span>
+            <span class="value" id="integration-count">0</span>
         </div>
         <div class="status-item" style="margin-left:auto">
             <span class="dot" id="sse-dot" style="background:var(--text-dim)"></span>
@@ -57,6 +56,14 @@
             <div class="panel-header">Satelity</div>
             <div class="panel-body" id="satellites-body">
                 <p class="empty-state">Brak zarejestrowanych satelit.</p>
+            </div>
+        </section>
+
+        <!-- Integracje -->
+        <section class="panel" id="integrations-panel" aria-label="Integracje">
+            <div class="panel-header">Integracje</div>
+            <div class="panel-body" id="integrations-body">
+                <p class="empty-state">Brak skonfigurowanych integracji.</p>
             </div>
         </section>
 

@@ -24,17 +24,56 @@ export function initClock() {
     tick();
 }
 
-// ── Status Home Assistant ──────────────────────────────────────────────────
+// ── Karty integracji ────────────────────────────────────────────────────────
 
-export function updateHAStatus(status) {
-    const dot   = document.getElementById("ha-dot");
-    const badge = document.getElementById("ha-status");
-    if (!dot || !badge) return;
+export function renderIntegrationCard(integration) {
+    const id       = integration.id;
+    const existing = document.getElementById(`integration-${id}`);
+    const card     = existing || document.createElement("div");
+
+    const status = integration.status || "unknown";
+    const name   = integration.name || id;
+    const type   = integration.type || "—";
+    const detail = integration.detail || "—";
 
     const labels = { online: "ONLINE", offline: "OFFLINE", unknown: "—" };
-    dot.className     = `dot ${status}`;
-    badge.className   = `badge ${status}`;
-    badge.textContent = labels[status] || status.toUpperCase();
+    const badgeText = labels[status] || status.toUpperCase();
+
+    card.id        = `integration-${id}`;
+    card.className = "integration-card";
+    card.innerHTML = `
+        <div class="card-title">
+            <span class="dot ${status}"></span>
+            ${escHtml(name)}
+        </div>
+        <div class="card-meta">
+            <span><span class="key">Typ:</span>${escHtml(type)}</span>
+            <span><span class="key">Opis:</span>${escHtml(detail)}</span>
+            <span><span class="key">Status:</span><span class="badge ${status}">${badgeText}</span></span>
+        </div>
+    `;
+
+    const body  = document.getElementById("integrations-body");
+    if (!body) return;
+    const empty = body.querySelector(".empty-state");
+    if (empty) empty.remove();
+
+    if (!existing) body.appendChild(card);
+
+    const countEl = document.getElementById("integration-count");
+    if (countEl) {
+        countEl.textContent = body.querySelectorAll(".integration-card").length;
+    }
+}
+
+export function updateHAStatus(status) {
+    renderIntegrationCard({
+        id: "home_assistant",
+        name: "Home Assistant",
+        type: "Smart Home",
+        detail: "Sterowanie urządzeniami & encjami",
+        status: status || "unknown"
+    });
 }
 
 // ── Karty węzłów roboczych ─────────────────────────────────────────────────
