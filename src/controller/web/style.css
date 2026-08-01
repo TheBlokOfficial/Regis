@@ -82,8 +82,10 @@ html, body {
     display: flex;
     gap: 36px;
     align-items: center;
-    padding: 8px 0 16px;
-    border-bottom: 1px solid var(--border);
+    padding: 12px 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
     margin-bottom: 21px;
     flex-wrap: wrap;
 }
@@ -174,33 +176,35 @@ html, body {
     padding: 12px 0;
 }
 
-/* ── Karty węzłów i satelit (płaski układ bez podwójnych obramowań) ── */
+/* ── Karty węzłów i satelit ── */
 .node-card, .satellite-card {
-    border-bottom: 1px solid var(--border);
-    background: transparent;
-    padding: 12px 0;
-    margin-bottom: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card-alt);
+    padding: 15px 18px;
+    margin-bottom: 12px;
 }
 
 .node-card:last-child, .satellite-card:last-child {
-    border-bottom: none;
+    margin-bottom: 0;
 }
 
-/* ── Kompaktowa lista integracji (płaski wiersz bez podwójnych obramowań) ── */
+/* ── Kompaktowa lista integracji ── */
 .integration-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
-    background: transparent;
-    margin-bottom: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card-alt);
+    margin-bottom: 8px;
     font-size: 15px;
 }
 
 .integration-item:last-child {
-    border-bottom: none;
+    margin-bottom: 0;
 }
 
 .integration-info {

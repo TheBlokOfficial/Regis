@@ -78,10 +78,9 @@ export function handleEvent(event) {
         }
 
         case "conversation_turn": {
-            const wid   = event.worker_id ? ` (${event.worker_id})` : "";
+            const wid   = event.worker_id ? ` · ${event.worker_id}` : "";
             const tools = event.tool_count ? ` · ${event.tool_count} narzędzi` : "";
-            appendLog(now, "[Ty]",          truncate(event.user_text, 120),                "conversation_turn");
-            appendLog(now, `[Regis${wid}]`, truncate(event.assistant_text, 200) + tools,   "conversation_turn");
+            appendLog(now, "[turn]", `Wykonano turę konwersacji${wid}${tools}`, "conversation_turn");
             break;
         }
 
