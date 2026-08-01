@@ -66,6 +66,12 @@ export function renderIntegrationCard(integration) {
     }
 }
 
+export function renderIntegrationsList(integrations) {
+    if (Array.isArray(integrations) && integrations.length > 0) {
+        integrations.forEach(item => renderIntegrationCard(item));
+    }
+}
+
 export function updateHAStatus(status) {
     renderIntegrationCard({
         id: "home_assistant",

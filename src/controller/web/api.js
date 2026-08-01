@@ -8,7 +8,7 @@
  */
 
 import { upsertWorker, upsertSatellite, workers, satellites } from './state.js';
-import { renderWorkerCard, renderSatelliteCard, updateHAStatus, appendLog } from './renderer.js';
+import { renderWorkerCard, renderSatelliteCard, renderIntegrationsList, updateHAStatus, appendLog } from './renderer.js';
 import { handleEvent } from './events.js';
 import { fmtUptime, fmtTime } from './utils.js';
 
@@ -23,7 +23,12 @@ export async function init() {
         const data = await resp.json();
 
         const ctrl = data.controller || {};
-        updateHAStatus(ctrl.ha_status || "unknown");
+        if (data.integrations && data.integrations.length > 0) {
+            renderIntegrationsList(data.integrations);
+        } else {
+            updateHAStatus(ctrl.ha_status || "unknown");
+        }
+
         if (ctrl.uptime_s !== undefined) {
             _currentUptimeS = ctrl.uptime_s;
             document.getElementById("uptime").textContent = fmtUptime(_currentUptimeS);
@@ -67,7 +72,11 @@ function _startUptimeTicker() {
                 _currentUptimeS = ctrl.uptime_s;
                 document.getElementById("uptime").textContent = fmtUptime(_currentUptimeS);
             }
-            updateHAStatus(ctrl.ha_status || "unknown");
+            if (data.integrations && data.integrations.length > 0) {
+                renderIntegrationsList(data.integrations);
+            } else {
+                updateHAStatus(ctrl.ha_status || "unknown");
+            }
         } catch (_) {}
     }, 15_000);
 }

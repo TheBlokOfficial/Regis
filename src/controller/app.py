@@ -42,6 +42,11 @@ async def lifespan(app: FastAPI):
         virtual_groups=virtual_groups,
     )
 
+    # Rejestracja integracji Home Assistant w rejestrze
+    from controller.integrations.ha_integration import HomeAssistantIntegration
+    ha_integration = HomeAssistantIntegration(registry.ha_client)
+    registry.register_integration(ha_integration)
+
     # Inicjalizacja rejestru narzędzi AI
     registry.tools_registry = ToolsRegistry(
         registry.ha_client, rooms=rooms

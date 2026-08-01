@@ -3,6 +3,7 @@ import logging
 import time
 import requests
 
+from controller.integrations.base import BaseIntegration
 from controller.integrations.ha_client import HomeAssistantClient
 from controller.tools_registry import ToolsRegistry
 
@@ -11,10 +12,17 @@ ha_client: HomeAssistantClient | None = None
 tools_registry: ToolsRegistry | None = None
 worker_registry: dict[str, dict] = {}
 satellite_registry: dict[str, dict] = {}
+integration_registry: dict[str, BaseIntegration] = {}
 _settings_cache: dict = {}
 conversation_history: list[dict] = []
 last_interaction_time: float = 0.0
 controller_start_time: float = time.time()
+
+
+def register_integration(integration: BaseIntegration) -> None:
+    """Rejestruje integrację zewnętrzną w Kontrolerze."""
+    integration_registry[integration.id] = integration
+    logging.info(f"Zarejestrowano integrację: {integration.name} ({integration.id})")
 
 # Priorytety tierów usunięto zgodnie z Phase 1
 

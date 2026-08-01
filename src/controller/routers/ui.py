@@ -96,17 +96,21 @@ async def events_stream(request: Request):
 
 @router_ui.get("/api/status")
 async def get_status():
-    """Zwraca aktualny stan systemu: węzły, satelity, info o Kontrolerze."""
+    """Zwraca aktualny stan systemu: węzły, satelity, integracje, info o Kontrolerze."""
     uptime_s = int(time.time() - registry.controller_start_time)
 
-    # Status HA
-    ha_status = "unknown"
-    if registry.ha_client is not None:
+    # Pobieranie statusów wszystkich zarejestrowanych integracji
+    integrations = []
+    for integration in registry.integration_registry.values():
         try:
-            await asyncio.to_thread(registry.ha_client.check_connection)
-            ha_status = "online"
+            status = await integration.check_status()
         except Exception:
-            ha_status = "offline"
+            status = "offline"
+        integrations.append(integration.to_dict(status))
+
+    # Wyciągnięcie ha_status dla wstecznej kompatybilności
+    ha_integration = registry.integration_registry.get("home_assistant")
+    ha_status = integrations[0]["status"] if ha_integration and integrations else "unknown"
 
     workers = list(registry.worker_registry.values())
     satellites = list(registry.satellite_registry.values())
@@ -114,6 +118,7 @@ async def get_status():
     return {
         "workers": workers,
         "satellites": satellites,
+        "integrations": integrations,
         "controller": {
             "uptime_s": uptime_s,
             "ha_status": ha_status,
