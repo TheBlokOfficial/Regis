@@ -120,7 +120,7 @@ class SatelliteNode:
             except Exception:
                 self.server_url = "http://127.0.0.1:8000"
 
-        self.satellite_id = settings.get("satellite_id", "windows-pc-sat")
+        self.satellite_id = settings.get("instance_name", settings.get("satellite_id", "RTX-5070"))
         self.event_bus = EventBus(
             controller_url=self.server_url,
             satellite_id=self.satellite_id,

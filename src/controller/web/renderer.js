@@ -205,7 +205,10 @@ export function markSatelliteOffline(id) {
 }
 
 export function updateSatelliteVAD(satId, eventType) {
-    const el = document.getElementById(`vad-${satId}`);
+    let el = document.getElementById(`vad-${satId}`);
+    if (!el) {
+        el = document.querySelector(".satellite-card .vad-status") || document.querySelector(".vad-status");
+    }
     if (!el) return;
 
     if (eventType === "vad_speech") {
