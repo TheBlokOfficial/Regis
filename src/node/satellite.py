@@ -191,6 +191,13 @@ class SatelliteNode:
         # Odłóż klatkę do bufora pre-rekordu przed jej skonsumowaniem
         self.ring_buffer.append(chunk)
         
+        # Continuous VAD Tracking (użytkownik mówi / milczy przed wybudzeniem)
+        is_speech = self.vad.is_speech(chunk)
+        current_speech_state = "vad_speech" if is_speech else "vad_silence"
+        if getattr(self, "_last_wakeword_speech_state", None) != current_speech_state:
+            self.event_bus.emit({"type": current_speech_state})
+            self._last_wakeword_speech_state = current_speech_state
+
         pcm16_1d = chunk[:, 0]
         prediction = self.oww_model.predict(pcm16_1d)
         
