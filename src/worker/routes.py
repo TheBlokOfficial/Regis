@@ -4,8 +4,8 @@ from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from controller.embedded_worker.registration import registration_manager
-from controller.embedded_worker.service import inference_service
+from worker.registration import registration_manager
+from worker.service import inference_service
 
 router = APIRouter()
 
@@ -22,12 +22,17 @@ class ChatRequest(BaseModel):
 async def health():
     if not inference_service.worker_node:
         return {"status": "starting"}
-    return {
-        "status": "ok",
-        "worker_id": registration_manager.worker_id,
-        "model": inference_service.worker_node.llm_engine.model_name,
-        "tier": inference_service.worker_node.llm_engine.tier
-    }
+    try:
+        engine = inference_service.worker_node.llm_engine
+        model_name = getattr(engine.backend, "model_name", "nieznany")
+        return {
+            "status": "ok",
+            "worker_id": registration_manager.worker_id,
+            "model": model_name,
+            "tier": engine.tier
+        }
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
 
 
 @router.post("/v1/chat/stream")

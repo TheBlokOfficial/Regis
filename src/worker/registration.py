@@ -29,12 +29,15 @@ class WorkerRegistrationManager:
         self.worker_id = settings.get("worker_id", f"worker-{socket.gethostname()}")
         self.controller_url = self.resolve_controller_url(settings)
 
+        from core.discovery import get_local_ip
+
         worker_port = settings.get("worker_port", 8001)
-        worker_host = settings.get("worker_host", "127.0.0.1")
+        worker_host = settings.get("worker_host", get_local_ip())
+        registration_host = get_local_ip() if worker_host in ("0.0.0.0", "127.0.0.1", "localhost") else worker_host
 
         self.registration_payload = {
             "id": self.worker_id,
-            "host": worker_host,
+            "host": registration_host,
             "port": worker_port,
             "model_name": selected_model,
             "tier": active_tier

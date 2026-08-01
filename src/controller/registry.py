@@ -34,7 +34,7 @@ async def _heartbeat_loop():
         for w in workers:
             try:
                 url = f"{w['base_url']}/v1/health"
-                resp = await asyncio.to_thread(requests.get, url, timeout=1.0)
+                resp = await asyncio.to_thread(requests.get, url, timeout=5.0)
                 resp.raise_for_status()
             except Exception as e:
                 logging.warning(f"[Heartbeat] Węzeł {w['id']} nie odpowiada ({type(e).__name__}). Usuwam z rejestru.")

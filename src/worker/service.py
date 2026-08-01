@@ -3,7 +3,7 @@ import json
 import logging
 import threading
 
-from controller.embedded_worker.node import WorkerNode
+from worker.node import WorkerNode
 from node.remote_tools_registry import RemoteToolsRegistry
 
 logger = logging.getLogger(__name__)
