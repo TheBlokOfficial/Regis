@@ -113,6 +113,8 @@ def start_satellite():
         env["PYTHONUNBUFFERED"] = "1"
             
         satellite_process = subprocess.Popen(cmd, env=env, **kwargs)
+        return True
+    return True
 
 def stop_satellite():
     global satellite_process
