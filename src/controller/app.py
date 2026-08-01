@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from controller import registry
 from controller.routers.satellites import router_satellites
 from controller.routers.workers import router_workers
+from controller.routers.nodes import router_nodes
 from controller.routers.chat import router_chat
 from controller.routers.tools import router_tools
 from controller.routers.ui import router_ui
@@ -75,6 +76,7 @@ app = FastAPI(title="Regis Controller", lifespan=lifespan)
 # Uwaga: router_ui MUSI być przed app.mount StaticFiles.
 # StaticFiles jest catch-all i prześlonĪ endpointy /api/* jeśli dodane wcześniej.
 routers = [
+    router_nodes,
     router_workers,
     router_satellites,
     router_tools,

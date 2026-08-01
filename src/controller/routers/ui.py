@@ -112,10 +112,12 @@ async def get_status():
     ha_integration = registry.integration_registry.get("home_assistant")
     ha_status = integrations[0]["status"] if ha_integration and integrations else "unknown"
 
-    workers = list(registry.worker_registry.values())
-    satellites = list(registry.satellite_registry.values())
+    nodes = list(registry.node_registry.values())
+    workers = registry.get_worker_nodes()
+    satellites = registry.get_satellite_nodes()
 
     return {
+        "nodes": nodes,
         "workers": workers,
         "satellites": satellites,
         "integrations": integrations,
@@ -145,8 +147,8 @@ async def node_command(node_id: str, body: NodeCommand):
             status_code=400
         )
 
-    # Szukamy węzła w rejestrze workerów
-    node = registry.worker_registry.get(node_id)
+    # Szukamy węzła w rejestrze Zjednoczonych Węzłów lub workerów
+    node = registry.node_registry.get(node_id) or registry.worker_registry.get(node_id)
     if not node:
         return JSONResponse(
             {"error": f"Węzeł '{node_id}' nie jest zarejestrowany."},

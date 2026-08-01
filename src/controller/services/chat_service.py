@@ -119,7 +119,7 @@ def proxy_sse_to_queue(
             force_worker = True
 
     if is_audio or not isinstance(backend, OpenRouterBackend) or force_worker:
-        workers = list(registry.worker_registry.values())
+        workers = registry.get_worker_nodes()
         if not workers:
             loop.call_soon_threadsafe(
                 q.put_nowait,
@@ -243,7 +243,7 @@ def clear_conversation_history(satellite_id: str | None = None):
     """Resetuje historię konwersacji w pamięci Kontrolera oraz powiązanych Węzłach."""
     registry.clear_session_history(satellite_id)
 
-    for worker in list(registry.worker_registry.values()):
+    for worker in registry.get_worker_nodes():
         try:
             requests.post(f"{worker['base_url']}/v1/clear_history", timeout=2)
         except Exception:

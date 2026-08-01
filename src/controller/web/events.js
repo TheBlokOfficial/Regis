@@ -25,6 +25,33 @@ export function handleEvent(event) {
 
     switch (event.type) {
 
+        case "node_registered": {
+            const node = event.node || event;
+            if (node.services && node.services.includes("worker")) {
+                upsertWorker({ id: node.id, host: node.host, port: node.port, model_name: node.model_name, priority: node.priority, status: "online" });
+                renderWorkerCard(workers[node.id]);
+            }
+            if (node.services && node.services.includes("satellite")) {
+                upsertSatellite({ id: node.id, room: node.room, type: node.node_type || "desktop", capabilities: node.capabilities });
+                renderSatelliteCard(satellites[node.id]);
+            }
+            appendLog(now, `[${node.id}]`, `Zjednoczony Węzeł zarejestrowany — usługi: ${node.services ? node.services.join(", ") : ""}`, "node_registered");
+            break;
+        }
+
+        case "node_unregistered": {
+            if (workers[event.id]) {
+                setWorkerStatus(event.id, "offline");
+                markWorkerOffline(event.id);
+            }
+            if (satellites[event.id]) {
+                removeSatellite(event.id);
+                markSatelliteOffline(event.id);
+            }
+            appendLog(now, `[${event.id}]`, "Zjednoczony Węzeł wyrejestrowany", "node_unregistered");
+            break;
+        }
+
         case "worker_registered": {
             upsertWorker({ ...event, status: "online" });
             renderWorkerCard(workers[event.id]);

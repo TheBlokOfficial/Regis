@@ -146,3 +146,22 @@ class SatelliteRegistrationRequest(BaseModel):
     type: str                     # "terminal" | "desktop" | "esp32"
     capabilities: list[str]      # np. ["text"] lub ["audio_in", "audio_out"]
     wakeword_local: bool = False
+
+
+class NodeRegistrationRequest(BaseModel):
+    """Payload wysyłany przez Węzeł podczas zbiorczej rejestracji w Kontrolerze."""
+    id: str
+    name: str | None = None
+    host: str
+    port: int = 8099
+    services: list[str] = ["worker", "satellite"]  # oferowane usługi: "worker", "satellite"
+    
+    # Metadane usługi Workera (LLM)
+    model_name: str | None = None
+    priority: int = 100
+
+    # Metadane usługi Satelity (Audio/VAD)
+    room: str | None = None
+    node_type: str = "desktop"
+    capabilities: list[str] = ["audio_input", "tts_output", "wakeword"]
+    wakeword_local: bool = True

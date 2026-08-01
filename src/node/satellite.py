@@ -159,37 +159,10 @@ class SatelliteNode:
         except Exception:
             pass
 
-    async def _register(self):
-        """Wysyła żądanie rejestracji Satelity do Kontrolera."""
-        url = f"{self.server_url}/v1/satellites/register"
-        payload = {
-            "id": self.satellite_id,
-            "room": getattr(self, "room", "gabinet"),
-            "type": "microphone",
-            "capabilities": ["audio_input", "tts_output", "wakeword"],
-            "wakeword_local": True
-        }
-        try:
-            resp = await asyncio.to_thread(requests.post, url, json=payload, timeout=5)
-            resp.raise_for_status()
-            logging.info(f"Zarejestrowano Satelitę '{self.satellite_id}' pod adresem {self.server_url}")
-        except Exception as e:
-            logging.warning(f"Błąd rejestracji Satelity w Kontrolerze: {e}")
-
-    def _unregister(self):
-        """Wysyła żądanie wyrejestrowania Satelity z Kontrolera."""
-        url = f"{self.server_url}/v1/satellites/{self.satellite_id}"
-        try:
-            requests.delete(url, timeout=2)
-            logging.info(f"Wyrejestrowano Satelitę '{self.satellite_id}' z Kontrolera.")
-        except Exception as e:
-            logging.warning(f"Błąd wyrejestrowywania Satelity: {e}")
-
     async def run(self):
         self.loop = asyncio.get_running_loop()
         self.audio_queue = asyncio.Queue()
         logging.info("Regis Satellite (Streaming & Smart Energy VAD)")
-        await self._register()
         self.event_bus.emit({"type": "state", "state": "WAKEWORD"})
         self.event_bus.log("Satelita uruchomiona - gotowość do nasłuchu Wake Word.")
         self.stream.start()
@@ -207,7 +180,6 @@ class SatelliteNode:
         finally:
             self.stream.stop()
             self.stream.close()
-            self._unregister()
             
     async def _handle_wakeword(self):
         if self.oww_model is None:

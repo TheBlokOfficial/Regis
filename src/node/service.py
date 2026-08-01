@@ -129,6 +129,66 @@ def is_worker_running():
 def is_satellite_running():
     return satellite_process is not None and satellite_process.poll() is None
 
+def register_node_with_controller():
+    """Wysyła zbiorczą rejestrację Zjednoczonego Węzła do Kontrolera."""
+    def _do_reg():
+        try:
+            import requests
+            from core.discovery import discover_controller, get_local_ip
+            
+            settings = get_settings()
+            node_id = settings.get("instance_name", settings.get("satellite_id", "RTX-5070"))
+            controller_url = settings.get("controller_url", "auto")
+            if controller_url == "auto":
+                try:
+                    controller_url = discover_controller()
+                except Exception:
+                    controller_url = "http://192.168.0.119:8000"
+                    
+            services = []
+            if is_worker_running() or settings.get("autostart_worker"):
+                services.append("worker")
+            if is_satellite_running() or settings.get("autostart_satellite"):
+                services.append("satellite")
+                
+            payload = {
+                "id": node_id,
+                "name": settings.get("instance_name", node_id),
+                "host": get_local_ip(),
+                "port": 8099,
+                "services": services,
+                "model_name": settings.get("selected_model", "qwen3.5:9b"),
+                "priority": settings.get("worker_priority", 100),
+                "room": settings.get("room", "pracownia_glowna"),
+                "node_type": "desktop",
+                "capabilities": ["audio_input", "tts_output", "wakeword"],
+                "wakeword_local": True
+            }
+            resp = requests.post(f"{controller_url}/v1/nodes/register", json=payload, timeout=5)
+            resp.raise_for_status()
+            print(f"Zjednoczony Węzeł '{node_id}' zarejestrowany w Kontrolerze ({controller_url}).")
+        except Exception as e:
+            print(f"Nie udało się zarejestrować Węzła w Kontrolerze: {e}")
+
+    threading.Thread(target=_do_reg, daemon=True).start()
+
+def unregister_node_with_controller():
+    try:
+        import requests
+        from core.discovery import discover_controller
+        settings = get_settings()
+        node_id = settings.get("instance_name", settings.get("satellite_id", "RTX-5070"))
+        controller_url = settings.get("controller_url", "auto")
+        if controller_url == "auto":
+            try:
+                controller_url = discover_controller()
+            except Exception:
+                controller_url = "http://192.168.0.119:8000"
+        requests.delete(f"{controller_url}/v1/nodes/{node_id}", timeout=2)
+        print(f"Wyrejestrowano Zjednoczony Węzeł '{node_id}' z Kontrolera.")
+    except Exception:
+        pass
+
 MANAGEMENT_PORT = 8099
 
 class _ServiceHandler(BaseHTTPRequestHandler):
@@ -277,6 +337,7 @@ def open_dashboard():
 def quit_all(icon=None, item=None):
     stop_worker()
     stop_satellite()
+    unregister_node_with_controller()
     if tray_icon:
         tray_icon.stop()
     elif icon:
@@ -322,6 +383,9 @@ def run_service():
 
     if settings.get("autostart_satellite"):
         start_satellite()
+
+    # Rejestracja Zjednoczonego Węzła z Kontrolerem
+    register_node_with_controller()
 
     tray_icon = pystray.Icon("node", create_default_icon(), "Regis Node", menu=get_menu())
     

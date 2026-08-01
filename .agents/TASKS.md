@@ -19,6 +19,14 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 
 - [ ] **[WORKER PROFILE SWAP]** Mechanizm ręcznego przełączania modelu workera na desktopie Windows między trybem Butler (mały model, `tier=butler`, testowanie ścieżki fallback) a trybem Regis (model 9B, `tier=regis`, zastępstwo chmury). Propozycja implementacji: dwa profile `.env` (`settings.worker.butler.env` / `settings.worker.regis.env`) + komenda CLI lub skrypt restartujący workera z wybranym profilem. Zadanie tymczasowe — traci sens po dostarczeniu Minisforum i wdrożeniu embedded fallback.
 
+### [FEATURE / ARCH] Wdrożenie Zjednoczonego Węzła (Node-Centric Architecture)
+
+- [x] **[NODE-CENTRIC — Etap 1]** Schematy & Rejestr: `src/core/schemas.py` (`NodeRegistrationRequest`), `src/controller/registry.py` (`node_registry`), `src/controller/routers/nodes.py` (`/v1/nodes/register`).
+- [x] **[NODE-CENTRIC — Etap 2]** Menedżer Węzła PC: `src/node/service.py` (zbiorcza rejestracja `services: ["worker", "satellite"]` i wyrejestrowywanie całej maszyny).
+- [x] **[NODE-CENTRIC — Etap 3]** Routing i Heartbeat: `src/controller/services/chat_service.py` (routing do Węzła), `src/controller/routers/ui.py` (odbiór `POST /api/node/event`), heartbeat na porcie 8099.
+- [x] **[NODE-CENTRIC — Etap 4]** Reaktywny Web UI: `src/controller/web/` (unifikacja kart w "Węzły Systemowe" z połączonym podglądem modeli LLM oraz VAD Satelity).
+- [x] **[NODE-CENTRIC — Etap 5]** Testy, Weryfikacja i Deployment: Uruchomienie `pytest`, testy manualne `service.bat` i wysłanie aktualizacji Kontrolera na Raspberry Pi.
+
 ### [FEATURE] Web UI (Reaktywny Panel Kontrolny)
 
 - [x] **[WEB UI — Faza 1]** Backend Kontrolera: stworzenie `src/controller/event_bus.py` + router `src/controller/routers/ui.py` (endpointy `/api/events` SSE, `/api/status`, `/api/node/{id}/command`). Rejestracja w `app.py` PRZED `StaticFiles`. Szczegóły: `docs/web_ui_rfc.md` §5.

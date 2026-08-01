@@ -10,13 +10,46 @@ from controller.tools_registry import ToolsRegistry
 # Globalne instancje — inicjalizowane w lifespan
 ha_client: HomeAssistantClient | None = None
 tools_registry: ToolsRegistry | None = None
-worker_registry: dict[str, dict] = {}
-satellite_registry: dict[str, dict] = {}
+node_registry: dict[str, dict] = {}       # Jednolity rejestr Zjednoczonych Węzłów
+worker_registry: dict[str, dict] = {}     # Kompatybilność wsteczna dla workerów
+satellite_registry: dict[str, dict] = {}  # Kompatybilność wsteczna dla satelitów
 integration_registry: dict[str, BaseIntegration] = {}
 _settings_cache: dict = {}
 conversation_sessions: dict[str, list[dict]] = {}
 session_last_interaction_times: dict[str, float] = {}
 controller_start_time: float = time.time()
+
+
+def get_worker_nodes() -> list[dict]:
+    """Zwraca listę zarejestrowanych Węzłów oferujących usługę 'worker' (LLM)."""
+    workers = list(worker_registry.values())
+    for node in node_registry.values():
+        if "worker" in node.get("services", []):
+            workers.append({
+                "id": node["id"],
+                "host": node["host"],
+                "port": node.get("worker_port", 8001),
+                "base_url": f"http://{node['host']}:{node.get('worker_port', 8001)}",
+                "model_name": node.get("model_name", "qwen3.5:9b"),
+                "priority": node.get("priority", 100),
+            })
+    return workers
+
+
+def get_satellite_nodes() -> list[dict]:
+    """Zwraca listę zarejestrowanych Węzłów / Satelit oferujących usługę 'satellite'."""
+    satellites = list(satellite_registry.values())
+    for node in node_registry.values():
+        if "satellite" in node.get("services", []):
+            satellites.append({
+                "id": node["id"],
+                "room": node.get("room"),
+                "type": node.get("node_type", "desktop"),
+                "capabilities": node.get("capabilities", ["audio_input", "tts_output", "wakeword"]),
+                "wakeword_local": node.get("wakeword_local", True),
+                "last_seen": node.get("last_seen", time.time()),
+            })
+    return satellites
 
 
 def register_integration(integration: BaseIntegration) -> None:
@@ -85,16 +118,23 @@ async def _heartbeat_loop():
                     import controller.event_bus as event_bus
                     await event_bus.publish({"type": "worker_unregistered", "id": w['id']})
 
-        # 3. Sprawdzanie aktywności Satelit (czyszczenie martwych > 60s bez pingu)
-        satellites = list(satellite_registry.values())
-        for s in satellites:
-            last_seen = s.get("last_seen", now)
-            if now - last_seen > 60.0:
-                logging.info(f"[Heartbeat] Satelita '{s['id']}' brak aktywności od 60s. Usuwam z rejestru.")
-                if s['id'] in satellite_registry:
-                    del satellite_registry[s['id']]
-                    import controller.event_bus as event_bus
-                    await event_bus.publish({"type": "satellite_unregistered", "id": s['id']})
+        # 4. Sprawdzanie zdrowia Zjednoczonych Węzłów (port 8099)
+        nodes = list(node_registry.values())
+        for n in nodes:
+            try:
+                url = f"http://{n['host']}:{n.get('port', 8099)}/status"
+                resp = await asyncio.to_thread(requests.get, url, timeout=4.0)
+                resp.raise_for_status()
+                node_registry[n['id']]["last_seen"] = now
+            except Exception:
+                # Jeśli port /status nie odpowiedział, sprawdzamy last_seen
+                last_seen = n.get("last_seen", now)
+                if now - last_seen > 60.0:
+                    logging.info(f"[Heartbeat] Zjednoczony Węzeł '{n['id']}' nie odpowiada od 60s. Usuwam z rejestru.")
+                    if n['id'] in node_registry:
+                        del node_registry[n['id']]
+                        import controller.event_bus as event_bus
+                        await event_bus.publish({"type": "node_unregistered", "id": n['id']})
 
 
 
