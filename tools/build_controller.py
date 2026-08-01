@@ -23,9 +23,11 @@ def deploy_to_pi():
     os.makedirs(temp_dir)
     
     # Skupiamy się na pakowaniu czystego kodu oraz stałych promptów i konfiguracji
-    shutil.copytree("src", os.path.join(temp_dir, "src"))
+    # Igmitujemy pliki binarne modeli (.onnx, .bin, .pth) oraz bufory __pycache__
+    ignore_func = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", "*.onnx", "*.bin", "*.pth", "*.tar.gz")
+    shutil.copytree("src", os.path.join(temp_dir, "src"), ignore=ignore_func)
     if os.path.exists("config"):
-        shutil.copytree("config", os.path.join(temp_dir, "config"))
+        shutil.copytree("config", os.path.join(temp_dir, "config"), ignore=ignore_func)
     
     if os.path.exists("requirements.txt"):
         shutil.copy("requirements.txt", temp_dir)
@@ -37,7 +39,8 @@ def deploy_to_pi():
     zip_file = f"{zip_base}.zip"
     shutil.rmtree(temp_dir)
     
-    print(f"3. Wysyłanie archiwum {zip_file} przez SCP na malinkę...")
+    zip_size_mb = os.path.getsize(zip_file) / (1024 * 1024)
+    print(f"3. Wysyłanie czystego archiwum {zip_file} ({zip_size_mb:.2f} MB) przez SCP na malinkę...")
     result = subprocess.run(["scp", zip_file, f"{server}:{remote_dir}/regis_update.zip"])
     if result.returncode != 0:
         print("[BŁĄD] Wystąpił błąd podczas wysyłania archiwum przez SCP.")
