@@ -12,6 +12,7 @@ router_nodes = APIRouter()
 @router_nodes.post("/v1/nodes/register")
 async def register_node(request: NodeRegistrationRequest):
     """Rejestruje Zjednoczony Węzeł w Kontrolerze."""
+    is_new = request.id not in registry.node_registry
     node_data = {
         "id": request.id,
         "name": request.name or request.id,
@@ -27,13 +28,13 @@ async def register_node(request: NodeRegistrationRequest):
         "last_seen": time.time(),
     }
     registry.node_registry[request.id] = node_data
-    logging.info(f"Zarejestrowano Zjednoczony Węzeł: {request.id} (host={request.host}:{request.port}, usługi={request.services})")
-    
-    await event_bus.publish({
-        "type": "node_registered",
-        "id": request.id,
-        "node": node_data,
-    })
+    if is_new:
+        logging.info(f"Zarejestrowano Zjednoczony Węzeł: {request.id} (host={request.host}:{request.port}, usługi={request.services})")
+        await event_bus.publish({
+            "type": "node_registered",
+            "id": request.id,
+            "node": node_data,
+        })
     return {"status": "registered", "id": request.id}
 
 

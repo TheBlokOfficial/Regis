@@ -22,6 +22,8 @@ _event_subscribers_lock = threading.Lock()
 
 def _bus_publish(event: dict) -> None:
     """Wrzuca event do historii i rozsyła do wszystkich aktywnych subskrybentów SSE."""
+    if "timestamp" not in event:
+        event["timestamp"] = time.strftime("%H:%M:%S")
     with _event_subscribers_lock:
         _event_history.append(event)
         for sub in _event_subscribers:

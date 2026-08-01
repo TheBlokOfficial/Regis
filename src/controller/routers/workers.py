@@ -11,6 +11,7 @@ router_workers = APIRouter()
 @router_workers.post("/v1/workers/register")
 async def register_worker(request: WorkerRegistrationRequest):
     """Rejestruje Węzeł Roboczy w Kontrolerze. Wywoływane przez Worker przy starcie."""
+    is_new = request.id not in registry.worker_registry
     registry.worker_registry[request.id] = {
         "id": request.id,
         "host": request.host,
@@ -19,15 +20,16 @@ async def register_worker(request: WorkerRegistrationRequest):
         "priority": request.priority,
         "base_url": f"http://{request.host}:{request.port}"
     }
-    logging.info(f"Zarejestrowano węzeł: {request.id} @ {request.host}:{request.port} (priority={request.priority})")
-    await event_bus.publish({
-        "type": "worker_registered",
-        "id": request.id,
-        "host": request.host,
-        "port": request.port,
-        "model_name": request.model_name,
-        "priority": request.priority,
-    })
+    if is_new:
+        logging.info(f"Zarejestrowano węzeł: {request.id} @ {request.host}:{request.port} (priority={request.priority})")
+        await event_bus.publish({
+            "type": "worker_registered",
+            "id": request.id,
+            "host": request.host,
+            "port": request.port,
+            "model_name": request.model_name,
+            "priority": request.priority,
+        })
     return {"status": "registered", "id": request.id}
 
 

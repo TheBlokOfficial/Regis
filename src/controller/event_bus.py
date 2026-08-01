@@ -10,12 +10,16 @@ import json
 import logging
 from collections import deque
 
+import datetime
+
 _history: deque = deque(maxlen=500)
 _subscribers: list[asyncio.Queue] = []
 
 
 async def publish(event: dict) -> None:
     """Publikuje zdarzenie do historii i do wszystkich aktywnych subskrybentów."""
+    if "timestamp" not in event:
+        event["timestamp"] = datetime.datetime.now().strftime("%H:%M:%S")
     _history.append(event)
     for q in list(_subscribers):
         try:
