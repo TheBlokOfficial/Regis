@@ -7,12 +7,16 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 
 ## Aktywne Zadania
 
+### [INFRA / HARDWARE]
+- [ ] Migracja Kontrolera i Workera na nową stację Minisforum UM760 Slim (x86_64, Ryzen 5 7640HS) po jej otrzymaniu przez Użytkownika
+
 ### [ARCH] Dystrybucja
 
 - [ ] [Sesja E] Nowy system dystrybucji Windows (Regis): zbudowanie instalatora Inno Setup (`RegisNodeSetup.exe`) + Python systemowy jako prerequisite (szczegóły: `docs/distribution_rfc.md`)
 
 ### [FEATURE] Funkcje
 
+- [x] **[NLU / STABILITY]** Naprawa pętli awarii workera RPi5, usunięcie przestarzałego `regis-stt.service`, wdrożenie oficjalnego `format: json` w Ollamie i przywrócenie profilera czasowego w NLU
 - [ ] Migracja TTS na model Coqui XTTS v2 ("Incepcja Głosowa" / CPU)
 - [ ] Integracja systemu WakeWord (oczekiwanie na paczki próbek użytkownika do modelu)
 - [ ] Zaprojektowanie i wdrożenie nowej Pamięci Długoterminowej (np. wektorowej)
@@ -28,6 +32,9 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 ## Zarchiwizowane (Historia Sesji)
 
 Poniżej skrócone podsumowanie kategorii ukończonych prac. Szczegółowa historia dostępna w `git log`.
+
+### Optymalizacja NLU i Diagnostyki (RPi5)
+Naprawiono błędy parsowania JSON przy modelach z funkcją myślenia (`qwen3`), zastępując Prefix Injection natywnym parametrem `"format": "json"` w Ollama API. Wyczyszczono zdeprecjonowane usługi systemd (`regis-stt.service`). Zintegrowano profiler `on_profiler` w `nlu_agent.py` i przywrócono pełne statystyki czasu wykonania w stopce CLI (`TTFT`, `Gen`, `Narzędzia`). Przestawiono domyślny model Butlera na `qwen2.5:0.5b`.
 
 ### Architektura i Restrukturyzacja
 Ukończono pełną restrukturyzację monorepo do układu `src/` z trzema usługami produkcyjnymi (`controller`, `controller.worker`, `node`). Rozwiązano dług dystrybucyjny — system `.whl` dla RPi5 i Portable App dla Windows. Wdrożono Auto-Discovery (UDP Broadcast Zero-Conf). Wdrożono Rejestr Encji (Satelity i Węzły), Spatial Context Filtering, Continuous Registration. Przeprowadzono pełny re-branding kodu na "Regis".

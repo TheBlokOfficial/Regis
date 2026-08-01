@@ -99,11 +99,11 @@ class ReActAgent:
                 "messages": messages,
                 "stream": True,
                 "keep_alive": -1,
+                "think": False,
                 "options": {
                     "temperature": self.temperature,
                     "num_ctx": 8192,
                     "top_p": 0.8,
-                    "think": False,
                     "repeat_penalty": 1.05,
                     "num_predict": 1536,
                     "stop": ["</action>", "</action >"]

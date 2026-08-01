@@ -14,34 +14,46 @@ class NLUAgent:
     def __init__(self, model_name: str):
         self.model_name = model_name
 
-    def generate_response(self, messages: list[dict], tools_registry, on_tool_call: Any, on_thought_token: Any, on_content_token: Any, on_raw_tool_call: Any = None) -> str:
+    def generate_response(self, messages: list[dict], tools_registry, on_tool_call: Any, on_thought_token: Any, on_content_token: Any, on_raw_tool_call: Any = None, on_profiler: Any = None) -> str:
         """Szybka ścieżka generacji. Używa Structured Outputs do wydobycia intencji."""
+        import time
         settings = config.load_settings()
         chat_url = f"{settings.get('ollama_url', 'http://127.0.0.1:11434')}/api/chat"
 
         nlu_messages = list(messages)
-        nlu_messages.append({"role": "assistant", "content": "{"})
 
         payload = {
             "model": self.model_name,
             "messages": nlu_messages,
+            "format": "json",
             "stream": True,
             "keep_alive": -1,
+            "think": False,
             "options": {
                 "temperature": 0.0,
                 "num_predict": 200,
-                "think": False
             }
         }
         
         try:
+            inference_start = time.perf_counter()
+            first_token_received = False
+            ttft = 0.0
+
             response = requests.post(chat_url, json=payload, stream=True, timeout=30)
             response.raise_for_status()
             
-            content = "{"
+            content = ""
             for line in response.iter_lines():
                 if not line:
                     continue
+                
+                if not first_token_received:
+                    ttft = time.perf_counter() - inference_start
+                    if on_profiler:
+                        on_profiler({"metric": "llm_ttft", "value": int(ttft * 1000)})
+                    first_token_received = True
+
                 try:
                     data = json.loads(line.decode("utf-8"))
                     chunk = data.get("message", {}).get("content", "")
@@ -52,6 +64,11 @@ class NLUAgent:
                         on_thought_token(thinking)
                 except json.JSONDecodeError:
                     pass
+
+            if first_token_received:
+                gen_time = (time.perf_counter() - inference_start) - ttft
+                if on_profiler:
+                    on_profiler({"metric": "llm_gen", "value": int(gen_time * 1000)})
             
             logger.debug(f"NLU surowa odpowiedź modelu: {content!r}")
             try:
@@ -94,7 +111,12 @@ class NLUAgent:
             if on_tool_call:
                 on_tool_call(log_text)
                     
+                tool_start = time.perf_counter()
                 tool_result = tools_registry.execute_tool("execute_action", tool_args)
+                tool_elapsed = time.perf_counter() - tool_start
+
+                if on_profiler:
+                    on_profiler({"metric": "tools", "value": int(tool_elapsed * 1000)})
                 
                 if on_tool_call:
                     on_tool_call(f"< Kontroler zwrócił: {tool_result}")

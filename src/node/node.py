@@ -37,9 +37,23 @@ class WorkerNode:
             tier=tier,
             temperature=temperature
         )
-        self.stt_engine = STTEngine(model_size="medium", language="pl")
-        self.tts_engine = TTSEngine(model_name="pl_PL-darkman-medium")
+        self._stt_engine = None
+        self._tts_engine = None
         logging.info(f"WorkerNode uruchomiony. Model={model_name}, Tier={tier}")
+
+    @property
+    def stt_engine(self):
+        if self._stt_engine is None:
+            logging.info("Leniwe ładowanie silnika STT (Whisper)...")
+            self._stt_engine = STTEngine(model_size="small", language="pl")
+        return self._stt_engine
+
+    @property
+    def tts_engine(self):
+        if self._tts_engine is None:
+            logging.info("Leniwe ładowanie silnika TTS (Piper)...")
+            self._tts_engine = TTSEngine(model_name="pl_PL-darkman-medium")
+        return self._tts_engine
 
     def handle_chat(
         self,

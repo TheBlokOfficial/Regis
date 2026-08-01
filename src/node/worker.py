@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 
     active_tier = settings.get("active_tier", "butler")
     tier_config = {
-        "butler": {"model": "qwen3.5:0.8b", "temperature": 0.1},
+        "butler": {"model": "qwen2.5:0.5b", "temperature": 0.1},
         "regis":  {"model": "qwen3.5:9b",  "temperature": 0.1},
     }
     tier_cfg = tier_config.get(active_tier, tier_config["butler"])
@@ -171,12 +171,17 @@ async def health():
     """Liveness check — zwraca stan węzła i informacje o modelu."""
     if not worker_node:
         return {"status": "starting"}
-    return {
-        "status": "ok",
-        "worker_id": _worker_id,
-        "model": worker_node.llm_engine.model_name,
-        "tier": worker_node.llm_engine.tier
-    }
+    try:
+        engine = worker_node.llm_engine
+        model_name = getattr(engine.backend, "model_name", "nieznany")
+        return {
+            "status": "ok",
+            "worker_id": _worker_id,
+            "model": model_name,
+            "tier": engine.tier
+        }
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
 
 
 @app.post("/v1/chat/stream")

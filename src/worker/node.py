@@ -33,9 +33,21 @@ class WorkerNode:
             tier=tier,
             temperature=temperature,
             history_limit=history_limit
+        self.llm_engine = LLMEngine(
+            model_name=model_name,
+            tier=tier,
+            temperature=temperature,
+            history_limit=history_limit
         )
-        self.stt_engine = STTEngine(model_size="small", language="pl")
+        self._stt_engine = None
         logging.info(f"WorkerNode uruchomiony. Model={model_name}, Tier={tier}")
+
+    @property
+    def stt_engine(self):
+        if self._stt_engine is None:
+            logging.info("Leniwe ładowanie silnika STT (Whisper)...")
+            self._stt_engine = STTEngine(model_size="small", language="pl")
+        return self._stt_engine
 
     def handle_chat(
         self,

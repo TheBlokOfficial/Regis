@@ -31,7 +31,7 @@ class OllamaBackend(LLMBackend):
 
         if tier == "butler":
             agent = NLUAgent(self.model_name)
-            return agent.generate_response(messages, tools_registry, on_tool_call, on_thought_token, on_content_token, on_raw_tool_call)
+            return agent.generate_response(messages, tools_registry, on_tool_call, on_thought_token, on_content_token, on_raw_tool_call, on_profiler=on_profiler)
         else:
             agent = ReActAgent(self.model_name, self.temperature)
             return agent.generate_response(messages, tools_registry, parser, on_tool_call, on_thought_token, on_content_token, on_raw_tool_call, on_profiler=on_profiler)
