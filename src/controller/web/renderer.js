@@ -40,17 +40,15 @@ export function renderIntegrationCard(integration) {
     const badgeText = labels[status] || status.toUpperCase();
 
     card.id        = `integration-${id}`;
-    card.className = "integration-card";
+    card.className = "integration-item";
     card.innerHTML = `
-        <div class="card-title">
+        <div class="integration-info">
             <span class="dot ${status}"></span>
-            ${escHtml(name)}
+            <span class="integration-name">${escHtml(name)}</span>
+            <span class="integration-type">${escHtml(type)}</span>
         </div>
-        <div class="card-meta">
-            <span><span class="key">Typ:</span>${escHtml(type)}</span>
-            <span><span class="key">Opis:</span>${escHtml(detail)}</span>
-            <span><span class="key">Status:</span><span class="badge ${status}">${badgeText}</span></span>
-        </div>
+        <div class="integration-detail">${escHtml(detail)}</div>
+        <span class="badge ${status}">${badgeText}</span>
     `;
 
     const body  = document.getElementById("integrations-body");
@@ -62,7 +60,7 @@ export function renderIntegrationCard(integration) {
 
     const countEl = document.getElementById("integration-count");
     if (countEl) {
-        countEl.textContent = body.querySelectorAll(".integration-card").length;
+        countEl.textContent = body.querySelectorAll(".integration-item").length;
     }
 }
 

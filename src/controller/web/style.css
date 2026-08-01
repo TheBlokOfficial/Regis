@@ -176,8 +176,8 @@ html, body {
     padding: 12px 0;
 }
 
-/* ── Karty węzłów, satelit i integracji ── */
-.node-card, .satellite-card, .integration-card {
+/* ── Karty węzłów i satelit ── */
+.node-card, .satellite-card {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-card-alt);
@@ -185,8 +185,54 @@ html, body {
     margin-bottom: 12px;
 }
 
-.node-card:last-child, .satellite-card:last-child, .integration-card:last-child {
+.node-card:last-child, .satellite-card:last-child {
     margin-bottom: 0;
+}
+
+/* ── Kompaktowa lista integracji ── */
+.integration-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card-alt);
+    margin-bottom: 8px;
+    font-size: 15px;
+}
+
+.integration-item:last-child {
+    margin-bottom: 0;
+}
+
+.integration-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.integration-name {
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.integration-type {
+    font-size: 13.5px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+.integration-detail {
+    font-size: 13.5px;
+    color: var(--text-meta);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
 }
 
 .card-title {
