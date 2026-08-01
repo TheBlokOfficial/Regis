@@ -87,10 +87,10 @@ export function renderWorkerCard(worker) {
     const existing = document.getElementById(`worker-${id}`);
     const card     = existing || document.createElement("div");
 
-    const status = worker.status || "online";
-    const model  = worker.model_name || "—";
-    const tier   = worker.tier || "—";
-    const host   = worker.host ? `${worker.host}:${worker.port || "?"}` : "—";
+    const status   = worker.status || "online";
+    const model    = worker.model_name || "—";
+    const priority = worker.priority !== undefined ? worker.priority : "—";
+    const host     = worker.host ? `${worker.host}:${worker.port || "?"}` : "—";
 
     card.id        = `worker-${id}`;
     card.className = "node-card";
@@ -101,7 +101,7 @@ export function renderWorkerCard(worker) {
         </div>
         <div class="card-meta">
             <span><span class="key">Model:</span>${escHtml(model)}</span>
-            <span><span class="key">Tier:</span>${escHtml(tier)}</span>
+            <span><span class="key">Priorytet:</span>${escHtml(priority)}</span>
             <span><span class="key">Host:</span>${escHtml(host)}</span>
             <span><span class="key">Status:</span><span class="badge ${status}">${status}</span></span>
         </div>
