@@ -1,8 +1,7 @@
 /* =========================================================
    Regis — Panel Kontrolny | style.css
    Ascetyczny ciemny motyw zgodny z filozofią projektu.
-   Kolory semantyczne: zielony=online, czerwony=offline/błąd.
-   Zero dekoracyjnego cyan/magenta/yellow.
+   Przeskalowany do 150% bazowego rozmiaru.
    ========================================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
@@ -23,7 +22,7 @@
     --btn-danger:  #3a1212;
     --btn-danger-hover: #4a1818;
     --font:        'IBM Plex Mono', 'Courier New', monospace;
-    --radius:      4px;
+    --radius:      6px;
 }
 
 /* ── Reset ── */
@@ -34,7 +33,7 @@ html, body {
     background: var(--bg);
     color: var(--text);
     font-family: var(--font);
-    font-size: 13px;
+    font-size: 19.5px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
 }
@@ -48,9 +47,9 @@ html, body {
         "status"
         "main";
     height: 100vh;
-    max-width: 1400px;
+    max-width: 2100px;
     margin: 0 auto;
-    padding: 0 16px 16px;
+    padding: 0 24px 24px;
 }
 
 /* ── Nagłówek ── */
@@ -59,13 +58,13 @@ html, body {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    padding: 14px 0 10px;
+    padding: 21px 0 15px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 14px;
+    margin-bottom: 21px;
 }
 
 #header h1 {
-    font-size: 13px;
+    font-size: 19.5px;
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -73,7 +72,7 @@ html, body {
 }
 
 #clock {
-    font-size: 12px;
+    font-size: 18px;
     color: var(--text-meta);
 }
 
@@ -81,21 +80,21 @@ html, body {
 #status-bar {
     grid-area: status;
     display: flex;
-    gap: 24px;
+    gap: 36px;
     align-items: center;
-    padding: 8px 12px;
+    padding: 12px 18px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-card);
-    margin-bottom: 14px;
+    margin-bottom: 21px;
     flex-wrap: wrap;
 }
 
 .status-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
+    gap: 9px;
+    font-size: 16.5px;
     color: var(--text-meta);
 }
 
@@ -109,8 +108,8 @@ html, body {
 
 /* ── Wskaźnik online/offline ── */
 .dot {
-    width: 6px;
-    height: 6px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -120,10 +119,10 @@ html, body {
 .dot.unknown { background: var(--text-dim); }
 
 .badge {
-    font-size: 10px;
+    font-size: 15px;
     font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 2px;
+    padding: 2px 9px;
+    border-radius: 3px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
 }
@@ -140,7 +139,7 @@ html, body {
     grid-template-areas:
         "workers satellites"
         "log     log";
-    gap: 14px;
+    gap: 21px;
     min-height: 0;
 }
 
@@ -151,13 +150,13 @@ html, body {
     background: var(--bg-card);
     display: flex;
     flex-direction: column;
-    min-height: 160px;
+    min-height: 240px;
 }
 
 .panel-header {
-    padding: 8px 12px;
+    padding: 12px 18px;
     border-bottom: 1px solid var(--border);
-    font-size: 10px;
+    font-size: 15px;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -165,16 +164,16 @@ html, body {
 }
 
 .panel-body {
-    padding: 10px 12px;
+    padding: 15px 18px;
     flex: 1;
     overflow-y: auto;
 }
 
 .empty-state {
     color: var(--text-dim);
-    font-size: 11px;
+    font-size: 16.5px;
     font-style: italic;
-    padding: 8px 0;
+    padding: 12px 0;
 }
 
 /* ── Karty węzłów i satelit ── */
@@ -182,8 +181,8 @@ html, body {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-card-alt);
-    padding: 10px 12px;
-    margin-bottom: 8px;
+    padding: 15px 18px;
+    margin-bottom: 12px;
 }
 
 .node-card:last-child, .satellite-card:last-child {
@@ -191,19 +190,19 @@ html, body {
 }
 
 .card-title {
-    font-size: 12px;
+    font-size: 18px;
     font-weight: 600;
     color: var(--text);
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
 }
 
 .card-meta {
-    font-size: 11px;
+    font-size: 16.5px;
     color: var(--text-meta);
-    margin-bottom: 8px;
+    margin-bottom: 12px;
     line-height: 1.8;
 }
 
@@ -213,23 +212,23 @@ html, body {
 
 .card-meta .key {
     color: var(--text-dim);
-    margin-right: 4px;
+    margin-right: 6px;
 }
 
 /* ── Przyciski sterowania ── */
 .card-actions {
     display: flex;
-    gap: 6px;
+    gap: 9px;
     flex-wrap: wrap;
-    margin-top: 8px;
+    margin-top: 12px;
 }
 
 .btn {
     font-family: var(--font);
-    font-size: 10px;
+    font-size: 15px;
     font-weight: 500;
     letter-spacing: 0.04em;
-    padding: 4px 10px;
+    padding: 6px 15px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--btn);
@@ -276,15 +275,15 @@ html, body {
 #log-list {
     flex: 1;
     overflow-y: auto;
-    padding: 6px 12px;
-    font-size: 11px;
+    padding: 9px 18px;
+    font-size: 16.5px;
 }
 
 .log-entry {
     display: grid;
-    grid-template-columns: 60px 140px 1fr;
-    gap: 8px;
-    padding: 3px 0;
+    grid-template-columns: 90px 210px 1fr;
+    gap: 12px;
+    padding: 4.5px 0;
     border-bottom: 1px solid transparent;
     animation: fadeIn 0.2s ease;
     color: var(--text-meta);
@@ -296,11 +295,11 @@ html, body {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-2px); }
+    from { opacity: 0; transform: translateY(-3px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
-.log-time   { color: var(--text-dim); font-size: 10px; flex-shrink: 0; }
+.log-time   { color: var(--text-dim); font-size: 15px; flex-shrink: 0; }
 .log-source { color: var(--text-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .log-msg    { color: var(--text); word-break: break-word; }
 
@@ -314,23 +313,23 @@ html, body {
 
 /* ── Separator VAD ── */
 .vad-status {
-    font-size: 10px;
+    font-size: 15px;
     display: inline-block;
-    padding: 1px 6px;
-    border-radius: 2px;
+    padding: 2px 9px;
+    border-radius: 3px;
     border: 1px solid var(--border);
     color: var(--text-dim);
 }
 .vad-status.active { border-color: var(--online); color: var(--online); }
 
 /* ── Scrollbary ── */
-::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
 
 /* ── Responsive ── */
-@media (max-width: 768px) {
+@media (max-width: 1152px) {
     #main {
         grid-template-columns: 1fr;
         grid-template-areas:
@@ -340,11 +339,11 @@ html, body {
     }
 
     #log-panel {
-        min-height: 200px;
+        min-height: 300px;
     }
 
     .log-entry {
-        grid-template-columns: 50px 1fr;
+        grid-template-columns: 75px 1fr;
         grid-template-rows: auto auto;
     }
 
