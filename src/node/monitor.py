@@ -157,3 +157,6 @@ def run_monitor() -> None:
 
 # Alias wstecznej kompatybilności — dashboard.py i main.py importują dev_chat
 dev_chat = run_monitor
+
+if __name__ == "__main__":
+    run_monitor()

@@ -202,3 +202,7 @@ def run_voice_monitor() -> None:
         pass
 
     console.print("\n[info]Zamknięto monitor głosowy.[/info]\n")
+
+
+if __name__ == "__main__":
+    run_voice_monitor()
