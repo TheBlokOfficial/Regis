@@ -364,9 +364,7 @@ class SatelliteNode:
             self.audio_queue.get_nowait()
 
 async def main():
-    import atexit
     node = SatelliteNode()
-    atexit.register(node._unregister)
     await node.run()
 
 if __name__ == "__main__":
