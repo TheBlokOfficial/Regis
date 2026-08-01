@@ -15,22 +15,16 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     """Zarządza cyklem życia Węzła Roboczego."""
     settings = config.load_settings()
-    active_tier = settings.get("active_tier", "butler")
-    tier_defaults = {
-        "butler": {"model": "qwen3:1.7b", "temperature": 0.1, "history_limit": 0},
-        "regis":  {"model": "qwen3.5:9b",  "temperature": 0.1, "history_limit": 10},
-    }
-    tier_cfg = tier_defaults.get(active_tier, tier_defaults["butler"])
-    selected_model = settings.get("selected_model", tier_cfg["model"])
+    selected_model = settings.get("selected_model", "qwen3.5:9b")
+    worker_priority = int(settings.get("worker_priority", 100))
 
     inference_service.initialize(
         model_name=selected_model,
-        tier=active_tier,
-        temperature=tier_cfg["temperature"],
-        history_limit=tier_cfg.get("history_limit", settings.get("history_limit", 10))
+        temperature=0.1,
+        history_limit=settings.get("history_limit", 10)
     )
 
-    registration_manager.register(settings, active_tier, selected_model)
+    registration_manager.register(settings, selected_model, worker_priority)
     await registration_manager.start_heartbeat()
 
     yield

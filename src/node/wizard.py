@@ -69,22 +69,57 @@ def run_wizard():
     else:
         room = selected_room
     
-    tier_choices = ["butler (1.5B)", "regis (9B)"]
-    saved_tier = current_cfg.get("active_tier", "regis")
-    default_tier_str = "regis (9B)"
-    for t in tier_choices:
-        if t.startswith(saved_tier):
-            default_tier_str = t
-            break
-            
-    active_tier = questionary.select(
-        "Wybierz Tier modelu LLM (poziom inteligencji):",
-        choices=tier_choices,
-        default=default_tier_str
+    # Wybór modelu z Ollamy
+    console.print("[dim]Pobieranie zainstalowanych modeli z Ollamy...[/dim]")
+    ollama_url = current_cfg.get("ollama_url", "http://127.0.0.1:11434")
+    available_models = []
+    try:
+        resp = requests.get(f"{ollama_url}/api/tags", timeout=3)
+        if resp.ok:
+            available_models = [m["name"] for m in resp.json().get("models", [])]
+    except Exception:
+        pass
+
+    saved_model = current_cfg.get("selected_model", "qwen3.5:9b")
+    if available_models:
+        model_choices = available_models + ["[Wpisz ręcznie inny model]"]
+        default_model_idx = 0
+        if saved_model in available_models:
+            default_model_idx = available_models.index(saved_model)
+        else:
+            default_model_idx = len(model_choices) - 1
+
+        selected_model_choice = questionary.select(
+            "Wybierz model LLM zainstalowany w Ollamie:",
+            choices=model_choices,
+            default=model_choices[default_model_idx]
+        ).ask()
+
+        if selected_model_choice == "[Wpisz ręcznie inny model]" or not selected_model_choice:
+            selected_model = questionary.text(
+                "Wpisz własną nazwę modelu w Ollamie:",
+                default=saved_model
+            ).ask()
+        else:
+            selected_model = selected_model_choice
+    else:
+        console.print("[bold yellow]Ostrzeżenie: Nie udało się pobrać modeli z Ollamy (czy usługa Ollama jest włączona?).[/bold yellow]")
+        selected_model = questionary.text(
+            "Wpisz nazwę modelu w Ollamie (np. qwen3.5:9b):",
+            default=saved_model
+        ).ask()
+
+    # Priorytet węzła
+    priority_input = questionary.text(
+        "Priorytet tego Węzła (wyższa liczba = ważniejszy, np. 100 = GPU PC, 10 = RPi):",
+        default=str(current_cfg.get("worker_priority", 100))
     ).ask()
-    
-    active_tier = active_tier.split(" ")[0]
-    
+
+    try:
+        worker_priority = int(priority_input)
+    except (ValueError, TypeError):
+        worker_priority = 100
+
     print("\nUsługi w tle:")
     run_worker = questionary.confirm("Uruchamiać Worker (LLM) automatycznie?", default=current_cfg.get("autostart_worker", True)).ask()
     run_satellite = questionary.confirm("Uruchamiać Satellite (Mikrofon) automatycznie?", default=current_cfg.get("autostart_satellite", False)).ask()
@@ -93,7 +128,8 @@ def run_wizard():
         "instance_name": instance_name,
         "room": room,
         "controller_url": controller_url_input,
-        "active_tier": active_tier,
+        "selected_model": selected_model,
+        "worker_priority": worker_priority,
         "worker_port": current_cfg.get("worker_port", 8001),
         "worker_host": current_cfg.get("worker_host", "0.0.0.0"),
         "autostart_worker": run_worker,

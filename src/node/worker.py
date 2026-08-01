@@ -34,17 +34,12 @@ async def lifespan(app: FastAPI):
 
     settings = config.load_settings()
 
-    active_tier = settings.get("active_tier", "butler")
-    tier_config = {
-        "butler": {"model": "qwen2.5:0.5b", "temperature": 0.1},
-        "regis":  {"model": "qwen3.5:9b",  "temperature": 0.1},
-    }
-    tier_cfg = tier_config.get(active_tier, tier_config["butler"])
+    worker_priority = int(settings.get("worker_priority", 100))
+    selected_model = settings.get("selected_model", "qwen3.5:9b")
 
     worker_node = WorkerNode(
-        model_name=settings.get("selected_model", tier_cfg["model"]),
-        tier=active_tier,
-        temperature=tier_cfg["temperature"]
+        model_name=selected_model,
+        temperature=0.1
     )
 
     try:
@@ -82,8 +77,8 @@ async def lifespan(app: FastAPI):
         "id": _worker_id,
         "host": registration_host,
         "port": worker_port,
-        "model_name": settings.get("selected_model", tier_cfg["model"]),
-        "tier": active_tier
+        "model_name": selected_model,
+        "priority": worker_priority
     }
 
     try:
@@ -128,7 +123,7 @@ async def lifespan(app: FastAPI):
 
     reg_task = asyncio.create_task(_registration_loop())
 
-    logging.info(f"Węzeł Roboczy uruchomiony. Tier={active_tier}, Port={worker_port}")
+    logging.info(f"Węzeł Roboczy uruchomiony. Priority={worker_priority}, Port={worker_port}")
     yield
 
     reg_task.cancel()
@@ -177,8 +172,7 @@ async def health():
         return {
             "status": "ok",
             "worker_id": _worker_id,
-            "model": model_name,
-            "tier": engine.tier
+            "model": model_name
         }
     except Exception as e:
         return {"status": "error", "detail": str(e)}
@@ -191,9 +185,8 @@ async def chat_stream(request: ChatRequest):
     loop = asyncio.get_event_loop()
     q: asyncio.Queue = asyncio.Queue()
 
-    tier = worker_node.llm_engine.tier
     ctrl_url = request.controller_url or _controller_url
-    remote_tools = RemoteToolsRegistry(ctrl_url, tier, room=request.room)
+    remote_tools = RemoteToolsRegistry(ctrl_url, room=request.room)
 
     def on_thought_token(chunk):
         loop.call_soon_threadsafe(q.put_nowait, {"type": "thought", "content": chunk})
@@ -265,9 +258,8 @@ async def chat_audio_stream(
     loop = asyncio.get_event_loop()
     q: asyncio.Queue = asyncio.Queue()
 
-    tier = worker_node.llm_engine.tier
     ctrl_url = controller_url or _controller_url
-    remote_tools = RemoteToolsRegistry(ctrl_url, tier, room=room)
+    remote_tools = RemoteToolsRegistry(ctrl_url, room=room)
 
     def on_stt_result(text):
         loop.call_soon_threadsafe(q.put_nowait, {"type": "stt_result", "content": text})
@@ -279,10 +271,10 @@ async def chat_audio_stream(
         loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": chunk})
 
     def on_tool_call(msg):
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool", "content": msg})
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": msg})
 
     def on_raw_tool_call(data):
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": data})
+        loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_dict", "content": data})
         
     def on_profiler(metric_data):
         loop.call_soon_threadsafe(q.put_nowait, {"type": "profiler", "content": metric_data})

@@ -7,7 +7,6 @@ class LLMBackend(ABC):
         self,
         messages: list[dict],
         tools_registry: Any,
-        tier: str,
         on_tool_call: Any = None,
         on_thought_token: Any = None,
         on_content_token: Any = None,

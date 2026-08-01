@@ -25,7 +25,7 @@ class WorkerRegistrationManager:
                 return "http://127.0.0.1:8000"
         return url
 
-    def register(self, settings: dict, active_tier: str, selected_model: str):
+    def register(self, settings: dict, selected_model: str, priority: int = 100):
         self.worker_id = settings.get("worker_id", f"worker-{socket.gethostname()}")
         self.controller_url = self.resolve_controller_url(settings)
 
@@ -40,7 +40,7 @@ class WorkerRegistrationManager:
             "host": registration_host,
             "port": worker_port,
             "model_name": selected_model,
-            "tier": active_tier
+            "priority": priority
         }
 
         try:

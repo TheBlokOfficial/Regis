@@ -12,18 +12,13 @@ from core.schemas import BASE_TOOLS_SCHEMA
 class ToolsRegistry:
     """Rejestr narzędzi dostarczanych dla modelu LLM."""
     
-    def __init__(self, ha_client, tier: str = "regis", rooms: dict = None):
+    def __init__(self, ha_client, rooms: dict = None):
         self.ha_client = ha_client
-        self.tier = tier
         self.rooms = rooms or {}
         
     def execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
         """Kieruje wywołanie narzędzia do odpowiedniej logiki."""
         try:
-            # Weryfikacja uprawnień na podstawie tieru
-            tier_clearance = {"butler": 1, "regis": 2}
-            current_clearance = tier_clearance.get(self.tier, 1)
-            
             tool_def = None
             for t in BASE_TOOLS_SCHEMA:
                 if t["function"]["name"] == tool_name:
@@ -32,10 +27,6 @@ class ToolsRegistry:
                     
             if tool_def is None:
                 return json.dumps({"error": f"Narzędzie '{tool_name}' nie istnieje."}, ensure_ascii=False)
-            
-            req_tier = tool_def.get("required_tier", "butler")
-            if tier_clearance.get(req_tier, 1) > current_clearance:
-                return json.dumps({"error": f"Odmowa dostępu do '{tool_name}' w obecnym trybie."}, ensure_ascii=False)
 
             dispatch = {
                 "get_device_state": lambda: self._get_device_state(arguments.get("entity_id")),

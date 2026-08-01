@@ -4,7 +4,6 @@ from pydantic import BaseModel
 BASE_TOOLS_SCHEMA = [
     {
         "type": "function",
-        "required_tier": "butler",
         "function": {
             "name": "get_device_state",
             "description": "Zwraca dokładny obecny stan urządzenia dla podanego entity_id.",
@@ -25,7 +24,6 @@ BASE_TOOLS_SCHEMA = [
     },
     {
         "type": "function",
-        "required_tier": "butler",
         "function": {
             "name": "execute_action",
             "description": "Wykonuje akcję na urządzeniu. Bierz entity_id wyłącznie ze swojego Globalnego Menu. Jeśli ustawiasz parametry (np. jasność), akcja musi być 'turn_on'.",
@@ -55,7 +53,6 @@ BASE_TOOLS_SCHEMA = [
     },
     {
         "type": "function",
-        "required_tier": "butler",
         "function": {
             "name": "get_current_time",
             "description": "Zwraca bieżącą datę i czas systemowy (razem z dniem tygodnia).",
@@ -68,7 +65,6 @@ BASE_TOOLS_SCHEMA = [
     },
     {
         "type": "function",
-        "required_tier": "butler",
         "function": {
             "name": "get_weather",
             "description": "Zwraca aktualne informacje o pogodzie w podanym mieście.",
@@ -86,7 +82,6 @@ BASE_TOOLS_SCHEMA = [
     },
     {
         "type": "function",
-        "required_tier": "butler",
         "function": {
             "name": "get_phone_battery",
             "description": "Zwraca aktualny poziom baterii w telefonie użytkownika (Pixel 9a). Zwraca wartość w procentach oraz informację, czy się ładuje.",
@@ -100,29 +95,18 @@ BASE_TOOLS_SCHEMA = [
 ]
 
 
-def get_tools_for_tier(tier: str) -> list[dict]:
-    """Filtruje schematy narzędzi na podstawie poziomu uprawnień (tier).
-    Zwraca kopię bez niestandardowego pola 'required_tier'."""
-    tier_clearance = {"butler": 1, "regis": 2}
-    current_clearance = tier_clearance.get(tier, 1)
-    
-    filtered = []
-    for tool in BASE_TOOLS_SCHEMA:
-        req_tier = tool.get("required_tier", "butler")
-        if tier_clearance.get(req_tier, 1) <= current_clearance:
-            tool_copy = tool.copy()
-            tool_copy.pop("required_tier", None)
-            filtered.append(tool_copy)
-    return filtered
+def get_tools_schema() -> list[dict]:
+    """Zwraca kopię schematów dostępnych narzędzi w systemie."""
+    return [tool.copy() for tool in BASE_TOOLS_SCHEMA]
 
 
-def render_tools_for_prompt(tier: str) -> str:
+def render_tools_for_prompt() -> str:
     """Renderuje schematy narzędzi do formatu tekstowego kompatybilnego z Hermes/Qwen.
     
     Wymagany jest DOKŁADNY ANGIELSKI TEKST, na którym Qwen 2.5 był fine-tune'owany.
     Tłumaczenie go na polski psuje mechanizm attention dla najmniejszych modeli!
     """
-    tools = get_tools_for_tier(tier)
+    tools = get_tools_schema()
     tools_json = json.dumps(tools, ensure_ascii=False, indent=2)
     
     return f"""# Tools
@@ -145,14 +129,13 @@ class WorkerRegistrationRequest(BaseModel):
     host: str
     port: int
     model_name: str
-    tier: str  # butler | regis
+    priority: int = 100  # Wyższa wartość = wyższa ważność (100 = GPU PC, 50 = OpenRouter cloud, 10 = RPi fallback)
 
 
 class ToolExecutionRequest(BaseModel):
     """Payload wysyłany przez Węzeł Roboczy do proxy narzędzi w Kontrolerze."""
     tool_name: str
     arguments: dict
-    tier: str = "regis"
     room: str | None = None  # kontekst pokoju Satelity — propagowany przez cały stos
 
 

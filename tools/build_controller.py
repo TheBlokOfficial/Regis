@@ -11,9 +11,8 @@ def deploy_to_pi():
     server = "theblok@192.168.0.119"
     remote_dir = "/home/theblok/regis"
     
-    print("1. Zatrzymywanie usług na Raspberry Pi...")
-    # Wyłącz usługi przed czyszczeniem (ignoruj błędy jeśli regis-stt jeszcze nie istnieje)
-    subprocess.run(["ssh", "-t", server, "sudo systemctl stop regis.service regis-worker.service regis-stt.service || true"])
+    print("1. Zatrzymywanie Kontrolera na Raspberry Pi...")
+    subprocess.run(["ssh", "-t", server, "sudo systemctl stop regis.service || true"])
     
     print("2. Pakowanie kodu źródłowego i logiki do archiwum ZIP na Windowsie...")
     if os.path.exists("dist"):
@@ -54,13 +53,11 @@ def deploy_to_pi():
         f"unzip -q -o regis_update.zip && "
         f"rm regis_update.zip && "
         f"source .venv/bin/activate && "
-        f"pip install --no-cache-dir -e '.[controller,worker]' && "
-        f"echo '5. Odbudowa demonów i restartowanie usług...' && "
-        f"sudo systemctl disable regis-stt.service 2>/dev/null || true && "
+        f"pip install --no-cache-dir -e '.[controller]' && "
+        f"echo '5. Odbudowa demona i restartowanie Kontrolera...' && "
         f"sudo systemctl daemon-reload && "
-        f"sudo systemctl restart regis.service regis-worker.service && "
-        f"echo '\\n[Status Regis Controller]' && systemctl status regis.service --no-pager | grep Active && "
-        f"echo '\\n[Status Regis Worker]' && systemctl status regis-worker.service --no-pager | grep Active"
+        f"sudo systemctl restart regis.service && "
+        f"echo '\\n[Status Regis Controller]' && systemctl status regis.service --no-pager | grep Active"
     ]
     result = subprocess.run(ssh_cmd)
     if result.returncode != 0:

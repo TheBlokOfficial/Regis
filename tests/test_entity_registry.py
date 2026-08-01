@@ -21,27 +21,19 @@ def test_worker_registration_request_valid():
         host="127.0.0.1",
         port=8001,
         model_name="qwen2.5:1.5b-instruct",
-        tier="butler"
+        priority=10
     )
     assert req.id == "rpi5-worker"
     assert req.host == "127.0.0.1"
     assert req.port == 8001
     assert req.model_name == "qwen2.5:1.5b-instruct"
-    assert req.tier == "butler"
+    assert req.priority == 10
 
 
 def test_tool_execution_request_defaults():
     req = ToolExecutionRequest(tool_name="get_current_time", arguments={})
-    assert req.tier == "regis"
-
-
-def test_tool_execution_request_custom_tier():
-    req = ToolExecutionRequest(
-        tool_name="execute_ha_action",
-        arguments={"action": "turn_on", "entity_id": "light.salon"},
-        tier="regis"
-    )
-    assert req.tier == "regis"
+    assert req.tool_name == "get_current_time"
+    assert req.room is None
 
 
 # ─── Testy logiki wyboru węzła ─────────────────────────────────────────────
@@ -52,11 +44,10 @@ def _build_registry(*workers: dict) -> dict[str, dict]:
 
 
 def _pick_worker_from(registry: dict) -> dict | None:
-    """Lokalny odpowiednik _pick_worker z controller/main.py."""
-    TIER_PRIORITY = {"regis": 2, "butler": 1}
+    """Lokalny odpowiednik selekcji według najniższego priority (najwyższego priorytetu)."""
     if not registry:
         return None
-    return max(registry.values(), key=lambda w: TIER_PRIORITY.get(w["tier"], 0))
+    return min(registry.values(), key=lambda w: w.get("priority", 10))
 
 
 def test_pick_worker_empty_registry():
@@ -64,17 +55,17 @@ def test_pick_worker_empty_registry():
 
 
 def test_pick_worker_single():
-    registry = _build_registry({"id": "w1", "host": "127.0.0.1", "port": 8001, "tier": "butler", "model_name": "q1.5b", "base_url": "http://127.0.0.1:8001"})
+    registry = _build_registry({"id": "w1", "host": "127.0.0.1", "port": 8001, "priority": 10, "model_name": "q1.5b", "base_url": "http://127.0.0.1:8001"})
     assert _pick_worker_from(registry)["id"] == "w1"
 
 
-def test_pick_worker_prefers_higher_tier():
+def test_pick_worker_prefers_lower_priority_number():
     registry = _build_registry(
-        {"id": "w-butler", "host": "127.0.0.1", "port": 8001, "tier": "butler", "model_name": "q1.5b", "base_url": "http://127.0.0.1:8001"},
-        {"id": "w-regis",  "host": "192.168.0.10", "port": 8001, "tier": "regis",  "model_name": "q14b",  "base_url": "http://192.168.0.10:8001"},
+        {"id": "w-rpi", "host": "127.0.0.1", "port": 8001, "priority": 10, "model_name": "q1.5b", "base_url": "http://127.0.0.1:8001"},
+        {"id": "w-gpu", "host": "192.168.0.10", "port": 8001, "priority": 0, "model_name": "q14b", "base_url": "http://192.168.0.10:8001"},
     )
     best = _pick_worker_from(registry)
-    assert best["id"] == "w-regis"
+    assert best["id"] == "w-gpu"
 
 
  

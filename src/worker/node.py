@@ -19,28 +19,21 @@ class WorkerNode:
     Na tym etapie Kontroler importuje go bezpośrednio.
     """
 
-    def __init__(self, model_name: str, tier: str, temperature: float, history_limit: int):
+    def __init__(self, model_name: str, temperature: float, history_limit: int):
         """Inicjalizuje silniki LLM i STT.
 
         Args:
             model_name: Nazwa modelu w Ollamie (np. 'qwen3.5:9b').
-            tier: Klasa modelu ('butler', 'regis').
             temperature: Temperatura modelu (0.1 dla tool callingu).
             history_limit: Maksymalna liczba zapamiętanych tur konwersacji.
         """
         self.llm_engine = LLMEngine(
             model_name=model_name,
-            tier=tier,
-            temperature=temperature,
-            history_limit=history_limit
-        self.llm_engine = LLMEngine(
-            model_name=model_name,
-            tier=tier,
             temperature=temperature,
             history_limit=history_limit
         )
         self._stt_engine = None
-        logging.info(f"WorkerNode uruchomiony. Model={model_name}, Tier={tier}")
+        logging.info(f"WorkerNode uruchomiony. Model={model_name}")
 
     @property
     def stt_engine(self):

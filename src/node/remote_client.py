@@ -17,7 +17,6 @@ class RemoteClient:
                 pass
                 
         self.model_name = "Serwer Regis"
-        self.tier = "remote"
         self.temperature = "N/A"
         
     def clear_history(self) -> None:

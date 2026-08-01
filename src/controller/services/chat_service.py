@@ -34,8 +34,7 @@ def proxy_sse_to_queue(
 
     if not is_audio and isinstance(backend, OpenRouterBackend):
         # Phase 1: OpenRouter (chmura) wywoływany bezpośrednio na Kontrolerze (tylko tekst)
-        tier = "regis"
-        system_prompt = build_system_prompt(tier, room=room, native_tools=True)
+        system_prompt = build_system_prompt(room=room, native_tools=True)
 
         from core.history_utils import build_messages_from_history
         messages = build_messages_from_history(
@@ -50,26 +49,28 @@ def proxy_sse_to_queue(
             "type": "routing_info",
             "worker_id": "cloud (OpenRouter)",
             "model": backend.model_name,
-            "tier": tier,
+            "provider": backend.get_provider_name(),
         }
         loop.call_soon_threadsafe(q.put_nowait, routing_event)
 
-        used_tools_logs = []
+        used_tools_dicts = []
 
         def on_content_token(token):
             loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": token})
 
         def on_tool_call(log_msg):
-            used_tools_logs.append(log_msg)
             loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": log_msg})
+
+        def on_raw_tool_call(tool_data):
+            used_tools_dicts.append(tool_data)
 
         try:
             final_content = backend.generate_response(
                 messages,
                 registry.tools_registry,
-                tier=tier,
                 on_content_token=on_content_token,
-                on_tool_call=on_tool_call
+                on_tool_call=on_tool_call,
+                on_raw_tool_call=on_raw_tool_call
             )
 
             loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": final_content})
@@ -78,7 +79,7 @@ def proxy_sse_to_queue(
             registry.conversation_history.append({
                 "user": base_payload.get("message", ""),
                 "assistant": final_content,
-                "tools": used_tools_logs,
+                "tools": used_tools_dicts,
                 "timestamp": now
             })
 
@@ -104,13 +105,13 @@ def proxy_sse_to_queue(
             )
             return
 
-        # Priorytetyzacja: szukamy workera z tier='regis', a jeśli nie ma, bierzemy dowolnego (np. butler)
-        regis_workers = [w for w in workers if w.get("tier") == "regis"]
-        worker = regis_workers[0] if regis_workers else workers[0]
+        # Priorytetyzacja: sortowanie malejąco po priority (100 wyżej niż 10)
+        sorted_workers = sorted(workers, key=lambda w: w.get("priority", 10), reverse=True)
+        worker = sorted_workers[0]
         worker_id = worker["id"]
-        tier = worker.get("tier", "butler")
+        prio = worker.get("priority", 10)
 
-        system_prompt = build_system_prompt(tier, room=room)
+        system_prompt = build_system_prompt(room=room)
 
         if not is_audio:
             worker_url = f"{worker['base_url']}/v1/chat/stream"
@@ -120,9 +121,9 @@ def proxy_sse_to_queue(
         else:
             worker_url = f"{worker['base_url']}/v1/chat/audio_stream"
 
-        logging.info(f"Routowanie żądania do węzła: {worker_id}")
+        logging.info(f"Routowanie żądania do węzła: {worker_id} (priority={prio})")
         logger.debug(
-            f"Router wybrany węzeł: id={worker_id} | tier={tier} "
+            f"Router wybrany węzeł: id={worker_id} | priority={prio} "
             f"| model={worker.get('model_name', 'nieznany')} | url={worker_url}"
         )
 
@@ -130,13 +131,13 @@ def proxy_sse_to_queue(
             "type": "routing_info",
             "worker_id": worker_id,
             "model": worker.get("model_name", "nieznany"),
-            "tier": tier,
+            "priority": prio,
         }
         loop.call_soon_threadsafe(q.put_nowait, routing_event)
 
         final_content = ""
         stt_content = ""
-        used_tools_logs = []
+        used_tools_dicts = []
 
         try:
             if not is_audio:
@@ -158,8 +159,8 @@ def proxy_sse_to_queue(
                         event = json.loads(line[6:])
                         if event.get("type") == "stt_result":
                             stt_content = event.get("content", "")
-                        elif event.get("type") == "tool_call_raw":
-                            used_tools_logs.append(event.get("content"))
+                        elif event.get("type") == "tool_dict":
+                            used_tools_dicts.append(event.get("content"))
                         elif event.get("type") == "done":
                             final_content = event.get("content", "")
 
@@ -176,7 +177,7 @@ def proxy_sse_to_queue(
                     registry.conversation_history.append({
                         "user": user_msg,
                         "assistant": final_content,
-                        "tools": used_tools_logs,
+                        "tools": used_tools_dicts,
                         "timestamp": now
                     })
                     from core import config

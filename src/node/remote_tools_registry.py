@@ -14,15 +14,13 @@ class RemoteToolsRegistry:
     dzięki czemu LLMEngine nie wymaga żadnych zmian — podmiana jest transparentna.
     """
 
-    def __init__(self, controller_url: str, tier: str = "regis", room: str | None = None):
+    def __init__(self, controller_url: str, room: str | None = None):
         """
         Args:
             controller_url: Bazowy URL Kontrolera (np. 'http://192.168.0.119:8000').
-            tier: Poziom uprawnień węzła — przekazywany do Kontrolera przy wywołaniu.
             room: Kontekst pokoju Satelity — przekazywany w każdym wywołaniu narzędzia.
         """
         self.controller_url = controller_url.rstrip("/")
-        self.tier = tier
         self.room = room
 
     def get_global_menu(self) -> str:
@@ -48,7 +46,7 @@ class RemoteToolsRegistry:
         try:
             response = requests.post(
                 f"{self.controller_url}/v1/tools/execute",
-                json={"tool_name": tool_name, "arguments": arguments, "tier": self.tier, "room": self.room},
+                json={"tool_name": tool_name, "arguments": arguments, "room": self.room},
                 timeout=30
             )
             response.raise_for_status()

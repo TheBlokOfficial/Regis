@@ -29,7 +29,6 @@ class OpenRouterBackend(LLMBackend):
         self,
         messages: list[dict],
         tools_registry: Any,
-        tier: str,
         on_tool_call: Any = None,
         on_thought_token: Any = None,
         on_content_token: Any = None,
@@ -57,8 +56,8 @@ class OpenRouterBackend(LLMBackend):
             }
             
             if tools_registry:
-                from core.schemas import get_tools_for_tier
-                payload["tools"] = get_tools_for_tier(tier)
+                from core.schemas import get_tools_schema
+                payload["tools"] = get_tools_schema()
 
             try:
                 response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=120, stream=True)
@@ -153,6 +152,14 @@ class OpenRouterBackend(LLMBackend):
                             tool_result = tools_registry.execute_tool(function_name, args_dict)
                         else:
                             tool_result = "Błąd: Brak dostępu do narzędzi."
+
+                        if on_raw_tool_call:
+                            on_raw_tool_call({
+                                "thought": "",
+                                "name": function_name,
+                                "arguments": args_dict,
+                                "result": tool_result
+                            })
                         
                         tool_msg = {
                             "role": "tool",

@@ -30,8 +30,8 @@ def build_messages_from_history(system_prompt: str, history: list[dict], current
                     messages.append({"role": "assistant", "content": full_assistant_content})
                     messages.append({"role": "user", "content": f"<tool_response>\n{t.get('result', '')}\n</tool_response>"})
                 else:
-                    # Fallback dla starej historii tekstowej
-                    messages.append({"role": "assistant", "content": str(t)})
+                    # Ignoruj surowe napisowe logi konsolowe w historii, by nie zatruwać kontekstu LLM
+                    pass
         
         if turn.get("assistant"):
             messages.append({"role": "assistant", "content": turn["assistant"]})

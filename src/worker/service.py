@@ -15,10 +15,9 @@ class WorkerInferenceService:
     def __init__(self):
         self.worker_node: WorkerNode | None = None
 
-    def initialize(self, model_name: str, tier: str, temperature: float, history_limit: int):
+    def initialize(self, model_name: str, temperature: float, history_limit: int):
         self.worker_node = WorkerNode(
             model_name=model_name,
-            tier=tier,
             temperature=temperature,
             history_limit=history_limit
         )
@@ -46,8 +45,7 @@ class WorkerInferenceService:
         q: asyncio.Queue,
         loop: asyncio.AbstractEventLoop
     ):
-        tier = self.worker_node.llm_engine.tier
-        remote_tools = RemoteToolsRegistry(controller_url, tier, room=room)
+        remote_tools = RemoteToolsRegistry(controller_url, room=room)
 
         def run_inference():
             from core.history_utils import build_messages_from_history
@@ -60,10 +58,10 @@ class WorkerInferenceService:
                 response_text = self.worker_node.handle_chat(
                     messages,
                     remote_tools,
-                    on_tool_call=lambda msg: loop.call_soon_threadsafe(q.put_nowait, {"type": "tool", "content": msg}),
+                    on_tool_call=lambda msg: loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": msg}),
                     on_thought_token=lambda chunk: loop.call_soon_threadsafe(q.put_nowait, {"type": "thought", "content": chunk}),
                     on_content_token=lambda chunk: loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": chunk}),
-                    on_raw_tool_call=lambda data: loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_call_raw", "content": data})
+                    on_raw_tool_call=lambda data: loop.call_soon_threadsafe(q.put_nowait, {"type": "tool_dict", "content": data})
                 )
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": response_text})
             except Exception as e:
@@ -81,8 +79,7 @@ class WorkerInferenceService:
         q: asyncio.Queue,
         loop: asyncio.AbstractEventLoop
     ):
-        tier = self.worker_node.llm_engine.tier
-        remote_tools = RemoteToolsRegistry(controller_url, tier, room=None)
+        remote_tools = RemoteToolsRegistry(controller_url, room=None)
 
         def run_inference():
             try:

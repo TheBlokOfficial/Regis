@@ -28,8 +28,7 @@ async def health():
         return {
             "status": "ok",
             "worker_id": registration_manager.worker_id,
-            "model": model_name,
-            "tier": engine.tier
+            "model": model_name
         }
     except Exception as e:
         return {"status": "error", "detail": str(e)}

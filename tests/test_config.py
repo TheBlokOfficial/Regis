@@ -9,7 +9,8 @@ def test_load_settings_defaults():
     
     try:
         settings = config.load_settings()
-        assert settings["active_tier"] == "butler"
+        assert settings["openrouter_priority"] == 50
+        assert settings["worker_priority"] == 100
         assert settings["ha_url"] == "http://192.168.0.50:8123"
     finally:
         config.SETTINGS_FILE = original_file

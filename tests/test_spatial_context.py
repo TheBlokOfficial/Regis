@@ -33,7 +33,7 @@ def _make_registry(rooms: dict = None) -> ToolsRegistry:
     """Buduje ToolsRegistry z mockiem HA i opcjonalnym słownikiem pokojów."""
     ha_mock = MagicMock()
     ha_mock.get_all_states.return_value = HA_STATES
-    return ToolsRegistry(ha_client=ha_mock, tier="regis", rooms=rooms or {})
+    return ToolsRegistry(ha_client=ha_mock, rooms=rooms or {})
 
 
 # ─── Testy SatelliteRegistrationRequest ───────────────────────────────────────
@@ -134,7 +134,7 @@ def test_remote_tools_registry_passes_room():
     mock_response.raise_for_status = MagicMock()
 
     with patch("requests.post", return_value=mock_response) as mock_post:
-        registry = RemoteToolsRegistry("http://127.0.0.1:8000", "regis", room="salon")
+        registry = RemoteToolsRegistry("http://127.0.0.1:8000", room="salon")
         registry.execute_tool("get_devices", {})
 
     call_kwargs = mock_post.call_args[1]
@@ -148,7 +148,7 @@ def test_remote_tools_registry_room_none_passes_null():
     mock_response.raise_for_status = MagicMock()
 
     with patch("requests.post", return_value=mock_response) as mock_post:
-        registry = RemoteToolsRegistry("http://127.0.0.1:8000", "regis", room=None)
+        registry = RemoteToolsRegistry("http://127.0.0.1:8000", room=None)
         registry.execute_tool("get_devices", {})
 
     call_kwargs = mock_post.call_args[1]

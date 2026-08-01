@@ -8,11 +8,23 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 ## Aktywne Zadania
 
 ### [INFRA / HARDWARE]
-- [ ] Migracja Kontrolera i Workera na nową stację Minisforum UM760 Slim (x86_64, Ryzen 5 7640HS) po jej otrzymaniu przez Użytkownika
+- [ ] Migracja Kontrolera i Workera na nową stację Minisforum UM760 Slim (x86_64, Ryzen 5 7640HS) po jej otrzymaniu przez Użytkownika (~10 dni)
+- [ ] **[EMBEDDED FALLBACK]** Implementacja in-process fallback parsera w Kontrolerze: gdy `worker_registry` pusty i chmura pada → zamiast `return None` w `providers.get_llm_backend()`, wywołać lokalny parser bezpośrednio (bez HTTP). Realizować dopiero na Minisforum — RPi5 jest zbyt słaby. Patrz `src/controller/providers.py`.
 
 ### [ARCH] Dystrybucja
 
 - [ ] [Sesja E] Nowy system dystrybucji Windows (Regis): zbudowanie instalatora Inno Setup (`RegisNodeSetup.exe`) + Python systemowy jako prerequisite (szczegóły: `docs/distribution_rfc.md`)
+
+### [DEV / TYMCZASOWE]
+
+- [ ] **[WORKER PROFILE SWAP]** Mechanizm ręcznego przełączania modelu workera na desktopie Windows między trybem Butler (mały model, `tier=butler`, testowanie ścieżki fallback) a trybem Regis (model 9B, `tier=regis`, zastępstwo chmury). Propozycja implementacji: dwa profile `.env` (`settings.worker.butler.env` / `settings.worker.regis.env`) + komenda CLI lub skrypt restartujący workera z wybranym profilem. Zadanie tymczasowe — traci sens po dostarczeniu Minisforum i wdrożeniu embedded fallback.
+
+### [FEATURE] Web UI (Reaktywny Panel Kontrolny)
+
+- [ ] **[WEB UI — Faza 1]** Backend Kontrolera: stworzenie `src/controller/event_bus.py` + router `src/controller/routers/ui.py` (endpointy `/api/events` SSE, `/api/status`, `/api/node/{id}/command`). Rejestracja w `app.py` PRZED `StaticFiles`. Szczegóły: `docs/web_ui_rfc.md` §5.
+- [ ] **[WEB UI — Faza 2]** Frontend: `src/controller/web/` (index.html, style.css, app.js). Reaktywny panel z kartami węzłów, satelit i dziennikiem zdarzeń na żywo. Szczegóły: `docs/web_ui_rfc.md` §7.
+- [ ] **[WEB UI — Faza 3]** Satelita pushuje zdarzenia do Kontrolera (`POST /api/satellite/event`). Modyfikacja `src/node/satellite.py`. Szczegóły: `docs/web_ui_rfc.md` §6.2.
+- [ ] **[WEB UI — Faza 4]** Integracja System Tray: akcja "Otwórz Dashboard" otwiera przeglądarkę (`webbrowser.open()`). Usunięcie `src/node/dashboard.py`. Szczegóły: `docs/web_ui_rfc.md` §6.3.
 
 ### [FEATURE] Funkcje
 

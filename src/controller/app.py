@@ -41,9 +41,8 @@ async def lifespan(app: FastAPI):
     )
 
     # Inicjalizacja rejestru narzędzi AI
-    active_tier = settings.get("active_tier", "butler")
     registry.tools_registry = ToolsRegistry(
-        registry.ha_client, active_tier, rooms=rooms
+        registry.ha_client, rooms=rooms
     )
     registry._settings_cache.update(settings)
 
@@ -54,7 +53,7 @@ async def lifespan(app: FastAPI):
     discovery_url = f"http://{local_ip}:{DEFAULT_CONTROLLER_PORT}"
     start_discovery_server(discovery_url)
 
-    logging.info("Regis Controller uruchomiony. Tier: %s", active_tier)
+    logging.info("Regis Controller uruchomiony.")
 
     yield  # Aplikacja działa i obsługuje zapytania
 

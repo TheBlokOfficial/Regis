@@ -9,11 +9,10 @@ class LLMEngine:
     Inicjalizuje odpowiedni backend (obecnie Ollama dla workerów).
     """
 
-    def __init__(self, model_name: str, tier: str, temperature: float = 0.1, history_limit: int = 20):
-        self.tier = tier
+    def __init__(self, model_name: str, temperature: float = 0.1, history_limit: int = 20):
         # Węzeł roboczy z definicji obsługuje lokalny model
         self.backend = OllamaBackend(model_name=model_name, temperature=temperature)
-        logging.info(f"Zainicjalizowano LLMEngine (Fasada): Tier={self.tier}")
+        logging.info("Zainicjalizowano LLMEngine (Fasada)")
 
     @staticmethod
     def get_available_models() -> list[str]:
@@ -59,7 +58,6 @@ class LLMEngine:
         return self.backend.generate_response(
             messages=messages,
             tools_registry=tools_registry,
-            tier=self.tier,
             on_tool_call=on_tool_call,
             on_thought_token=on_thought_token,
             on_content_token=on_content_token,

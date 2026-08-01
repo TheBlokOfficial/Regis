@@ -15,10 +15,10 @@ async def register_worker(request: WorkerRegistrationRequest):
         "host": request.host,
         "port": request.port,
         "model_name": request.model_name,
-        "tier": request.tier,
+        "priority": request.priority,
         "base_url": f"http://{request.host}:{request.port}"
     }
-    logging.info(f"Zarejestrowano węzeł: {request.id} @ {request.host}:{request.port} (tier={request.tier})")
+    logging.info(f"Zarejestrowano węzeł: {request.id} @ {request.host}:{request.port} (priority={request.priority})")
     return {"status": "registered", "id": request.id}
 
 
