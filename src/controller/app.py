@@ -3,12 +3,14 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from controller import registry
 from controller.routers.satellites import router_satellites
 from controller.routers.workers import router_workers
 from controller.routers.chat import router_chat
 from controller.routers.tools import router_tools
+from controller.routers.ui import router_ui
 from core import config
 from core.discovery import get_local_ip, start_discovery_server
 from core.logger import setup_logging
@@ -65,12 +67,20 @@ async def lifespan(app: FastAPI):
 # 3. Tworzenie aplikacji i wpinanie routerów
 app = FastAPI(title="Regis Controller", lifespan=lifespan)
 
+# Uwaga: router_ui MUSI być przed app.mount StaticFiles.
+# StaticFiles jest catch-all i prześlonĪ endpointy /api/* jeśli dodane wcześniej.
 routers = [
     router_workers,
     router_satellites,
     router_tools,
     router_chat,
+    router_ui,
 ]
 
 for router in routers:
     app.include_router(router)
+
+# Serwowanie statycznych plików Web UI — po zarejestrowaniu wszystkich routerów API
+import os
+_web_dir = os.path.join(os.path.dirname(__file__), "web")
+app.mount("/", StaticFiles(directory=_web_dir, html=True), name="web")

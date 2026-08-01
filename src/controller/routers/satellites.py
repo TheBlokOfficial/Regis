@@ -2,6 +2,7 @@ import logging
 from fastapi import APIRouter
 
 from core.schemas import SatelliteRegistrationRequest
+import controller.event_bus as event_bus
 import controller.registry as registry
 
 router_satellites = APIRouter()
@@ -18,6 +19,13 @@ async def register_satellite(request: SatelliteRegistrationRequest):
         "wakeword_local": request.wakeword_local,
     }
     logging.info(f"Zarejestrowano satelitę: {request.id} (pokój={request.room}, typ={request.type})")
+    await event_bus.publish({
+        "type": "satellite_registered",
+        "id": request.id,
+        "room": request.room,
+        "type": request.type,
+        "capabilities": request.capabilities,
+    })
     return {"status": "registered", "id": request.id}
 
 
@@ -27,4 +35,5 @@ async def unregister_satellite(satellite_id: str):
     if satellite_id in registry.satellite_registry:
         del registry.satellite_registry[satellite_id]
         logging.info(f"Wyrejestrowano satelitę: {satellite_id}")
+        await event_bus.publish({"type": "satellite_unregistered", "id": satellite_id})
     return {"status": "ok"}

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import requests
 
 from controller.integrations.ha_client import HomeAssistantClient
@@ -13,6 +14,7 @@ satellite_registry: dict[str, dict] = {}
 _settings_cache: dict = {}
 conversation_history: list[dict] = []
 last_interaction_time: float = 0.0
+controller_start_time: float = time.time()
 
 # Priorytety tierów usunięto zgodnie z Phase 1
 
@@ -40,6 +42,8 @@ async def _heartbeat_loop():
                 logging.warning(f"[Heartbeat] Węzeł {w['id']} nie odpowiada ({type(e).__name__}). Usuwam z rejestru.")
                 if w['id'] in worker_registry:
                     del worker_registry[w['id']]
+                    import controller.event_bus as event_bus
+                    await event_bus.publish({"type": "worker_unregistered", "id": w['id']})
 
 
 
