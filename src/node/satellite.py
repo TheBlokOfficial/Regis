@@ -176,6 +176,15 @@ class SatelliteNode:
         except Exception as e:
             logging.warning(f"Błąd rejestracji Satelity w Kontrolerze: {e}")
 
+    def _unregister(self):
+        """Wysyła żądanie wyrejestrowania Satelity z Kontrolera."""
+        url = f"{self.server_url}/v1/satellites/{self.satellite_id}"
+        try:
+            requests.delete(url, timeout=2)
+            logging.info(f"Wyrejestrowano Satelitę '{self.satellite_id}' z Kontrolera.")
+        except Exception as e:
+            logging.warning(f"Błąd wyrejestrowywania Satelity: {e}")
+
     async def run(self):
         self.loop = asyncio.get_running_loop()
         self.audio_queue = asyncio.Queue()
@@ -198,6 +207,7 @@ class SatelliteNode:
         finally:
             self.stream.stop()
             self.stream.close()
+            self._unregister()
             
     async def _handle_wakeword(self):
         if self.oww_model is None:
@@ -375,11 +385,13 @@ class SatelliteNode:
             self.audio_queue.get_nowait()
 
 async def main():
+    import atexit
     node = SatelliteNode()
+    atexit.register(node._unregister)
     await node.run()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         logging.info("Satelita zamykana.")

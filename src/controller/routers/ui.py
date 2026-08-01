@@ -198,6 +198,9 @@ async def satellite_event(body: SatelliteEvent):
     Dzięki temu zdarzenia audio pojawiają się w czasie rzeczywistym
     w Web UI bez odpytywania węzła.
     """
+    if body.satellite_id in registry.satellite_registry:
+        registry.satellite_registry[body.satellite_id]["last_seen"] = time.time()
+
     await event_bus.publish({
         "type": "satellite_event",
         "satellite_id": body.satellite_id,

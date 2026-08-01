@@ -85,5 +85,16 @@ async def _heartbeat_loop():
                     import controller.event_bus as event_bus
                     await event_bus.publish({"type": "worker_unregistered", "id": w['id']})
 
+        # 3. Sprawdzanie aktywności Satelit (czyszczenie martwych > 60s bez pingu)
+        satellites = list(satellite_registry.values())
+        for s in satellites:
+            last_seen = s.get("last_seen", now)
+            if now - last_seen > 60.0:
+                logging.info(f"[Heartbeat] Satelita '{s['id']}' brak aktywności od 60s. Usuwam z rejestru.")
+                if s['id'] in satellite_registry:
+                    del satellite_registry[s['id']]
+                    import controller.event_bus as event_bus
+                    await event_bus.publish({"type": "satellite_unregistered", "id": s['id']})
+
 
 

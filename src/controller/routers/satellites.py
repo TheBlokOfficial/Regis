@@ -1,4 +1,4 @@
-import logging
+import time
 from fastapi import APIRouter
 
 from core.schemas import SatelliteRegistrationRequest
@@ -17,6 +17,7 @@ async def register_satellite(request: SatelliteRegistrationRequest):
         "type": request.type,
         "capabilities": request.capabilities,
         "wakeword_local": request.wakeword_local,
+        "last_seen": time.time(),
     }
     logging.info(f"Zarejestrowano satelitę: {request.id} (pokój={request.room}, typ={request.type})")
     await event_bus.publish({
