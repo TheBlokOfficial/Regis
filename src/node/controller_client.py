@@ -10,8 +10,10 @@ from node.process_manager import (
     get_active_services_registration, get_all_services_status
 )
 
+from typing import Any
+
 _ws_loop: asyncio.AbstractEventLoop | None = None
-_ws_client: websockets.WebSocketClientProtocol | None = None
+_ws_client: Any = None
 
 
 def bus_publish(event: dict) -> None:
