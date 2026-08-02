@@ -138,8 +138,16 @@ html, body {
     padding: 32px;
 }
 
+#view-logs {
+    padding: 32px max(32px, calc((100% - 1000px) / 2));
+}
+
 .view-section.active {
     display: flex;
+}
+
+#view-dashboard {
+    padding: 32px 10%;
 }
 
 .view-header {
@@ -159,10 +167,28 @@ html, body {
 }
 
 /* ── Kafelki (Status Grid) ── */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 32px;
+    margin-top: 32px;
+    width: 100%;
+}
+
+.dashboard-col {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    min-width: 0;
+}
+
 .status-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(4, minmax(180px, 240px));
+    justify-content: center;
     gap: 20px;
+    margin-bottom: 32px;
+    width: 100%;
 }
 
 .status-card {
@@ -193,6 +219,8 @@ html, body {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-card);
+    height: 380px;
+    overflow-y: auto;
 }
 
 .list-row {
@@ -218,15 +246,30 @@ html, body {
     color: var(--text-dim);
 }
 
+.list-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
 .list-row .list-title {
     font-size: 18px;
     font-weight: 500;
     color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
 }
 
 .list-row .list-meta {
     font-size: 15px;
     color: var(--text-meta);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
 }
 
 .list-row .list-actions {
@@ -242,13 +285,18 @@ html, body {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text-meta);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
 }
 
 .empty-state {
-    padding: 24px;
+    padding: 16px;
     color: var(--text-dim);
     font-style: italic;
     text-align: center;
+    border: 1px dashed var(--border);
 }
 
 /* ── Elementy Statusu i Wskaźniki ── */
@@ -338,7 +386,7 @@ html, body {
 
 .log-entry {
     display: grid;
-    grid-template-columns: 100px 220px 1fr;
+    grid-template-columns: 90px 110px 1fr;
     gap: 16px;
     padding: 6px 12px;
     border-bottom: 1px solid var(--border);
@@ -364,6 +412,9 @@ html, body {
 .log-entry.type-worker_unregistered .log-source { color: var(--offline); }
 .log-entry.type-node_command_result .log-source { color: var(--text-meta); }
 .log-entry.type-error .log-msg { color: var(--offline); }
+.log-entry.type-info .log-source { color: var(--text-dim); }
+.log-entry.type-online .log-source { color: var(--online); }
+.log-entry.type-offline .log-source { color: var(--offline); }
 
 /* ── Czat & Konwersacje ── */
 #view-chat {
@@ -371,7 +422,7 @@ html, body {
 }
 
 .chat-header-bar {
-    padding: 24px 32px 16px;
+    padding: 24px max(32px, calc((100% - 1000px) / 2)) 16px;
     margin-bottom: 0;
 }
 
@@ -400,7 +451,7 @@ html, body {
 .chat-messages-body {
     flex: 1;
     overflow-y: auto;
-    padding: 24px 32px;
+    padding: 24px max(32px, calc((100% - 1000px) / 2));
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -454,7 +505,7 @@ html, body {
 .chat-input-bar {
     display: flex;
     gap: 16px;
-    padding: 24px 32px;
+    padding: 24px max(32px, calc((100% - 1000px) / 2));
     background: var(--bg-card);
     border-top: 1px solid var(--border);
 }

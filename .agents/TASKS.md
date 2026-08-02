@@ -27,13 +27,14 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 - [x] **[NODE-CENTRIC — Etap 4]** Reaktywny Web UI: `src/controller/web/` (unifikacja kart w "Węzły Systemowe" z połączonym podglądem modeli LLM oraz VAD Satelity).
 - [x] **[NODE-CENTRIC — Etap 5]** Testy, Weryfikacja i Deployment: Uruchomienie `pytest`, testy manualne `service.bat` i wysłanie aktualizacji Kontrolera na Raspberry Pi.
 
-### [FEATURE] Web UI (Reaktywny Panel Kontrolny)
+### [FEATURE] Web UI (Reaktywny Panel Kontrolny & Optymalizacja UX)
 
 - [x] **[WEB UI — Faza 1]** Backend Kontrolera: stworzenie `src/controller/event_bus.py` + router `src/controller/routers/ui.py` (endpointy `/api/events` SSE, `/api/status`, `/api/node/{id}/command`). Rejestracja w `app.py` PRZED `StaticFiles`. Szczegóły: `docs/web_ui_rfc.md` §5.
 - [x] **[WEB UI — Faza 2]** Frontend: `src/controller/web/` (index.html, style.css, app.js). Reaktywny panel z kartami węzłów, satelit i dziennikiem zdarzeń na żywo. Szczegóły: `docs/web_ui_rfc.md` §7.
 - [x] **[WEB UI — Refactoring]** Rozbicie monolitycznego `app.js` (448 linii) na 5 modułów ES: `utils.js`, `state.js`, `renderer.js`, `events.js`, `api.js`. Natywne ES Modules (bez bundlera), `app.js` jako orchestrator (~20 linii). Jedyna zmiana w `index.html`: `type="module"` na `<script>`.
 - [x] **[WEB UI — Faza 3]** Satelita pushuje zdarzenia do Kontrolera (`POST /api/satellite/event`). Modyfikacja `src/node/satellite.py`. Szczegóły: `docs/web_ui_rfc.md` §6.2.
 - [x] **[WEB UI — Faza 4]** Integracja System Tray: akcja "Otwórz Dashboard" otwiera przeglądarkę (`webbrowser.open()`). Usunięcie `src/node/dashboard.py`. Szczegóły: `docs/web_ui_rfc.md` §6.3.
+- [x] **[WEB UI — UX Refinement & Modern Layout]** Restrukturyzacja układu Pulpitu do zbalansowanego widoku trójkolumnowego (`Węzły` | `Dostawcy LLM` | `Integracje`) o równych proporcjach `repeat(3, minmax(0, 1fr))`, wycentrowane wąskie kafelki statusowe, 10% marginesy boczne, stałe wysokości kontenerów z wewnętrznym scrollowaniem, ustandaryzowanie i przefiltrowanie Dziennika Zdarzeń (`[INFO]`/`[OFFLINE]`/`[ERROR]`), usunięcie szumów VAD z badge'y i usunięcie zaszłości portu 8099.
 
 ### [FEATURE] Web UI — Wielosesyjność & Dedykowana Zakładka Czatu
 
@@ -52,39 +53,21 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 - [x] **[ARCH — Phase 1]** Restrukturyzacja pod system providerów LLM: `llm_backends/`, OpenRouter, refaktoryzacja routera (Zrealizowano - zarchiwizowano)
 - [ ] **[ARCH — Phase 2]** Abstrakcja STT/TTS backends + split audio pipeline w Kontrolerze (cloud STT/TTS bez Windows Node)
 
-### [UX / Wstrzymane]
-
-- [ ] (Wstrzymane) Wdrożenie "Checklisty Zadań" w monologach modeli, by poprawić zdolności analityczne na wzór Scratchpadu.
-
 ---
 
 ## Zarchiwizowane (Historia Sesji)
 
-Poniżej skrócone podsumowanie kategorii ukończonych prac. Szczegółowa historia dostępna w `git log`.
+### Refaktoryzacja UX Web UI & Layout 16:9 (Sierpień 2026)
+Przeprowadzono gruntowną optymalizację ergonomii i estetyki panelu kontrolnego:
+1. Rozdzielono strategię wyświetlania – Czat oraz Dziennik Zdarzeń posiadają dynamiczne wycentrowanie do max 1000px, eliminując skakanie wzrokiem po panoramicznych ekranach 16:9.
+2. Przebudowano Pulpit na trójkolumnową siatkę o bezwzględnie równych szerokościach (`repeat(3, minmax(0, 1fr))`), 10% bocznych marginesach i stałych kontenerach listowych (380px z wewnętrznym scrollowaniem).
+3. Dodano klasę `.list-info` z przycinaniem zbyt długich tekstów wielokropkiem (`ellipsis`), unikając rozbijania przycisków akcji.
+4. Odfiltrowano mikrozderzenia pod-usług w Dzienniku Zdarzeń (zostały wyciszone w tle dla kafelków) i ustandaryzowano logi tekstowe (`[INFO]`, `[OFFLINE]`, `[ERROR]`).
+5. Usunięto zaszłość przestarzałego portu `:8099` oraz zbędne tagi VAD z kart węzłów.
+6. Naprawiono testy jednostkowe w `tests/test_llm_backends.py`.
 
 ### Optymalizacja NLU i Diagnostyki (RPi5)
 Naprawiono błędy parsowania JSON przy modelach z funkcją myślenia (`qwen3`), zastępując Prefix Injection natywnym parametrem `"format": "json"` w Ollama API. Wyczyszczono zdeprecjonowane usługi systemd (`regis-stt.service`). Zintegrowano profiler `on_profiler` w `nlu_agent.py` i przywrócono pełne statystyki czasu wykonania w stopce CLI (`TTFT`, `Gen`, `Narzędzia`). Przestawiono domyślny model Butlera na `qwen2.5:0.5b`.
 
 ### Architektura i Restrukturyzacja
 Ukończono pełną restrukturyzację monorepo do układu `src/` z trzema usługami produkcyjnymi (`controller`, `controller.worker`, `node`). Rozwiązano dług dystrybucyjny — system `.whl` dla RPi5 i Portable App dla Windows. Wdrożono Auto-Discovery (UDP Broadcast Zero-Conf). Wdrożono Rejestr Encji (Satelity i Węzły), Spatial Context Filtering, Continuous Registration. Przeprowadzono pełny re-branding kodu na "Regis".
-
-### LLM i Prompt Engineering
-Przejście przez kolejne generacje modeli: 7B → 3B → 1.5B (Butler NLU) oraz 7B → 14B → 9B (ReAct Agent). Wdrożono architekturę "Droga A" (narzędzia jako XML w prompcie, bez natywnego `tools` API Ollamy). Stop token `</action>`. Pętla ReAct ze `<thought>` i streamingiem. Structured Outputs (JSON Schema) dla Butlera. Naprawiono halucynacje, few-shot poisoning, amnezję przy długich sesjach.
-
-### Audio i Satelita
-Wdrożono STT (Whisper/faster-whisper) scentralizowane na węźle. WakeWord (openwakeword). VAD energetyczny. TTS. Natywny feedback dźwiękowy Windows. Inteligentne filtrowanie czasowe i auto-amnezja bufora.
-
-### UX i CLI
-Monitor konwersacji (SSE). Refaktoryzacja traya na `service.py` z HTTP API. Dashboard jako klient HTTP. Live Dashboard (Monitor Głosowy). Pętla REPL z infinite scrolling. Unifikacja wizualna (rich, questionary).
-
-### Integracje HA
-Narzędzia `get_device_state`, `execute_action`, `get_current_time`, `get_weather`. Wirtualne Grupy, aliasy. Zabezpieczenie przed urządzeniami `unavailable`. Toggle, logika jasności. Spatial Context (filtrowanie urządzeń per pokój). Pobieranie stanu baterii telefonu (z tłumaczeniem stanów bezpośrednio w warstwie integracji).
-
-### Debugowanie i Obserwowalność
-Wdrożono system logowania warstwy I/O (`core/logger.py`). Logi DEBUG trafiają do `logs/<usługa>_YYYY-MM-DD.log` (FileHandler), konsola pozostaje na INFO. Pokryte: żądania HTTP do HA (przed/po `state_mapping`), iteracje pętli ReAct (TTFT, czas, rozmiar kontekstu), ciche błędy NLU (`JSONDecodeError`), decyzje routingowe Kontrolera, timeouty węzłów.
-
-### Architektura Chmury i Natywne Narzędzia LLM
-Całkowicie zrezygnowano ze stringowej, autorskiej pętli ReAct na rzecz natywnego Tool Callingu (wspieranego przez API Ollamy i OpenRoutera). Zbudowano system dynamicznych `Cloud Providers`, oddzielając tryb `extended` (ReAct, do 10 iteracji) od `basic` (szybki NLU parser, zerowa historia sesji).
-
-### Ascetyczny UX (Web UI - Sidebar)
-Panel Kontrolny przeszedł kompletną restrukturyzację z kafelkowego kokpitu do klasycznego panelu administracyjnego typu Sidebar (z lewym panelem nawigacyjnym). Wprowadzono pełen ascetyzm wizualny, płaskie listy zdarzeń, oraz oddzielono poszczególne funkcje (Pulpit, Chmura, Węzły, Logi, Czat) do pełnoekranowych zakładek, zachowując stuprocentową czytelność danych i zero animacji rozpraszających uwagę.

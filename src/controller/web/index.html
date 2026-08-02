@@ -19,9 +19,6 @@
         
         <nav class="sidebar-nav">
             <button class="nav-btn active" data-view="dashboard">Pulpit (Status)</button>
-            <button class="nav-btn" data-view="nodes">Węzły Lokalne</button>
-            <button class="nav-btn" data-view="cloud">Modele Chmurowe</button>
-            <button class="nav-btn" data-view="integrations">Integracje</button>
             <button class="nav-btn" data-view="logs">Dziennik Zdarzeń</button>
             <button class="nav-btn" data-view="chat">Czat &amp; Konwersacje</button>
         </nav>
@@ -60,36 +57,44 @@
                     <span class="value" id="integration-count">0</span>
                 </div>
             </div>
-        </section>
+            
+            <div class="dashboard-grid">
+                <!-- Kolumna 1: Węzły Lokalne -->
+                <div class="dashboard-col">
+                    <div>
+                        <div class="view-header" style="padding-bottom: 8px; margin-bottom: 16px;">
+                            <h2 style="font-size: 18px;">Węzły Lokalne</h2>
+                        </div>
+                        <div class="list-container" id="nodes-tree-body">
+                            <div class="empty-state">Brak zarejestrowanych węzłów.</div>
+                        </div>
+                    </div>
+                </div>
 
-        <!-- ZAKŁADKA 2: NODES -->
-        <section id="view-nodes" class="view-section" style="display:none;">
-            <div class="view-header">
-                <h2>Węzły Lokalne</h2>
-            </div>
-            <div class="list-container" id="nodes-tree-body">
-                <div class="empty-state">Brak zarejestrowanych węzłów.</div>
-            </div>
-        </section>
+                <!-- Kolumna 2: Dostawcy Zewnętrzni -->
+                <div class="dashboard-col">
+                    <div>
+                        <div class="view-header" style="padding-bottom: 8px; margin-bottom: 16px;">
+                            <h2 style="font-size: 18px;">Dostawcy Zewnętrzni (LLM)</h2>
+                            <button class="btn" id="add-cloud-provider-btn" style="margin-left: auto; font-size: 13px;">+ Dodaj</button>
+                        </div>
+                        <div class="list-container" id="cloud-providers-tree-body">
+                            <div class="empty-state">Brak dostawców chmurowych.</div>
+                        </div>
+                    </div>
+                </div>
 
-        <!-- ZAKŁADKA 3: CLOUD -->
-        <section id="view-cloud" class="view-section" style="display:none;">
-            <div class="view-header">
-                <h2>Dostawcy Zewnętrzni (LLM)</h2>
-                <button class="btn" id="add-cloud-provider-btn" style="margin-left: auto;">+ Dodaj Dostawcę</button>
-            </div>
-            <div class="list-container" id="cloud-providers-tree-body">
-                <div class="empty-state">Brak dostawców chmurowych.</div>
-            </div>
-        </section>
-
-        <!-- ZAKŁADKA 4: INTEGRATIONS -->
-        <section id="view-integrations" class="view-section" style="display:none;">
-            <div class="view-header">
-                <h2>Integracje</h2>
-            </div>
-            <div class="list-container" id="integrations-tree-body">
-                <div class="empty-state">Brak skonfigurowanych integracji.</div>
+                <!-- Kolumna 3: Integracje -->
+                <div class="dashboard-col">
+                    <div>
+                        <div class="view-header" style="padding-bottom: 8px; margin-bottom: 16px;">
+                            <h2 style="font-size: 18px;">Integracje</h2>
+                        </div>
+                        <div class="list-container" id="integrations-tree-body">
+                            <div class="empty-state">Brak skonfigurowanych integracji.</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 

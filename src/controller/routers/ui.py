@@ -66,7 +66,9 @@ async def events_stream(request: Request):
         try:
             # Odtwórz historię dla nowego klienta
             for event in history:
-                yield f"data: {json.dumps(event)}\n\n"
+                event_copy = dict(event)
+                event_copy["is_history"] = True
+                yield f"data: {json.dumps(event_copy)}\n\n"
 
             # Strumieniuj nowe zdarzenia
             while True:

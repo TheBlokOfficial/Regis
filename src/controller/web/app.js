@@ -164,8 +164,10 @@ async function renderCloudProviders() {
     container.innerHTML = cloudProvidersCache.map(cp => `
         <div class="list-row">
             <span class="list-icon">[EXT]</span>
-            <span class="list-title">${cp.id}</span>
-            <span class="list-meta">(${cp.type}) Model: ${cp.model} | Tryb: ${cp.mode} | Prio: ${cp.priority}</span>
+            <div class="list-info">
+                <span class="list-title">${cp.id}</span>
+                <span class="list-meta">(${cp.type}) Model: ${cp.model} | Tryb: ${cp.mode} | Prio: ${cp.priority}</span>
+            </div>
             <div class="list-actions">
                 <button class="btn" onclick="openCloudProviderModal('${cp.id}')" style="font-size: 13px;">EDYTUJ</button>
             </div>

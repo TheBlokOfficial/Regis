@@ -43,8 +43,10 @@ export function renderIntegrationCard(integration) {
     card.className = "list-row";
     card.innerHTML = `
         <span class="dot ${status}"></span>
-        <span class="list-title">${escHtml(name)}</span>
-        <span class="list-meta">(${escHtml(type)}) ${escHtml(detail)}</span>
+        <div class="list-info">
+            <span class="list-title">${escHtml(name)}</span>
+            <span class="list-meta">(${escHtml(type)}) ${escHtml(detail)}</span>
+        </div>
         <div class="list-actions">
             <span class="badge ${status}">${badgeText}</span>
         </div>
@@ -87,7 +89,7 @@ export function renderNodeCard(node) {
     const card = existing || document.createElement("div");
 
     const name = node.name || id;
-    const host = node.host ? `${node.host}:${node.port || 8099}` : "—";
+    const host = node.host ? (node.port ? `${node.host}:${node.port}` : node.host) : "—";
     const services = node.services || {};
     const isDict = typeof services === 'object' && !Array.isArray(services);
 
@@ -102,14 +104,14 @@ export function renderNodeCard(node) {
     const satConfig = isDict ? services.satellite : (Array.isArray(services) && services.includes("satellite") ? node : null);
     if (satConfig) {
         const room = satConfig.room || node.room || "brak";
-        tagsHtml += `<span class="service-tag">SAT (${escHtml(room)}) <span class="vad-status" id="vad-${id}">CISZA</span></span>`;
+        tagsHtml += `<span class="service-tag">SAT (${escHtml(room)})</span>`;
     }
 
     card.id = `node-${id}`;
     card.className = "list-row";
     card.innerHTML = `
         <span class="dot online"></span>
-        <div style="display:flex; flex-direction:column;">
+        <div class="list-info">
             <span class="list-title">${escHtml(name)}</span>
             <span class="list-meta">ID: ${escHtml(id)} | Host: ${escHtml(host)}</span>
             <div style="margin-top:6px;">${tagsHtml}</div>

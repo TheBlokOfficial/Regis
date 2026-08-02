@@ -29,10 +29,9 @@ export function handleEvent(event) {
         case "node_updated": {
             const node = event.node || event;
             renderNodeCard(node);
-            const services = node.services || {};
-            const isDict = typeof services === 'object' && !Array.isArray(services);
-            const serviceList = isDict ? Object.keys(services) : (Array.isArray(services) ? services : []);
-            appendLog(now, `[${node.id}]`, `Zjednoczony Węzeł zaktualizowany — usługi: ${serviceList.join(", ")}`, "node_registered");
+            if (event.type === "node_registered" && !event.is_history) {
+                appendLog(now, "[INFO]", `Zarejestrowano węzeł ${node.name || node.id}`, "online");
+            }
             break;
         }
 
@@ -45,39 +44,31 @@ export function handleEvent(event) {
                 removeSatellite(event.id);
                 markSatelliteOffline(event.id);
             }
-            appendLog(now, `[${event.id}]`, "Zjednoczony Węzeł wyrejestrowany", "node_unregistered");
+            if (!event.is_history) appendLog(now, "[OFFLINE]", `Węzeł ${event.id} został odłączony`, "offline");
             break;
         }
 
         case "worker_registered": {
             upsertWorker({ ...event, status: "online" });
             renderWorkerCard(workers[event.id]);
-            appendLog(now, `[${event.id}]`,
-                `Worker zarejestrowany — ${event.model_name || ""} (${event.tier || ""})`,
-                "worker_registered");
             break;
         }
 
         case "worker_unregistered": {
             setWorkerStatus(event.id, "offline");
             markWorkerOffline(event.id);
-            appendLog(now, `[${event.id}]`, "Worker wyrejestrowany", "worker_unregistered");
             break;
         }
 
         case "satellite_registered": {
             upsertSatellite({ ...event });
             renderSatelliteCard(satellites[event.id]);
-            appendLog(now, `[${event.id}]`,
-                `Satelita zarejestrowana — ${event.room || ""} (${event.type || ""})`,
-                "satellite_registered");
             break;
         }
 
         case "satellite_unregistered": {
             removeSatellite(event.id);
             markSatelliteOffline(event.id);
-            appendLog(now, `[${event.id}]`, "Satelita wyrejestrowana", "satellite_unregistered");
             break;
         }
 
@@ -116,9 +107,9 @@ export function handleEvent(event) {
         case "node_command_result": {
             // Logujemy tylko niepowodzenia komend (błędy)
             if (!event.success) {
-                const err = event.error ? ` — ${event.error}` : "";
-                appendLog(now, `[${event.node_id}]`,
-                    `Błąd wykonania komendy '${event.command}': ${err}`,
+                const err = event.error || "brak szczegółów";
+                appendLog(now, "[ERROR]",
+                    `Błąd wykonania komendy '${event.command}' na węźle ${event.node_id}: ${err}`,
                     "error");
             }
             break;

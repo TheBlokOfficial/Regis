@@ -19,32 +19,40 @@ def test_ollama_is_available_false(mock_get):
     backend = OllamaBackend(model_name="test")
     assert backend.is_available() is False
 
-def test_openrouter_is_available_true(monkeypatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test_key")
-    monkeypatch.setenv("OPENROUTER_MODEL", "test_model")
-    backend = OpenRouterBackend()
+def test_openrouter_is_available_true():
+    backend = OpenRouterBackend(api_key="test_key", model_name="test_model")
     assert backend.is_available() is True
 
-def test_openrouter_is_available_false(monkeypatch):
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
-    backend = OpenRouterBackend()
+def test_openrouter_is_available_false():
+    backend = OpenRouterBackend(api_key="", model_name="")
     assert backend.is_available() is False
 
 @patch.object(OpenRouterBackend, "is_available", return_value=True)
 def test_get_llm_backend_returns_openrouter(mock_openrouter_avail):
+    providers._cloud_providers_cache = [{
+        "id": "test",
+        "type": "openrouter",
+        "api_key": "test_key",
+        "model": "test_model",
+        "priority": 50
+    }]
+    providers._providers_loaded = True
     backend = providers.get_llm_backend()
     assert isinstance(backend, OpenRouterBackend)
 
 @patch.object(OpenRouterBackend, "is_available", return_value=False)
 def test_get_llm_backend_returns_ollama_if_worker_registered(mock_openrouter_avail):
-    registry.worker_registry = {"worker_1": {"id": "worker_1"}}
+    providers._cloud_providers_cache = []
+    providers._providers_loaded = True
+    registry.worker_registry = {"worker_1": {"id": "worker_1", "priority": 10}}
     backend = providers.get_llm_backend()
     assert isinstance(backend, OllamaBackend)
     assert backend.model_name == "worker"
     
 @patch.object(OpenRouterBackend, "is_available", return_value=False)
 def test_get_llm_backend_returns_none_if_no_worker(mock_openrouter_avail):
+    providers._cloud_providers_cache = []
+    providers._providers_loaded = True
     registry.worker_registry = {}
     backend = providers.get_llm_backend()
     assert backend is None

@@ -11,6 +11,7 @@ router_satellites = APIRouter()
 @router_satellites.post("/v1/satellites/register")
 async def register_satellite(request: SatelliteRegistrationRequest):
     """Rejestruje Satelitę w Kontrolerze. Wywoływane przez Satelitę przy starcie."""
+    is_new = request.id not in registry.satellite_registry
     registry.satellite_registry[request.id] = {
         "id": request.id,
         "room": request.room,
@@ -20,13 +21,14 @@ async def register_satellite(request: SatelliteRegistrationRequest):
         "last_seen": time.time(),
     }
     logging.info(f"Zarejestrowano satelitę: {request.id} (pokój={request.room}, typ={request.type})")
-    await event_bus.publish({
-        "type": "satellite_registered",
-        "id": request.id,
-        "room": request.room,
-        "type": request.type,
-        "capabilities": request.capabilities,
-    })
+    if is_new:
+        await event_bus.publish({
+            "type": "satellite_registered",
+            "id": request.id,
+            "room": request.room,
+            "type": request.type,
+            "capabilities": request.capabilities,
+        })
     return {"status": "registered", "id": request.id}
 
 
