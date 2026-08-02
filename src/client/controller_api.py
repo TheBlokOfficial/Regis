@@ -8,10 +8,13 @@ from typing import Any
 
 from client.config import load_settings, save_settings
 from client.process_manager import (
-    SERVICES, start_service, stop_service, 
+    SERVICES, start_service, stop_service, restart_service,
     get_active_services_registration, get_all_services_status
 )
-from protocol.schemas import WSSatelliteEvent, WSCommand, WSCommandResult, ClientRegistrationRequest
+from protocol.schemas import (
+    WSSatelliteEvent, WSCommand, WSCommandResult, ClientRegistrationRequest,
+    ServiceControlPayload, ServiceAction
+)
 from protocol.discovery import get_local_ip, discover_controller
 
 # --- Stan modułu (Pythonic Module Singleton) ---
@@ -143,14 +146,18 @@ async def _cmd_status(payload: dict) -> dict:
     return {"success": True, "result": get_all_services_status()}
 
 async def _cmd_service_control(payload: dict) -> dict:
-    service = payload.get("service")
-    action = payload.get("action")
-    if action == "start":
+    ctrl_req = ServiceControlPayload(**payload)
+    service = ctrl_req.service
+    action = ctrl_req.action
+
+    if action == ServiceAction.START:
         return {"success": start_service(service)}
-    elif action == "stop":
+    elif action == ServiceAction.STOP:
         stop_service(service)
         return {"success": True}
-    return {"success": False, "error": f"Nieznana akcja: {action} dla usługi {service}"}
+    elif action == ServiceAction.RESTART:
+        return {"success": restart_service(service)}
+    return {"success": False, "error": f"Nieznana akcja: {action}"}
 
 COMMAND_HANDLERS = {
     "config": _cmd_config,

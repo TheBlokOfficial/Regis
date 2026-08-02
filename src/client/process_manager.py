@@ -288,6 +288,12 @@ def stop_service(name: str) -> None:
     if name in SERVICES:
         SERVICES[name].stop()
 
+def restart_service(name: str, config_data: dict = None) -> bool:
+    if name in SERVICES:
+        SERVICES[name].stop()
+        return SERVICES[name].start(config_data)
+    return False
+
 def stop_all_services() -> None:
     for srv in SERVICES.values():
         srv.stop()

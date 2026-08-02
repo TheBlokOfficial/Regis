@@ -121,6 +121,21 @@ NodeConfigRequest = ClientConfigRequest
 
 from typing import Any
 
+from enum import Enum
+
+class ServiceAction(str, Enum):
+    """Oficjalny spis dopuszczalnych akcji na usługach Węzła."""
+    START = "start"
+    STOP = "stop"
+    RESTART = "restart"
+
+
+class ServiceControlPayload(BaseModel):
+    """Payload dla komendy 'service_control'."""
+    service: str
+    action: ServiceAction
+
+
 class WSCommand(BaseModel):
     """Komenda przesyłana z Kontrolera do Klienta przez WebSocket."""
     command: str
