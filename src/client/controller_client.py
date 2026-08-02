@@ -30,9 +30,17 @@ def bus_publish(event: dict) -> None:
         asyncio.run_coroutine_threadsafe(_ws_client.send(payload), _ws_loop)
 
 
-
-
-
+def get_controller_url() -> str:
+    """Zwraca adres URL Kontrolera z konfiguracji lub z Discovery (fallback: 127.0.0.1)."""
+    settings = load_settings()
+    url = settings.get("controller_url", "auto")
+    if url == "auto":
+        try:
+            from protocol.discovery import discover_controller
+            return discover_controller()
+        except Exception:
+            return "http://127.0.0.1:8000"
+    return url
 def apply_node_config(config_data: dict, from_registration: bool = False) -> None:
     """Aplikuje nową konfigurację z Kontrolera dla Węzła."""
     settings = load_settings()
@@ -79,22 +87,16 @@ def register() -> None:
     """Wysyła zbiorczą rejestrację Zjednoczonego Węzła do Kontrolera."""
     def _do_reg():
         try:
-            from protocol.discovery import discover_controller, get_local_ip
+            from protocol.discovery import get_local_ip
             
             settings = load_settings()
             node_id = settings.get("node_id", settings.get("instance_name", "node-default"))
-            controller_url = settings.get("controller_url", "auto")
-            if controller_url == "auto":
-                try:
-                    controller_url = discover_controller()
-                except Exception:
-                    controller_url = "http://192.168.0.119:8000"
+            controller_url = get_controller_url()
                     
             payload = {
                 "id": node_id,
                 "name": node_id,
                 "host": get_local_ip(),
-                "port": 8099,
                 "services": get_active_services_registration(),
             }
             resp = requests.post(f"{controller_url}/v1/nodes/register", json=payload, timeout=5)
@@ -114,15 +116,9 @@ def register() -> None:
 def unregister() -> None:
     """Wyrejestrowuje Węzeł z Kontrolera."""
     try:
-        from protocol.discovery import discover_controller
         settings = load_settings()
         node_id = settings.get("node_id", settings.get("instance_name", "node-default"))
-        controller_url = settings.get("controller_url", "auto")
-        if controller_url == "auto":
-            try:
-                controller_url = discover_controller()
-            except Exception:
-                controller_url = "http://192.168.0.119:8000"
+        controller_url = get_controller_url()
         requests.delete(f"{controller_url}/v1/nodes/{node_id}", timeout=2)
         print(f"Wyrejestrowano Zjednoczony Węzeł '{node_id}' z Kontrolera.")
     except Exception:
@@ -169,13 +165,7 @@ async def _ws_client_loop() -> None:
     global _ws_client
     settings = load_settings()
     node_id = settings.get("node_id", settings.get("instance_name", "node-default"))
-    controller_url = settings.get("controller_url", "auto")
-    if controller_url == "auto":
-        try:
-            from protocol.discovery import discover_controller
-            controller_url = discover_controller()
-        except Exception:
-            controller_url = "http://192.168.0.119:8000"
+    controller_url = get_controller_url()
             
     ws_url = controller_url.replace("http://", "ws://").replace("https://", "wss://") + f"/v1/ws/nodes/{node_id}"
     

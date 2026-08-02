@@ -63,49 +63,28 @@ class EnergyVAD:
 class EventBus:
     """Odpowiada za komunikację z UI (Monitorem) przez eventy.
 
-    Wysyła zdarzenia do dwóch odbiorców równolegle:
-    - lokalny serwis (port 8099) — Monitor Audio
-    - Kontroler (POST /api/satellite/event) — centralny Web UI
+    Wysyła zdarzenia bezpośrednio przez otwarty WebSocket do Kontrolera
+    używając globalnego `bus_publish`.
     """
 
-    # Typy zdarzeń, które trafiają do centralnego Web UI Kontrolera.
-    _CONTROLLER_PUSH_TYPES = {"state", "stt_result", "done", "error", "vad_speech", "vad_silence", "wakeword"}
-
-    def __init__(self, service_url="http://127.0.0.1:8099",
-                 controller_url: str | None = None,
-                 satellite_id: str | None = None):
-        self.url = service_url
-        self.controller_url = controller_url
+    def __init__(self, satellite_id: str | None = None):
         self.satellite_id = satellite_id
         self.queue = _q.Queue()
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
         
     def _worker(self):
-        with requests.Session() as s:
-            while True:
-                event = self.queue.get()
-                # 1. Lokalny serwis (Monitor Audio)
-                try:
-                    s.post(f"{self.url}/satellite/event", json=event, timeout=0.5)
-                except Exception:
-                    pass
-                # 2. Centralny EventBus Kontrolera (Web UI)
-                if self.controller_url and event.get("type") in self._CONTROLLER_PUSH_TYPES:
-                    try:
-                        payload = {
-                            "satellite_id": self.satellite_id or "unknown",
-                            "type": event.get("type"),
-                            "data": {k: v for k, v in event.items() if k != "type"},
-                        }
-                        s.post(
-                            f"{self.controller_url}/api/satellite/event",
-                            json=payload,
-                            timeout=0.5,
-                        )
-                    except Exception:
-                        pass
-                self.queue.task_done()
+        from client.controller_client import bus_publish
+        while True:
+            event = self.queue.get()
+            # Używamy ujednoliconego klienta WebSocket z controller_client
+            try:
+                if self.satellite_id:
+                    event["satellite_id"] = self.satellite_id
+                bus_publish(event)
+            except Exception:
+                pass
+            self.queue.task_done()
                 
     def emit(self, event: dict):
         try:
