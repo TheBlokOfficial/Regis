@@ -279,19 +279,26 @@ SERVICES: dict[str, BaseSubservice] = {
     "satellite": SatelliteSubservice(),
 }
 
-def start_service(name: str, config_data: dict = None) -> bool:
-    if name in SERVICES:
-        return SERVICES[name].start(config_data)
-    return False
+def control_service(name: str, action: str, config_data: dict = None) -> bool:
+    """Zarządza stanem pojedynczej usługi. 
+    Wspierane akcje: 'start', 'stop', 'restart'."""
+    if name not in SERVICES:
+        return False
+        
+    srv = SERVICES[name]
+    
+    # Rozpakowujemy jeśli podano Enum
+    act = action.value if hasattr(action, "value") else action
 
-def stop_service(name: str) -> None:
-    if name in SERVICES:
-        SERVICES[name].stop()
-
-def restart_service(name: str, config_data: dict = None) -> bool:
-    if name in SERVICES:
-        SERVICES[name].stop()
-        return SERVICES[name].start(config_data)
+    if act == "start":
+        return srv.start(config_data)
+    elif act == "stop":
+        srv.stop()
+        return True
+    elif act == "restart":
+        srv.stop()
+        return srv.start(config_data)
+        
     return False
 
 def stop_all_services() -> None:

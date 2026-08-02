@@ -8,7 +8,7 @@ from typing import Any
 
 from client.config import load_settings, save_settings
 from client.process_manager import (
-    SERVICES, start_service, stop_service, restart_service,
+    SERVICES, control_service,
     get_active_services_registration, get_all_services_status
 )
 from protocol.schemas import (
@@ -68,18 +68,18 @@ def apply_node_config(config_data: dict, from_registration: bool = False) -> Non
 
     # 1. Konfiguracja Workera (LLM)
     if "worker" in services:
-        start_service("worker", services["worker"])
+        control_service("worker", "start", services["worker"])
     else:
         if SERVICES["worker"].is_running():
-            stop_service("worker")
+            control_service("worker", "stop")
 
     # 2. Konfiguracja Satelity (Audio/VAD)
     if "satellite" in services:
         if not SERVICES["satellite"].is_running():
-            start_service("satellite", services["satellite"])
+            control_service("satellite", "start", services["satellite"])
     else:
         if SERVICES["satellite"].is_running():
-            stop_service("satellite")
+            control_service("satellite", "stop")
     
     if not from_registration:
         register()
@@ -147,17 +147,8 @@ async def _cmd_status(payload: dict) -> dict:
 
 async def _cmd_service_control(payload: dict) -> dict:
     ctrl_req = ServiceControlPayload(**payload)
-    service = ctrl_req.service
-    action = ctrl_req.action
-
-    if action == ServiceAction.START:
-        return {"success": start_service(service)}
-    elif action == ServiceAction.STOP:
-        stop_service(service)
-        return {"success": True}
-    elif action == ServiceAction.RESTART:
-        return {"success": restart_service(service)}
-    return {"success": False, "error": f"Nieznana akcja: {action}"}
+    success = control_service(ctrl_req.service, ctrl_req.action)
+    return {"success": success}
 
 COMMAND_HANDLERS = {
     "config": _cmd_config,
