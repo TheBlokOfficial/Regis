@@ -4,7 +4,7 @@ import socket
 import requests
 import questionary
 
-from node.ux import console
+from node.legacy.ux import console
 from rich.rule import Rule
 from core.discovery import discover_controller
 from node.config import load_settings

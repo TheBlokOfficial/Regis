@@ -9,8 +9,8 @@ from rich.console import Console
 from rich.rule import Rule
 
 from node import config
-from node.exceptions import LLMConnectionError
-from node.ux import console, custom_style
+from node.utils import LLMConnectionError
+from node.legacy.ux import console, custom_style
 from prompt_toolkit.history import InMemoryHistory
 
 # ─── Stan wewnętrzny monitora ─────────────────────────────────────────────────

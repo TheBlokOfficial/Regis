@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 from core.schemas import SatelliteRegistrationRequest, ToolExecutionRequest
 from controller.tools_registry import ToolsRegistry
-from node.remote_tools_registry import RemoteToolsRegistry
+from node.services.remote_tools_registry import RemoteToolsRegistry
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────

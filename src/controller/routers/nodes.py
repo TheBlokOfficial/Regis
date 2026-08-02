@@ -159,6 +159,12 @@ async def unregister_node(node_id: str):
 async def websocket_node_endpoint(websocket: WebSocket, node_id: str):
     """Stałe połączenie WebSocket utrzymywane przez Węzeł."""
     await registry.node_manager.connect(node_id, websocket)
+    
+    # Automatyczny push konfiguracji zapamiętanej w Kontrolerze dla tego node_id
+    persistent_configs = load_nodes_config()
+    if node_id in persistent_configs:
+        stored_profile = persistent_configs[node_id]
+        await registry.node_manager.send_command(node_id, "config", stored_profile)
     try:
         while True:
             data = await websocket.receive_json()

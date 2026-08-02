@@ -1,22 +1,23 @@
 import logging
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from node.llm_backends.base import LLMBackend
 from node.llm_backends.ollama import OllamaBackend
+from node.utils import build_messages_from_history
 
 class LLMEngine:
-    """Fasada dla wstecznej kompatybilności Węzła Roboczego (WorkerNode).
-    Inicjalizuje odpowiedni backend (obecnie Ollama dla workerów).
+    """Fasada Węzła Roboczego dla komunikacji asynchronicznej.
+    Inicjalizuje odpowiedni backend (Ollama) i obudowuje generowanie.
     """
 
-    def __init__(self, model_name: str, temperature: float = 0.1, history_limit: int = 20):
+    def __init__(self, model_name: str, temperature: float = 0.1):
         # Węzeł roboczy z definicji obsługuje lokalny model
         self.backend = OllamaBackend(model_name=model_name, temperature=temperature)
         logging.info("Zainicjalizowano LLMEngine (Fasada)")
 
     @staticmethod
     def get_available_models() -> list[str]:
-        # Kompatybilność wsteczna, jeśli by coś wywoływało
+        # Kompatybilność wsteczna (używa requests synchronicznie na potrzeby rzadkich zapytań)
         settings = dict()
         try:
             from node import config
@@ -36,31 +37,30 @@ class LLMEngine:
     def clear_history(self) -> None:
         logging.info("Wyczyszczono historię konwersacji LLM (No-op, historia jest w Kontrolerze).")
 
-    def preload_model(self) -> None:
+    async def preload_model(self) -> None:
         if hasattr(self.backend, "preload_model"):
-            self.backend.preload_model()
+            await self.backend.preload_model()
 
-    def unload_model(self) -> None:
+    async def unload_model(self) -> None:
         if hasattr(self.backend, "unload_model"):
-            self.backend.unload_model()
+            await self.backend.unload_model()
 
-    def generate_response(
+    async def generate_response_stream(
         self, 
-        messages: list[dict], 
-        tools_registry: Any, 
-        on_tool_call: Any = None, 
-        on_thought_token: Any = None, 
-        on_content_token: Any = None, 
-        on_raw_tool_call: Any = None, 
-        on_profiler: Any = None
-    ) -> str:
-        """Fasada puszczająca zapytanie do właściwego backendu."""
-        return self.backend.generate_response(
-            messages=messages,
-            tools_registry=tools_registry,
-            on_tool_call=on_tool_call,
-            on_thought_token=on_thought_token,
-            on_content_token=on_content_token,
-            on_raw_tool_call=on_raw_tool_call,
-            on_profiler=on_profiler
+        system_prompt: str,
+        history: list[dict],
+        current_message: str,
+        tools_registry: Any
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Fasada puszczająca asynchroniczne zapytanie do właściwego backendu.
+        Automatycznie buduje strukturę konwersacji z surowej historii.
+        """
+        
+        messages = build_messages_from_history(
+            system_prompt=system_prompt,
+            history=history,
+            current_message=current_message
         )
+        
+        async for event in self.backend.generate_stream(messages, tools_registry):
+            yield event

@@ -59,7 +59,7 @@ def test_get_llm_backend_returns_none_if_no_worker(mock_openrouter_avail):
 
 
 def test_build_messages_from_history_handles_tool_dicts_and_filters_raw_logs():
-    from node.history_utils import build_messages_from_history
+    from node.utils import build_messages_from_history
 
     history = [
         {

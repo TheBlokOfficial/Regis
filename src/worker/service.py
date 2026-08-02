@@ -4,7 +4,7 @@ import logging
 import threading
 
 from worker.node import WorkerNode
-from node.remote_tools_registry import RemoteToolsRegistry
+from worker.remote_tools_registry import RemoteToolsRegistry
 
 logger = logging.getLogger(__name__)
 

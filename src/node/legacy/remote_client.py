@@ -1,7 +1,7 @@
 import json
 import logging
 import requests
-from node.exceptions import LLMConnectionError
+from node.utils import LLMConnectionError
 
 class RemoteClient:
     def __init__(self, base_url: str = "http://127.0.0.1:8000", satellite_id: str | None = None, room: str | None = None):

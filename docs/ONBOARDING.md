@@ -65,19 +65,19 @@ Ikona w pasku zadań to jedynie mechanizm życia procesu — nie definicja aplik
 
 **Dystrybucja:** Windows Installer (`RegisNodeSetup.exe`) — budowany narzędziem Inno Setup. Wymaga Python zainstalowanego w systemie. Szczegóły: `docs/distribution_rfc.md`. **PyInstaller jest porzucony i nie jest używany.**
 
-**Pliki:**
-- `main.py` — entry point: jeśli brak `data/settings.json` → uruchamia wizard; jeśli istnieje → uruchamia serwis
-- `wizard.py` — kreator konfiguracji (questionary) dla pierwszego uruchomienia
-- `service.py` — **pełnoprawna usługa Windows** (biblioteka `pystray`); właściciel procesów Worker i Satellite. Wystawia mini HTTP API na `localhost:8099` dla dashboardu. Menu ma 3 pozycje: status, "Otwórz panel kontrolny", "Zamknij". Zamknięcie zawsze zatrzymuje wszystkie procesy.
-- `dashboard.py` — panel kontrolny CLI; klient HTTP API serwisu. Wyświetla status usług, umożliwia start/stop Worker i Satellite, otwiera wizard i Monitor.
-- `worker.py` — serwer HTTP węzła LLM (FastAPI); uruchamiany jako ukryty proces w tle
-- `node.py` — klasa `WorkerNode`: inicjalizuje `LLMEngine`, obsługuje `handle_chat()`
-- `satellite.py` — logika przechwytywania audio z mikrofonu i wysyłania do Kontrolera
-- `monitor.py` — interaktywne narzędzie czatu tekstowego (Monitor konwersacji)
-- `monitor_core.py` — wspólna logika wyświetlania eventów SSE
-- `monitor_voice.py` — Monitor Głosowy (Live Dashboard): śledzenie pipeline'u audio w czasie rzeczywistym
-- `stt_worker.py` — osobny proces STT (Whisper) uruchamiany przez Worker
-- `ux.py` — style rich/questionary wspólne dla całego modułu node
+**Pliki i struktura katalogów:**
+- `main.py` — oficjalny punkt wejścia CLI (`regis`), uruchamia usługę `service.py`
+- `service.py` — **pełnoprawna usługa Windows** (biblioteka `pystray`); zarządza podprocesami Worker i Satellite w tle
+- `node.py` — klasa `WorkerNode`: inicjalizuje silniki inferencji LLM, STT i TTS
+- `config.py` / `logger.py` / `exceptions.py` / `history_utils.py` — pliki konfiguracyjne, logowania i funkcje pomocnicze
+- `services/` — podusługi procesowe uruchamiane przez `service.py`:
+  - `services/worker.py` — serwer HTTP FastAPI dla Workera LLM (port 8001)
+  - `services/satellite.py` — logika przechwytywania audio z mikrofonu (VAD, WakeWord)
+  - `services/stt_worker.py` — podproces transkrypcji (Whisper)
+  - `services/remote_client.py` & `services/remote_tools_registry.py` — proxy komunikacji z Kontrolerem
+- `engines/` — silniki wykonawcze (`llm_engine.py`, `stt_engine.py`, `tts_engine.py`)
+- `llm_backends/` — adaptery backendów LLM (`base.py`, `ollama.py`, `openrouter.py`)
+- `legacy/` — zaszłości po starym interfejsie CLI (`wizard.py`, `ux.py`, `monitor.py`, `monitor_core.py`, `monitor_voice.py`)
 
 **Flow pierwszego uruchomienia:**
 1. `Uruchom.bat` → `regis-node.exe`

@@ -41,7 +41,7 @@ def proxy_sse_to_queue(
         mode = getattr(backend, "mode", "extended")
         system_prompt = build_system_prompt(room=room, mode=mode)
 
-        from node.history_utils import build_messages_from_history
+        from controller.history_utils import build_messages_from_history
         messages = build_messages_from_history(
             system_prompt=system_prompt,
             history=session_history,

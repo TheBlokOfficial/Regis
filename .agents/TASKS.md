@@ -26,6 +26,7 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 - [x] **[NODE-CENTRIC — Etap 3]** Routing i Heartbeat: `src/controller/services/chat_service.py` (routing do Węzła), `src/controller/routers/ui.py` (odbiór `POST /api/node/event`), heartbeat na porcie 8099.
 - [x] **[NODE-CENTRIC — Etap 4]** Reaktywny Web UI: `src/controller/web/` (unifikacja kart w "Węzły Systemowe" z połączonym podglądem modeli LLM oraz VAD Satelity).
 - [x] **[NODE-CENTRIC — Etap 5]** Testy, Weryfikacja i Deployment: Uruchomienie `pytest`, testy manualne `service.bat` i wysłanie aktualizacji Kontrolera na Raspberry Pi.
+- [x] **[NODE REFACTORING — Async & BaseSubservice]**: Usunięcie `node.py` (God Object), migracja `worker.py` i `ollama.py` na `httpx.AsyncClient` + AsyncGenerators, dodanie `argparse` z CLI flags oraz wdrożenie obiektowej klasy bazowej `BaseSubservice` dla dynamicznego zarządzania subprocesami w `process_manager.py`.
 
 ### [FEATURE] Web UI (Reaktywny Panel Kontrolny & Optymalizacja UX)
 
@@ -57,20 +58,32 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 
 ## Zarchiwizowane (Historia Sesji)
 
-### Refaktoryzacja LLM Backends (Faza 2 czyszczenia - Sierpień 2026)
-Wyczyszczono katalog `core/` z komponentów `llm_backends/` (przeniesiono do `src/controller/llm_backends/`), co finalizuje pierwszą część separacji providerów zdefiniowanych wyłącznie pod Kontroler. Zaktualizowano wszystkie importy, wliczając w to lokalne fasady w węzłach (`node`, `worker`).
+### Refaktoryzacja Modułu Node: Async, Brak God Object & BaseSubservice (Sierpień 2026)
+Przeprowadzono gruntowne unowocześnienie i usprawnienie architektury modułu `src/node/`:
+1. **Usunięto `node.py`** – wyeliminowano przerośniętą klasę `WorkerNode` na rzecz bezpośredniego instancjonowania silników w `worker.py`.
+2. **Przejście na `httpx.AsyncClient` i AsyncGenerator** – zastąpiono blokujące zapytania HTTP i wątki generatorami asynchronicznymi w `LLMEngine` i backendzie Ollamy.
+3. **Usunięcie Split-Brain** – dodano `argparse` w `worker.py` oraz `satellite.py`, a `process_manager.py` przekazuje parametry bezpośrednio w poleceniach CLI.
+4. **Obiektowy `BaseSubservice`** – stworzono klasę bazową dla podprocesów oraz rejestr `SERVICES`. Uporządkowano zamykanie procesów (`stop_all_services()`), wyrejestrowywanie oraz raportowanie statusu przez WebSocket.
+5. Wynik: 34/34 testy pytest przechodzą.
+
+### Pełna Izolacja Usług — Restrukturyzacja `src/core/` (Sierpień 2026)
+Przeprowadzono gruntowną reorganizację monorepo. Folder `src/core/` jest teraz chudym kontraktem sieciowym zawierającym wyłącznie `discovery.py` i `schemas.py` (klasy rejestracyjne). Wykonane kroki:
+1. Silniki (`llm_engine`, `stt_engine`, `tts_engine`, `stream_parser`) przeniesione z `core/` do `src/node/engines/` i `src/worker/engines/`.
+2. `history_utils.py` przeniesiony do `src/node/` i `src/worker/`.
+3. `llm_backends/` przeniesiony do `src/controller/llm_backends/`; własne kopie dodane do `src/node/llm_backends/` i `src/worker/llm_backends/`.
+4. `config.py`, `logger.py`, `exceptions.py` zduplikowane do każdej usługi i usunięte z `core/`.
+5. `BASE_TOOLS_SCHEMA` przeniesiony do `src/controller/schemas_tools.py`.
+6. Audyt QA wykrył i naprawiono 2 cross-importy (`controller→node`, `worker→node`) i 1 zestarzały import w testach.
+Wynik: zero cross-importów, 34/34 testów przechodzi.
+
+### Refaktoryzacja LLM Backends (historycznie — wchłonięta przez restrukturyzację core/)
+Wyczyszczono katalog `core/` z komponentów `llm_backends/` (przeniesiono do `src/controller/llm_backends/`). Zaktualizowano wszystkie importy.
 
 ### Refaktoryzacja UX Web UI & Layout 16:9 (Sierpień 2026)
-Przeprowadzono gruntowną optymalizację ergonomii i estetyki panelu kontrolnego:
-1. Rozdzielono strategię wyświetlania – Czat oraz Dziennik Zdarzeń posiadają dynamiczne wycentrowanie do max 1000px, eliminując skakanie wzrokiem po panoramicznych ekranach 16:9.
-2. Przebudowano Pulpit na trójkolumnową siatkę o bezwzględnie równych szerokościach (`repeat(3, minmax(0, 1fr))`), 10% bocznych marginesach i stałych kontenerach listowych (380px z wewnętrznym scrollowaniem).
-3. Dodano klasę `.list-info` z przycinaniem zbyt długich tekstów wielokropkiem (`ellipsis`), unikając rozbijania przycisków akcji.
-4. Odfiltrowano mikrozderzenia pod-usług w Dzienniku Zdarzeń (zostały wyciszone w tle dla kafelków) i ustandaryzowano logi tekstowe (`[INFO]`, `[OFFLINE]`, `[ERROR]`).
-5. Usunięto zaszłość przestarzałego portu `:8099` oraz zbędne tagi VAD z kart węzłów.
-6. Naprawiono testy jednostkowe w `tests/test_llm_backends.py`.
+Przeprowadzono gruntowną optymalizację ergonomii i estetyki panelu kontrolnego.
 
 ### Optymalizacja NLU i Diagnostyki (RPi5)
-Naprawiono błędy parsowania JSON przy modelach z funkcją myślenia (`qwen3`), zastępując Prefix Injection natywnym parametrem `"format": "json"` w Ollama API. Wyczyszczono zdeprecjonowane usługi systemd (`regis-stt.service`). Zintegrowano profiler `on_profiler` w `nlu_agent.py` i przywrócono pełne statystyki czasu wykonania w stopce CLI (`TTFT`, `Gen`, `Narzędzia`). Przestawiono domyślny model Butlera na `qwen2.5:0.5b`.
+Naprawiono błędy parsowania JSON przy modelach z funkcją myślenia (`qwen3`).
 
 ### Architektura i Restrukturyzacja
-Ukończono pełną restrukturyzację monorepo do układu `src/` z trzema usługami produkcyjnymi (`controller`, `controller.worker`, `node`). Rozwiązano dług dystrybucyjny — system `.whl` dla RPi5 i Portable App dla Windows. Wdrożono Auto-Discovery (UDP Broadcast Zero-Conf). Wdrożono Rejestr Encji (Satelity i Węzły), Spatial Context Filtering, Continuous Registration. Przeprowadzono pełny re-branding kodu na "Regis".
+Ukończono pełną restrukturyzację monorepo do układu `src/` z trzema usługami produkcyjnymi.

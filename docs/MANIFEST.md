@@ -227,9 +227,10 @@ Regis jest **charakterny, rzeczowy i bezpośredni.** Nie owija w bawełnę. Prio
 - Izolacja konfiguracji na profile per instancja (pliki `.env`)
 - Auto-Discovery węzłów (UDP Broadcast Zero-Conf, `core/discovery.py`)
 - Rejestr Encji (Satelity i Węzły rejestrują się w Kontrolerze)
+- **Izolacja usług (monorepo):** `src/core/` oczyszczony do roli chudego kontraktu sieciowego. Każda usługa (`controller`, `node`, `worker`) ma własne kopie `config.py`, `logger.py`, `exceptions.py`, `history_utils.py`, `llm_backends/`. Zero cross-importów między usługami.
+- **Warstwa abstrakcji LLM (`llm_backends/`)** w Kontrolerze zaimplementowana (`controller/llm_backends/`). OpenRouter i Ollama jako oddzielne backendy z wspólnym interfejsem `LLMBackend`.
 
 **Aktualny dług (oczekuje realizacji):**
 - **Dystrybucja Windows:** Inno Setup (`RegisNodeSetup.exe`) jest zaprojektowany (`docs/distribution_rfc.md`) ale instalator nie jest jeszcze zbudowany produkcyjnie — patrz `TASKS.md`.
 - **Pamięć Długoterminowa:** Stary system Notatnika wycięty. Nowe rozwiązanie (np. wektorowe) nie zostało jeszcze zaprojektowane — patrz `TASKS.md`.
-- **Dead code `frozen`:** `core/config.py` zawiera pozostałość po epoce PyInstaller (`if getattr(sys, 'frozen', False)`). Do usunięcia w oddzielnej sesji.
-- **System Providerów (LLM/STT/TTS):** Architektura providerów opisana w §5 jest rozstrzygnięta konceptualnie, ale warstwa abstrakcji (`llm_backends/`) w Kontrolerze nie jest jeszcze zaimplementowana. Aktualny kod używa bezpośrednich wywołań Ollamy. Implementacja wymaga osobnej sesji.
+- **System Providerów (STT/TTS):** Warstwa abstrakcji dla STT i TTS nie jest jeszcze zaimplementowana. Aktualny kod wymaga Windows Node do lokalnej obsługi audio. Implementacja cloud STT/TTS bez Windows Node wymaga osobnej sesji — patrz `TASKS.md` (`[ARCH — Phase 2]`).

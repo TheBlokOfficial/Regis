@@ -10,8 +10,8 @@ if os.name == 'nt':
 import requests
 from rich.rule import Rule
 
-from node.ux import console
-from node.monitor_core import render_user_turn, TurnRenderer
+from node.legacy.ux import console
+from node.legacy.monitor_core import render_user_turn, TurnRenderer
 
 SERVICE_URL = "http://127.0.0.1:8099"
 SSE_RECONNECT_DELAY = 3

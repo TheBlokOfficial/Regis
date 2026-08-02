@@ -1,6 +1,6 @@
 import os
 import pytest
-from core import config
+from controller import config
 
 def test_load_settings_defaults():
     # Zmieniamy ścieżkę pliku na nieistniejącą, aby wymusić domyślne ustawienia
