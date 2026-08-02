@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from typing import List
 
-from core import config
+from controller import config
 from core.schemas import CloudProviderConfig
 
 logger = logging.getLogger(__name__)

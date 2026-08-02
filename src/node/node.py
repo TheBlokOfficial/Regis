@@ -145,7 +145,7 @@ class WorkerNode:
 def start():
     """Entry point dla procesu pracownika w tle."""
     import uvicorn
-    from core import config
+    from node import config
     from node.worker import app
     settings = config.load_settings()
     port = settings.get("worker_port", 8001)

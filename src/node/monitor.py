@@ -8,8 +8,8 @@ import questionary
 from rich.console import Console
 from rich.rule import Rule
 
-from core import config
-from core.exceptions import LLMConnectionError
+from node import config
+from node.exceptions import LLMConnectionError
 from node.ux import console, custom_style
 from prompt_toolkit.history import InMemoryHistory
 
@@ -59,7 +59,7 @@ def _stream_and_display(prompt: str, server_url: str) -> None:
     global _verbose
 
     from node.remote_client import RemoteClient
-    from core.config import load_settings
+    from node.config import load_settings
     from node.monitor_core import render_user_turn, TurnRenderer
 
     settings = load_settings()

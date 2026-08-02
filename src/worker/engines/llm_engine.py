@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-from controller.llm_backends.base import LLMBackend
-from controller.llm_backends.ollama import OllamaBackend
+from worker.llm_backends.base import LLMBackend
+from worker.llm_backends.ollama import OllamaBackend
 
 class LLMEngine:
     """Fasada dla wstecznej kompatybilności Węzła Roboczego (WorkerNode).
@@ -19,7 +19,7 @@ class LLMEngine:
         # Kompatybilność wsteczna, jeśli by coś wywoływało
         settings = dict()
         try:
-            from core import config
+            from worker import config
             settings = config.load_settings()
         except ImportError:
             pass

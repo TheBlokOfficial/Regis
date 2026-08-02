@@ -143,7 +143,7 @@ class WorkerNode:
 def start():
     """Entry point dla CLI (regis-worker). Uruchamia serwer HTTP Węzła Roboczego."""
     import uvicorn
-    from core import config
+    from worker import config
     from worker.app import app
     settings = config.load_settings()
     port = settings.get("worker_port", 8001)

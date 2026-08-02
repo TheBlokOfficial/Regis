@@ -6,7 +6,7 @@ import re
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from node.engines.stt_engine import STTEngine
-from core import config
+from node import config
 
 # Regex został usunięty, ponieważ przechodzimy na inteligentne filtrowanie po czasie (timestampach)!
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")

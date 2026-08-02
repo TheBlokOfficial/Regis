@@ -5,7 +5,7 @@ import requests
 from requests.exceptions import RequestException
 from typing import Any
 
-from core.exceptions import HomeAssistantConnectionError
+from controller.exceptions import HomeAssistantConnectionError
 
 logger = logging.getLogger(__name__)
 

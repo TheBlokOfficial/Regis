@@ -6,7 +6,7 @@ import httpx
 import threading
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
-from core.config import DATA_DIR
+from controller.config import DATA_DIR
 from core.schemas import NodeRegistrationRequest, NodeConfigRequest, SUPPORTED_REGIS_MODELS
 import controller.event_bus as event_bus
 import controller.registry as registry

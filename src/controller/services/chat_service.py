@@ -130,7 +130,7 @@ def proxy_sse_to_queue(
             )
 
             if mode != "basic":
-                from core import config
+                from controller import config
                 limit = config.load_settings().get("history_limit", 3)
                 hist = registry.get_session_history(satellite_id)
                 if limit <= 0:
@@ -269,7 +269,7 @@ def proxy_sse_to_queue(
                     )
 
                     if mode != "basic":
-                        from core import config
+                        from controller import config
                         limit = config.load_settings().get("history_limit", 3)
                         hist = registry.get_session_history(satellite_id)
                         if limit <= 0:

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from core import config
+from worker import config
 from worker.registration import registration_manager
 from worker.routes import router
 from worker.service import inference_service

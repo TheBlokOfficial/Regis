@@ -91,7 +91,7 @@ def _subscribe_sse():
 
 def _keyboard_listener():
     global _verbose
-    from core import config
+    from node import config
     settings = config.load_settings()
     server_url = settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
     if server_url == "auto":

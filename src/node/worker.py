@@ -12,11 +12,11 @@ from fastapi import FastAPI, UploadFile, File, Form, WebSocket, WebSocketDisconn
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from core import config
+from node import config
 from node.node import WorkerNode
 from node.remote_tools_registry import RemoteToolsRegistry
 
-from core.logger import setup_logging
+from node.logger import setup_logging
 setup_logging("node")
 
 # Globalne instancje — inicjalizowane w lifespan

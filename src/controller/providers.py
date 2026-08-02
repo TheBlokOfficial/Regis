@@ -7,7 +7,7 @@ from controller.llm_backends.base import LLMBackend
 from controller.openrouter_backend import OpenRouterBackend
 from controller.llm_backends.ollama import OllamaBackend
 import controller.registry as registry
-from core import config
+from controller import config
 
 _cloud_providers_cache: list[dict] = []
 _providers_loaded = False

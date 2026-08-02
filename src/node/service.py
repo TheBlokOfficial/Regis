@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler
 import psutil
 import atexit
 import signal
-from core.config import DATA_DIR
+from node.config import DATA_DIR
 
 import asyncio
 import websockets

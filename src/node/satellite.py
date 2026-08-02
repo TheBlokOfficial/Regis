@@ -23,7 +23,7 @@ import wave
 import io
 import requests
 
-from core import config
+from node import config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 

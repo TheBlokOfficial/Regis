@@ -5,9 +5,9 @@ import requests
 from requests.exceptions import RequestException
 from typing import Any
 
-from controller.llm_backends.base import LLMBackend
-from controller.exceptions import LLMConnectionError
-from controller import config
+from worker.llm_backends.base import LLMBackend
+from worker.exceptions import LLMConnectionError
+from worker import config
 
 class OllamaBackend(LLMBackend):
     def __init__(self, model_name: str, mode: str = "extended", temperature: float = 0.1):

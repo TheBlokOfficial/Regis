@@ -7,7 +7,7 @@ import questionary
 from node.ux import console
 from rich.rule import Rule
 from core.discovery import discover_controller
-from core.config import load_settings
+from node.config import load_settings
 
 def run_wizard():
     console.print()

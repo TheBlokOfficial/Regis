@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 
 import controller.registry as registry
-from core import config
+from controller import config
 
 logger = logging.getLogger(__name__)
 

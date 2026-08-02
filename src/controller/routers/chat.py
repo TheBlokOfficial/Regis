@@ -125,6 +125,6 @@ async def get_sessions():
 
 @router_chat.get("/v1/rooms")
 async def get_rooms():
-    from core import config
+    from controller import config
     rooms_data = config.load_rooms()
     return {"rooms": list(rooms_data.keys())}

@@ -1,7 +1,7 @@
 import json
 import logging
 import requests
-from core.exceptions import LLMConnectionError
+from node.exceptions import LLMConnectionError
 
 class RemoteClient:
     def __init__(self, base_url: str = "http://127.0.0.1:8000", satellite_id: str | None = None, room: str | None = None):
@@ -11,7 +11,7 @@ class RemoteClient:
         self.room = room
         if not self.room:
             try:
-                from core.config import load_settings
+                from node.config import load_settings
                 self.room = load_settings().get("room")
             except Exception:
                 pass
