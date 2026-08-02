@@ -24,7 +24,7 @@ CHUNK_SIZE = 1600
 SILENCE_TIMEOUT_MS = 1500
 SILENCE_THRESHOLD = 150
 
-class SatelliteNode:
+class SatelliteService:
     """Główny orkiestrator Satelity z maszyną stanów (WAKEWORD, STREAMING, RESPONDING)."""
     def __init__(self):
         import argparse
@@ -88,7 +88,7 @@ class SatelliteNode:
     async def run(self):
         self.loop = asyncio.get_running_loop()
         self.audio_queue = asyncio.Queue()
-        logging.info("Regis Satellite (Streaming & Smart Energy VAD)")
+        logging.info("Regis Satellite Service (Streaming & Smart Energy VAD)")
         self.event_bus.emit({"type": "state", "state": "WAKEWORD"})
         self.event_bus.log("Satelita uruchomiona - gotowość do nasłuchu Wake Word.")
         self.stream.start()
@@ -220,8 +220,9 @@ class SatelliteNode:
             self.audio_queue.get_nowait()
 
 async def main():
-    node = SatelliteNode()
-    await node.run()
+    service = SatelliteService()
+    await service.run()
+
 
 if __name__ == "__main__":
     try:
