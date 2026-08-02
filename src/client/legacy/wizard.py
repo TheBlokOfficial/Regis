@@ -4,10 +4,10 @@ import socket
 import requests
 import questionary
 
-from node.legacy.ux import console
+from client.legacy.ux import console
 from rich.rule import Rule
 from protocol.discovery import discover_controller
-from node.config import load_settings
+from client.config import load_settings
 
 def run_wizard():
     console.print()

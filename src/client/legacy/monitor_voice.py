@@ -10,8 +10,8 @@ if os.name == 'nt':
 import requests
 from rich.rule import Rule
 
-from node.legacy.ux import console
-from node.legacy.monitor_core import render_user_turn, TurnRenderer
+from client.legacy.ux import console
+from client.legacy.monitor_core import render_user_turn, TurnRenderer
 
 SERVICE_URL = "http://127.0.0.1:8099"
 SSE_RECONNECT_DELAY = 3
@@ -91,7 +91,7 @@ def _subscribe_sse():
 
 def _keyboard_listener():
     global _verbose
-    from node import config
+    from client import config
     settings = config.load_settings()
     server_url = settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
     if server_url == "auto":

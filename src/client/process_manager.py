@@ -3,7 +3,7 @@ import os
 import subprocess
 import psutil
 from typing import Any
-from node.config import DATA_DIR, load_settings
+from client.config import DATA_DIR, load_settings
 
 def get_executable_command(module_name: str) -> list[str]:
     """Buduje polecenie uruchomienia podmodułu w środowisku venv Pythona (Windows / Linux / macOS)."""

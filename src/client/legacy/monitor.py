@@ -8,9 +8,9 @@ import questionary
 from rich.console import Console
 from rich.rule import Rule
 
-from node import config
-from node.utils import LLMConnectionError
-from node.legacy.ux import console, custom_style
+from client import config
+from client.utils import LLMConnectionError
+from client.legacy.ux import console, custom_style
 from prompt_toolkit.history import InMemoryHistory
 
 # ─── Stan wewnętrzny monitora ─────────────────────────────────────────────────
@@ -58,9 +58,9 @@ def _stream_and_display(prompt: str, server_url: str) -> None:
     """Odbiera zdarzenia SSE poprzez Satelitę (RemoteClient) i renderuje turę."""
     global _verbose
 
-    from node.remote_client import RemoteClient
-    from node.config import load_settings
-    from node.monitor_core import render_user_turn, TurnRenderer
+    from client.remote_client import RemoteClient
+    from client.config import load_settings
+    from client.monitor_core import render_user_turn, TurnRenderer
 
     settings = load_settings()
     satellite_id = settings.get("instance_name")

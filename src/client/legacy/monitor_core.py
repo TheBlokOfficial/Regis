@@ -1,6 +1,6 @@
 import sys
 from datetime import datetime
-from node.ux import console
+from client.ux import console
 
 
 def _timestamp() -> str:

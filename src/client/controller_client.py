@@ -4,8 +4,8 @@ import asyncio
 import threading
 import requests
 import websockets
-from node.config import load_settings, save_settings
-from node.process_manager import (
+from client.config import load_settings, save_settings
+from client.process_manager import (
     SERVICES, start_service, stop_service, 
     get_active_services_registration, get_all_services_status
 )

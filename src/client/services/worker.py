@@ -13,12 +13,12 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from node import config
-from node.services.remote_tools_registry import RemoteToolsRegistry
-from node.engines.llm_engine import LLMEngine
-from node.engines.stt_engine import STTEngine
-from node.engines.tts_engine import TTSEngine
-from node.logger import setup_logging
+from client import config
+from client.services.remote_tools_registry import RemoteToolsRegistry
+from client.engines.llm_engine import LLMEngine
+from client.engines.stt_engine import STTEngine
+from client.engines.tts_engine import TTSEngine
+from client.logger import setup_logging
 
 setup_logging("node_worker")
 

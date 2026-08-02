@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from protocol.schemas import WorkerRegistrationRequest, ToolExecutionRequest
-from node.services.remote_tools_registry import RemoteToolsRegistry
+from client.services.remote_tools_registry import RemoteToolsRegistry
 
 
 # ─── Testy WorkerRegistrationRequest ─────────────────────────────────────────

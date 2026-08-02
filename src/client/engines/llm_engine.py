@@ -1,9 +1,9 @@
 import logging
 from typing import Any, AsyncGenerator
 
-from node.llm_backends.base import LLMBackend
-from node.llm_backends.ollama import OllamaBackend
-from node.utils import build_messages_from_history
+from client.llm_backends.base import LLMBackend
+from client.llm_backends.ollama import OllamaBackend
+from client.utils import build_messages_from_history
 
 class LLMEngine:
     """Fasada Węzła Roboczego dla komunikacji asynchronicznej.
@@ -20,7 +20,7 @@ class LLMEngine:
         # Kompatybilność wsteczna (używa requests synchronicznie na potrzeby rzadkich zapytań)
         settings = dict()
         try:
-            from node import config
+            from client import config
             settings = config.load_settings()
         except ImportError:
             pass

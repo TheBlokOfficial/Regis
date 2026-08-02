@@ -4,9 +4,9 @@ import time
 import httpx
 from typing import Any, AsyncGenerator
 
-from node.llm_backends.base import LLMBackend
-from node.utils import LLMConnectionError
-from node import config
+from client.llm_backends.base import LLMBackend
+from client.utils import LLMConnectionError
+from client import config
 
 class OllamaBackend(LLMBackend):
     def __init__(self, model_name: str, mode: str = "extended", temperature: float = 0.1):

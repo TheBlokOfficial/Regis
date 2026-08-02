@@ -1,4 +1,4 @@
-from node.service import run_service
+from client.service import run_service
 
 
 def main():

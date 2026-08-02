@@ -4,10 +4,10 @@ import signal
 import threading
 import pystray
 
-from node.config import load_settings, save_settings
-from node import controller_client
-from node.process_manager import (cleanup_orphaned_processes, stop_all_services)
-from node.tray import create_default_icon, get_menu
+from client.config import load_settings, save_settings
+from client import controller_client
+from client.process_manager import (cleanup_orphaned_processes, stop_all_services)
+from client.tray import create_default_icon, get_menu
 
 # Dla kompatybilności ze starymi odwołaniami:
 get_settings = load_settings

@@ -2,7 +2,7 @@ import webbrowser
 import pystray
 from pystray import MenuItem as item
 from PIL import Image, ImageDraw
-from node.config import load_settings
+from client.config import load_settings
 
 
 def create_default_icon() -> Image.Image:
