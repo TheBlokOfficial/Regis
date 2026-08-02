@@ -6,7 +6,7 @@ import uuid
 import requests
 from typing import Any
 
-from core.schemas import BASE_TOOLS_SCHEMA
+from controller.schemas_tools import BASE_TOOLS_SCHEMA
 
 
 class ToolsRegistry:

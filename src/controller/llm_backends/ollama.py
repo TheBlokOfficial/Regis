@@ -44,7 +44,7 @@ class OllamaBackend(LLMBackend):
             }
 
             if tools_registry:
-                from core.schemas import get_tools_schema
+                from controller.schemas_tools import get_tools_schema
                 if self.mode == "basic":
                     payload["tools"] = get_tools_schema(names=["execute_action"])
                 else:
