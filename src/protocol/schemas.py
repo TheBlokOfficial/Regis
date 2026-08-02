@@ -41,13 +41,13 @@ class SatelliteRegistrationRequest(BaseModel):
     wakeword_local: bool = False
 
 
-class NodeRegistrationRequest(BaseModel):
-    """Payload wysyłany przez Węzeł podczas zbiorczej rejestracji w Kontrolerze (Node-Service Composition)."""
+class ClientRegistrationRequest(BaseModel):
+    """Payload wysyłany przez Aplikację Kliencką podczas rejestracji w Kontrolerze."""
 
     id: str
     name: str | None = None
     host: str
-    port: int = 8099
+    port: int | None = None
     # Słownik usług: {"worker": {"model_name": "..."}, "satellite": {"room": "..."}} lub lista dla wstecznej kompatybilności
     services: dict[str, dict] | list[str] = {}
 
@@ -82,6 +82,10 @@ class NodeRegistrationRequest(BaseModel):
         return normalized
 
 
+# Aliasy wstecznej kompatybilności ze starym nazewnictwem "Node":
+NodeRegistrationRequest = ClientRegistrationRequest
+
+
 SUPPORTED_REGIS_MODELS = [
     {
         "id": "qwen3.5:9b",
@@ -104,8 +108,11 @@ SUPPORTED_REGIS_MODELS = [
 ]
 
 
-class NodeConfigRequest(BaseModel):
-    """Payload aktualizacji konfiguracji Węzła z poziomu Kontrolera / Web UI."""
+class ClientConfigRequest(BaseModel):
+    """Payload aktualizacji konfiguracji Klienta z poziomu Kontrolera / Web UI."""
     name: str | None = None
     services: dict[str, dict] = {}
+
+
+NodeConfigRequest = ClientConfigRequest
 

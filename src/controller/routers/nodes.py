@@ -7,7 +7,7 @@ import threading
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from controller.config import DATA_DIR
-from protocol.schemas import NodeRegistrationRequest, NodeConfigRequest, SUPPORTED_REGIS_MODELS
+from protocol.schemas import ClientRegistrationRequest, ClientConfigRequest, SUPPORTED_REGIS_MODELS
 import controller.event_bus as event_bus
 import controller.registry as registry
 
@@ -38,7 +38,7 @@ async def get_supported_models():
 
 
 @router_nodes.post("/v1/nodes/register")
-async def register_node(request: NodeRegistrationRequest):
+async def register_node(request: ClientRegistrationRequest):
     """Rejestruje Zjednoczony Węzeł w Kontrolerze (Node-Service Composition & SSOT Sync)."""
     is_new = request.id not in registry.node_registry
     incoming_services = request.get_normalized_services()
@@ -109,7 +109,7 @@ async def get_node_config(node_id: str):
 
 
 @router_nodes.post("/v1/nodes/{node_id}/config")
-async def update_node_config(node_id: str, body: NodeConfigRequest):
+async def update_node_config(node_id: str, body: ClientConfigRequest):
     """Zapisuje konfigurację Węzła w Kontrolerze i synchronizuje ją po sieci z Węzłem (port 8099)."""
     persistent_configs = load_nodes_config()
     current_profile = persistent_configs.get(node_id, {})

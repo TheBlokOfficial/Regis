@@ -84,43 +84,44 @@ def apply_node_config(config_data: dict, from_registration: bool = False) -> Non
 
 
 def register() -> None:
-    """Wysyła zbiorczą rejestrację Zjednoczonego Węzła do Kontrolera."""
+    """Wysyła zbiorczą rejestrację Aplikacji Klienckiej do Kontrolera."""
     def _do_reg():
         try:
             from protocol.discovery import get_local_ip
+            from protocol.schemas import ClientRegistrationRequest
             
             settings = load_settings()
-            node_id = settings.get("node_id", settings.get("instance_name", "node-default"))
+            node_id = settings.get("node_id", settings.get("instance_name", "client-default"))
             controller_url = get_controller_url()
                     
-            payload = {
-                "id": node_id,
-                "name": node_id,
-                "host": get_local_ip(),
-                "services": get_active_services_registration(),
-            }
-            resp = requests.post(f"{controller_url}/v1/nodes/register", json=payload, timeout=5)
+            reg_request = ClientRegistrationRequest(
+                id=node_id,
+                name=node_id,
+                host=get_local_ip(),
+                services=get_active_services_registration(),
+            )
+            resp = requests.post(f"{controller_url}/v1/nodes/register", json=reg_request.model_dump(), timeout=5)
             resp.raise_for_status()
-            print(f"Zjednoczony Węzeł '{node_id}' zarejestrowany w Kontrolerze ({controller_url}).")
+            print(f"Aplikacja Kliencka '{node_id}' zarejestrowana w Kontrolerze ({controller_url}).")
             
             config_data = resp.json().get("config")
             if config_data:
                 apply_node_config(config_data, from_registration=True)
                 
         except Exception as e:
-            print(f"Nie udało się zarejestrować Węzła w Kontrolerze: {e}")
+            print(f"Nie udało się zarejestrować Klienta w Kontrolerze: {e}")
 
     threading.Thread(target=_do_reg, daemon=True).start()
 
 
 def unregister() -> None:
-    """Wyrejestrowuje Węzeł z Kontrolera."""
+    """Wyrejestrowuje Klienta z Kontrolera."""
     try:
         settings = load_settings()
-        node_id = settings.get("node_id", settings.get("instance_name", "node-default"))
+        node_id = settings.get("node_id", settings.get("instance_name", "client-default"))
         controller_url = get_controller_url()
         requests.delete(f"{controller_url}/v1/nodes/{node_id}", timeout=2)
-        print(f"Wyrejestrowano Zjednoczony Węzeł '{node_id}' z Kontrolera.")
+        print(f"Wyrejestrowano Klienta '{node_id}' z Kontrolera.")
     except Exception:
         pass
 
