@@ -177,6 +177,46 @@ class WorkerSubservice(BaseSubservice):
     def __init__(self):
         super().__init__("worker", "services.worker", "worker.log")
 
+    def start(self, config_data: dict = None) -> bool:
+        if self.is_running():
+            return True
+            
+        config_data = config_data or {}
+        settings = load_settings()
+        model = config_data.get("model_name") or settings.get("selected_model", "qwen3.5:9b")
+        
+        if self._has_model(model):
+            return super().start(config_data)
+            
+        import threading
+        threading.Thread(target=self._ensure_model_and_start, args=(model, config_data), daemon=True).start()
+        return True
+
+    def _has_model(self, model_name: str) -> bool:
+        try:
+            import requests
+            settings = load_settings()
+            ollama_url = settings.get("ollama_url", "http://127.0.0.1:11434")
+            resp = requests.get(f"{ollama_url}/api/tags", timeout=3.0)
+            if resp.ok:
+                models = [m.get("name") for m in resp.json().get("models", [])]
+                return any(model_name in m or m in model_name for m in models)
+        except Exception:
+            pass
+        return False
+
+    def _ensure_model_and_start(self, model_name: str, config_data: dict) -> None:
+        try:
+            import requests
+            settings = load_settings()
+            ollama_url = settings.get("ollama_url", "http://127.0.0.1:11434")
+            print(f"[Ollama Pull] Rozpoczynam pobieranie modelu '{model_name}'...")
+            requests.post(f"{ollama_url}/api/pull", json={"name": model_name}, timeout=600)
+            print(f"[Ollama Pull] Model '{model_name}' pobrany pomyślnie.")
+            super().start(config_data)
+        except Exception as e:
+            print(f"[Ollama Pull] Błąd pobierania modelu '{model_name}': {e}")
+
     def before_start(self, config_data: dict) -> bool:
         try:
             import requests
