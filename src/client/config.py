@@ -28,8 +28,7 @@ def load_settings() -> dict[str, Any]:
     default_settings = {
         "controller_url": "auto",
         "ollama_url": "http://127.0.0.1:11434",
-        "worker_port": 8001,
-        "worker_priority": 100
+        "worker_port": 8001
     }
     settings = {}
     if os.path.exists(SETTINGS_FILE):

@@ -229,7 +229,7 @@ class WorkerSubservice(BaseSubservice):
 
     def get_command_args(self, config_data: dict) -> list[str]:
         settings = load_settings()
-        model = config_data.get("model_name") or settings.get("selected_model", "qwen3.5:9b")
+        model = config_data.get("model_name", "qwen3.5:9b")
         port = config_data.get("port", settings.get("worker_port", 8001))
         
         # Zapamiętujemy by użyć w shutdown lub rejestracji
@@ -248,10 +248,9 @@ class WorkerSubservice(BaseSubservice):
     def get_registration_payload(self) -> dict | None:
         if not self.is_running():
             return None
-        settings = load_settings()
         return {
-            "model_name": getattr(self, "model", settings.get("selected_model", "qwen3.5:9b")),
-            "priority": settings.get("worker_priority", 100),
+            "model_name": getattr(self, "model", "qwen3.5:9b"),
+            "priority": 100,
         }
 
 
@@ -260,7 +259,7 @@ class SatelliteSubservice(BaseSubservice):
         super().__init__("satellite", "services.satellite", "satellite.log")
 
     def get_command_args(self, config_data: dict) -> list[str]:
-        room = config_data.get("room") or load_settings().get("room", "salon")
+        room = config_data.get("room", "salon")
         self.room = room
         return ["--room", room]
 
@@ -268,7 +267,7 @@ class SatelliteSubservice(BaseSubservice):
         if not self.is_running():
             return None
         return {
-            "room": getattr(self, "room", load_settings().get("room", "salon")),
+            "room": getattr(self, "room", "salon"),
             "node_type": "desktop",
             "capabilities": ["audio_input", "tts_output", "wakeword"],
             "wakeword_local": True,

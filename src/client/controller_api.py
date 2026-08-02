@@ -54,43 +54,29 @@ def _get_node_id() -> str:
 
 def apply_node_config(config_data: dict, from_registration: bool = False) -> None:
     """Aplikuje nową konfigurację z Kontrolera dla Klienta."""
-    settings = _get_settings()
-
+    # Zapisz tylko imię (jeśli uległo zmianie) – to element tożsamości
     if "name" in config_data:
-        settings["instance_name"] = config_data["name"]
+        settings = _get_settings()
+        if settings.get("instance_name") != config_data["name"]:
+            settings["instance_name"] = config_data["name"]
+            save_settings(settings)
 
     services = config_data.get("services", {})
 
     # 1. Konfiguracja Workera (LLM)
     if "worker" in services:
-        w_cfg = services["worker"]
-        if "model_name" in w_cfg:
-            settings["selected_model"] = w_cfg["model_name"]
-        if "priority" in w_cfg:
-            settings["worker_priority"] = w_cfg["priority"]
-        settings["autostart_worker"] = True
-        
-        start_service("worker", w_cfg)
+        start_service("worker", services["worker"])
     else:
-        settings["autostart_worker"] = False
         if SERVICES["worker"].is_running():
             stop_service("worker")
 
     # 2. Konfiguracja Satelity (Audio/VAD)
     if "satellite" in services:
-        s_cfg = services["satellite"]
-        if "room" in s_cfg:
-            settings["room"] = s_cfg["room"]
-        settings["autostart_satellite"] = True
         if not SERVICES["satellite"].is_running():
-            start_service("satellite", s_cfg)
+            start_service("satellite", services["satellite"])
     else:
-        settings["autostart_satellite"] = False
         if SERVICES["satellite"].is_running():
             stop_service("satellite")
-
-    # Zapisz na dysk, ale używając naszego referencyjnego słownika z pamięci
-    save_settings(settings)
     
     if not from_registration:
         register()

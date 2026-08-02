@@ -48,9 +48,9 @@ async def lifespan(app: FastAPI):
     args = get_args()
     settings = config.load_settings()
 
-    _selected_model = args.model or settings.get("selected_model", "qwen3.5:4b")
+    _selected_model = args.model or "qwen3.5:9b"
     _worker_port = args.port or settings.get("worker_port", 8001)
-    worker_priority = int(settings.get("worker_priority", 100))
+    worker_priority = 100
     _controller_url_setting = args.controller_url or settings.get("controller_url", "http://127.0.0.1:8000")
 
     llm_engine = LLMEngine(model_name=_selected_model, temperature=0.1)
