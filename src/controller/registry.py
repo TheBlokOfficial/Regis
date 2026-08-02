@@ -21,9 +21,11 @@ class NodeConnectionManager:
             del self.active_connections[node_id]
 
     async def send_command(self, node_id: str, command: str, data: dict = None) -> bool:
+        from protocol.schemas import WSCommand
         if node_id in self.active_connections:
             try:
-                await self.active_connections[node_id].send_json({"command": command, "data": data or {}})
+                cmd = WSCommand(command=command, data=data or {})
+                await self.active_connections[node_id].send_text(cmd.model_dump_json())
                 return True
             except Exception:
                 self.disconnect(node_id)

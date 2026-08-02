@@ -116,3 +116,28 @@ class ClientConfigRequest(BaseModel):
 
 NodeConfigRequest = ClientConfigRequest
 
+
+# ─── Modele Komunikatów WebSocket ──────────────────────────────────────────
+
+from typing import Any
+
+class WSCommand(BaseModel):
+    """Komenda przesyłana z Kontrolera do Klienta przez WebSocket."""
+    command: str
+    data: dict[str, Any] = {}
+
+
+class WSCommandResult(BaseModel):
+    """Odpowiedź wysyłana z Klienta do Kontrolera z wynikiem wykonanej komendy."""
+    type: Literal["command_result"] = "command_result"
+    command: str
+    success: bool
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
+class WSSatelliteEvent(BaseModel):
+    """Zdarzenie z Satelity (np. VAD, Audio) przesyłane z Klienta do Kontrolera."""
+    type: Literal["satellite_event"] = "satellite_event"
+    event_type: str
+    data: dict[str, Any] = {}

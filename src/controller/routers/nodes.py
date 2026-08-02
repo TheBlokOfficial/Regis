@@ -7,7 +7,10 @@ import threading
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from controller.config import DATA_DIR
-from protocol.schemas import ClientRegistrationRequest, ClientConfigRequest, SUPPORTED_REGIS_MODELS
+from protocol.schemas import (
+    ClientRegistrationRequest, ClientConfigRequest, SUPPORTED_REGIS_MODELS,
+    WSSatelliteEvent, WSCommandResult
+)
 import controller.event_bus as event_bus
 import controller.registry as registry
 
@@ -176,22 +179,29 @@ async def websocket_node_endpoint(websocket: WebSocket, node_id: str):
             if msg_type == "status":
                 pass # Status jest trzymany po stronie węzła, heartbeat wystarczy
             elif msg_type == "satellite_event":
-                await event_bus.publish({
-                    "type": "satellite_event",
-                    "satellite_id": node_id,
-                    "event_type": data.get("event_type"),
-                    "data": data.get("data", {}),
-                })
+                try:
+                    event = WSSatelliteEvent(**data)
+                    await event_bus.publish({
+                        "type": "satellite_event",
+                        "satellite_id": node_id,
+                        "event_type": event.event_type,
+                        "data": event.data,
+                    })
+                except Exception as e:
+                    logging.error(f"Błąd parsowania WSSatelliteEvent: {e}")
             elif msg_type == "command_result":
-                # Przekaż wynik wykonania komendy (np. na UI)
-                await event_bus.publish({
-                    "type": "node_command_result",
-                    "node_id": node_id,
-                    "command": data.get("command"),
-                    "success": data.get("success", True),
-                    "error": data.get("error"),
-                    "result": data.get("result"),
-                })
+                try:
+                    res = WSCommandResult(**data)
+                    await event_bus.publish({
+                        "type": "node_command_result",
+                        "node_id": node_id,
+                        "command": res.command,
+                        "success": res.success,
+                        "error": res.error,
+                        "result": res.result,
+                    })
+                except Exception as e:
+                    logging.error(f"Błąd parsowania WSCommandResult: {e}")
     except WebSocketDisconnect:
         registry.node_manager.disconnect(node_id)
         logging.info(f"Węzeł {node_id} rozłączył się (WebSocket).")
