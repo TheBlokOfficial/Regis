@@ -6,14 +6,11 @@ import pystray
 
 from node.config import load_settings, save_settings
 from node.controller_client import (
-    register_node_with_controller,
-    unregister_node_with_controller,
+    register,
+    unregister,
     start_ws_client
 )
-from node.process_manager import (
-    cleanup_orphaned_processes,
-    stop_all_services
-)
+from node.process_manager import (cleanup_orphaned_processes, stop_all_services)
 from node.tray import create_default_icon, get_menu
 
 # Dla kompatybilności ze starymi odwołaniami:
@@ -26,7 +23,7 @@ tray_icon: pystray.Icon | None = None
 def quit_all(icon=None, item=None) -> None:
     """Zatrzymuje wszystkie procesy potomne, wyrejestrowuje węzeł i zamyka ikonę zasobnika."""
     stop_all_services()
-    unregister_node_with_controller()
+    unregister()
     if tray_icon:
         tray_icon.stop()
     elif icon:
@@ -50,7 +47,7 @@ def run_service() -> None:
         pass  # Ignoruj jeśli nie jesteśmy w głównym wątku
 
     # 3. Rejestracja Węzła w Kontrolerze (przekazanie identyfikatora node_id)
-    register_node_with_controller()
+    register()
 
     # 5. Uruchomienie ikony w zasobniku oraz klienta WebSocket
     tray_icon = pystray.Icon("node", create_default_icon(), "Regis Node", menu=get_menu(quit_all))

@@ -28,7 +28,7 @@ def bus_publish(event: dict) -> None:
         asyncio.run_coroutine_threadsafe(_ws_client.send(payload), _ws_loop)
 
 
-def is_model_present_locally(model_name: str) -> bool:
+def has_model(model_name: str) -> bool:
     """Sprawdza czy dany model jest dociągnięty w Ollamie."""
     try:
         settings = load_settings()
@@ -42,14 +42,14 @@ def is_model_present_locally(model_name: str) -> bool:
     return False
 
 
-def ensure_ollama_model(model_name: str, start_after: bool = False) -> None:
+def ensure_model(model_name: str, start_after: bool = False) -> None:
     """Sprawdza w lokalnej Ollamie czy model jest pobrany; jeśli nie, dociąga w tle."""
     def _do_pull():
         try:
             settings = load_settings()
             ollama_url = settings.get("ollama_url", "http://127.0.0.1:11434")
 
-            if is_model_present_locally(model_name):
+            if has_model(model_name):
                 if start_after and not SERVICES["worker"].is_running():
                     start_service("worker", {"model_name": model_name})
                 return
@@ -80,13 +80,13 @@ def apply_node_config(config_data: dict, from_registration: bool = False) -> Non
         needs_pull = False
         if "model_name" in w_cfg:
             settings["selected_model"] = w_cfg["model_name"]
-            needs_pull = not is_model_present_locally(w_cfg["model_name"])
+            needs_pull = not has_model(w_cfg["model_name"])
         if "priority" in w_cfg:
             settings["worker_priority"] = w_cfg["priority"]
         settings["autostart_worker"] = True
         
         if needs_pull:
-            ensure_ollama_model(w_cfg["model_name"], start_after=True)
+            ensure_model(w_cfg["model_name"], start_after=True)
         else:
             if not SERVICES["worker"].is_running():
                 start_service("worker", w_cfg)
@@ -110,10 +110,10 @@ def apply_node_config(config_data: dict, from_registration: bool = False) -> Non
 
     save_settings(settings)
     if not from_registration:
-        register_node_with_controller()
+        register()
 
 
-def register_node_with_controller() -> None:
+def register() -> None:
     """Wysyła zbiorczą rejestrację Zjednoczonego Węzła do Kontrolera."""
     def _do_reg():
         try:
@@ -149,7 +149,7 @@ def register_node_with_controller() -> None:
     threading.Thread(target=_do_reg, daemon=True).start()
 
 
-def unregister_node_with_controller() -> None:
+def unregister() -> None:
     """Wyrejestrowuje Węzeł z Kontrolera."""
     try:
         from core.discovery import discover_controller
