@@ -99,8 +99,25 @@ class EventBus:
 
 class SatelliteNode:
     def __init__(self):
-        settings = config.load_settings()
-        self.server_url = settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
+        import argparse
+        parser = argparse.ArgumentParser(description="Regis Satellite Service")
+        parser.add_argument("--room", type=str, default=None, help="Satelite Room")
+        parser.add_argument("--satellite-id", type=str, default=None, help="Satellite ID")
+        parser.add_argument("--controller-url", type=str, default=None, help="Controller URL")
+        args = parser.parse_known_args()[0]
+
+        from protocol.schemas import SatelliteConfig
+        raw_config = os.environ.get("SERVICE_CONFIG")
+        if raw_config:
+            config = SatelliteConfig.model_validate_json(raw_config)
+        else:
+            config = SatelliteConfig()
+
+        settings = config.load_settings() if hasattr(config, 'load_settings') else {} # fallback imports
+        from client import config as client_config
+        settings = client_config.load_settings()
+
+        self.server_url = args.controller_url or config.controller_url or settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
         if self.server_url == "auto":
             from protocol.discovery import discover_controller
             try:
@@ -108,19 +125,18 @@ class SatelliteNode:
             except Exception:
                 self.server_url = "http://127.0.0.1:8000"
 
-        self.satellite_id = settings.get("instance_name", settings.get("satellite_id", "RTX-5070"))
-        self.event_bus = EventBus(
-            controller_url=self.server_url,
-            satellite_id=self.satellite_id,
-        )
-        self.vad = EnergyVAD(threshold=SILENCE_THRESHOLD)
+        self.satellite_id = args.satellite_id or config.satellite_id or settings.get("instance_name", settings.get("satellite_id", "RTX-5070"))
+        
+        # FIX: EventBus.__init__ przyjmuje tylko satellite_id! controller_url pobiera sam z API klienta.
+        self.event_bus = EventBus(satellite_id=self.satellite_id)
+        
+        self.vad = EnergyVAD(threshold=config.wakeword_threshold * 230 if config.wakeword_threshold < 1.0 else SILENCE_THRESHOLD) # Przelicznik
+        self.vad_threshold = SILENCE_THRESHOLD # Fallback
+        
         self.state = "WAKEWORD" # WAKEWORD, STREAMING, RESPONDING
         
-        # Bufor pre-rekordu (np. ostatnie 3 sekundy dźwięku przed wykryciem wakeword)
-        # Pomaga uniknąć ucinania. Wydłużony z 1.5s do 3s, by na pewno złapać "Regis".
         self.ring_buffer = collections.deque(maxlen=30)
         
-        # openwakeword model
         model_path = os.path.abspath(os.path.join("data", "models", "wakeword.onnx"))
         if not os.path.exists(model_path):
             logging.info(f"Brak modelu {model_path}. Działanie awaryjne.")
@@ -133,11 +149,12 @@ class SatelliteNode:
             self.oww_model = Model(wakeword_models=[model_path], inference_framework="onnx")
             
 
-        self.room = settings.get("room", "gabinet")
+        self.room = args.room or config.room or "salon"
         self.stream = sd.InputStream(
             samplerate=SAMPLE_RATE, channels=1, dtype='int16', 
             blocksize=CHUNK_SIZE, callback=self._audio_callback
         )
+
 
         
     def _audio_callback(self, indata, frames, time_info, status):

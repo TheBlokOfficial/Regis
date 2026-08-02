@@ -46,12 +46,20 @@ async def lifespan(app: FastAPI):
     global llm_engine, stt_engine, tts_engine, _worker_id, _controller_url, _worker_port, _selected_model
 
     args = get_args()
+    
+    from protocol.schemas import WorkerConfig
+    raw_config = os.environ.get("SERVICE_CONFIG")
+    if raw_config:
+        worker_cfg = WorkerConfig.model_validate_json(raw_config)
+    else:
+        worker_cfg = None
+
     settings = config.load_settings()
 
-    _selected_model = args.model or "qwen3.5:9b"
+    _selected_model = args.model or (worker_cfg.model_name if worker_cfg else None) or settings.get("selected_model", "qwen3.5:9b")
     _worker_port = args.port or settings.get("worker_port", 8001)
     worker_priority = 100
-    _controller_url_setting = args.controller_url or settings.get("controller_url", "http://127.0.0.1:8000")
+    _controller_url_setting = args.controller_url or (worker_cfg.controller_url if worker_cfg else None) or settings.get("controller_url", "http://127.0.0.1:8000")
 
     llm_engine = LLMEngine(model_name=_selected_model, temperature=0.1)
 

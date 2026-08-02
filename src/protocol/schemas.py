@@ -14,6 +14,26 @@ class CloudProviderConfig(BaseModel):
     mode: Literal["basic", "extended"] = "extended"
     priority: int = 50
 
+# ─── Modele Konfiguracji Usług (Service Config Schemas) ───────────────────
+
+class SatelliteConfig(BaseModel):
+    """Oficjalny schemat kontraktu konfiguracyjnego Satelity (Audio/VAD/Wakeword)."""
+    room: str = "salon"
+    satellite_id: str | None = None
+    controller_url: str | None = None
+    node_type: str = "desktop"
+    capabilities: list[str] = ["audio_input", "tts_output", "wakeword"]
+    wakeword_local: bool = True
+    wakeword_threshold: float = 0.65
+    silence_timeout_ms: int = 1500
+
+class WorkerConfig(BaseModel):
+    """Oficjalny schemat kontraktu konfiguracyjnego Workera (LLM Engine)."""
+    model_name: str = "qwen3.5:9b"
+    port: int = 8001
+    priority: int = 100
+    controller_url: str | None = None
+    mode: Literal["basic", "extended"] = "extended"
 
 class WorkerRegistrationRequest(BaseModel):
     """Payload wysyłany przez Węzeł Roboczy podczas rejestracji w Kontrolerze."""
@@ -48,7 +68,7 @@ class ClientRegistrationRequest(BaseModel):
     name: str | None = None
     host: str
     port: int | None = None
-    # Słownik usług: {"worker": {"model_name": "..."}, "satellite": {"room": "..."}} lub lista dla wstecznej kompatybilności
+    # Słownik usług
     services: dict[str, dict] | list[str] = {}
 
     # Opcjonalne pola spłaszczone (dla kompatybilności ze starymi żądaniami)

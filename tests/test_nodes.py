@@ -62,3 +62,19 @@ def test_node_registration_and_unregistration():
     assert del_response.status_code == 200
     assert del_response.json() == {"status": "ok"}
     assert "test-rtx-5070" not in registry.node_registry
+
+def test_satellite_config_parsing():
+    from protocol.schemas import SatelliteConfig
+    raw = '{"room": "sypialnia", "wakeword_threshold": 0.8}'
+    cfg = SatelliteConfig.model_validate_json(raw)
+    assert cfg.room == "sypialnia"
+    assert cfg.wakeword_threshold == 0.8
+    assert cfg.silence_timeout_ms == 1500 # Default
+
+def test_worker_config_parsing():
+    from protocol.schemas import WorkerConfig
+    raw = '{"model_name": "qwen2.5:3b", "port": 8002}'
+    cfg = WorkerConfig.model_validate_json(raw)
+    assert cfg.model_name == "qwen2.5:3b"
+    assert cfg.port == 8002
+    assert cfg.priority == 100 # Default
