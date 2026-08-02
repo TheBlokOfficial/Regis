@@ -1,21 +1,16 @@
-import json
-from typing import Any
+# ─── Wyjątki Aplikacji Klienckiej ──────────────────────────────────────────────
 
-# ─── Wyjątki Modułu Node ───────────────────────────────────────────────────────
-
-class RegisCoreException(Exception):
-    """Bazowy wyjątek dla wszystkich błędów w module Node."""
+class RegisClientException(Exception):
+    """Bazowy wyjątek dla wszystkich błędów w Aplikacji Klienckiej."""
     pass
 
 
-class LLMConnectionError(RegisCoreException):
-    """Rzucany, gdy silnik nie może nawiązać połączenia z modelem LLM."""
+class LLMConnectionError(RegisClientException):
+    """Rzucany, gdy silnik nie może nawiązać połączenia z lokalnym silnikiem LLM."""
     pass
 
-
-class HomeAssistantConnectionError(RegisCoreException):
-    """Rzucany, gdy klient nie może połączyć się z serwerem Home Assistanta."""
-    pass
+# Alias dla wstecznej kompatybilności
+RegisCoreException = RegisClientException
 
 
 # ─── Narzędzia Pomocnicze ──────────────────────────────────────────────────────
@@ -25,9 +20,9 @@ def build_messages_from_history(system_prompt: str, history: list[dict], current
     messages = [{"role": "system", "content": system_prompt}]
     
     for turn in history:
-        messages.append({"role": "user", "content": turn["user"]})
+        messages.append({"role": "user", "content": turn.get("user", "")})
         if turn.get("assistant"):
-            messages.append({"role": "assistant", "content": turn["assistant"]})
+            messages.append({"role": "assistant", "content": turn.get("assistant", "")})
             
     if current_message:
         messages.append({"role": "user", "content": current_message})
