@@ -11,15 +11,15 @@ from client.logger import setup_logging
 from client.process_manager import cleanup_orphaned_processes, stop_all_services
 from client.tray import create_default_icon, get_menu
 
-tray_icon: pystray.Icon | None = None
+app_tray: pystray.Icon | None = None
 
 
 def quit_all(icon=None) -> None:
-    """Zatrzymuje wszystkie procesy potomne, wyrejestrowuje klienta i zamyka ikonę zasobnika."""
+    """Zatrzymuje wszystkie procesy potomne, wyrejestrowuje klienta i zamyka aplikację w zasobniku."""
     stop_all_services()
     controller_client.unregister()
-    if tray_icon:
-        tray_icon.stop()
+    if app_tray:
+        app_tray.stop()
     elif icon:
         icon.stop()
     os._exit(0)
@@ -49,7 +49,7 @@ def setup_signal_handlers() -> None:
 
 def main() -> None:
     """Główny punkt wejścia (Entry Point) aplikacji klienckiej Regis."""
-    global tray_icon
+    global app_tray
 
     parser = argparse.ArgumentParser(description="Regis Client Application")
     parser.add_argument("--console", action="store_true", help="Pokaż okno konsoli i wyjście logów (tryb debugowania)")
@@ -72,8 +72,8 @@ def main() -> None:
     ws_thread.start()
 
     # 5. Uruchomienie interfejsu w zasobniku systemowym (pętla główna)
-    tray_icon = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
-    tray_icon.run()
+    app_tray = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
+    app_tray.run()
 
 
 if __name__ == "__main__":
