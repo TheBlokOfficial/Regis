@@ -11,7 +11,7 @@ import controller.event_bus as event_bus
 import controller.providers as providers
 import controller.registry as registry
 from controller.services.prompt_builder import build_system_prompt
-from controller.openrouter_backend import OpenRouterBackend
+from core.llm_backends.ollama import OllamaBackend
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,10 @@ def proxy_sse_to_queue(
     session_history = registry.get_session_history(satellite_id)
     force_worker = False
 
-    if not is_audio and isinstance(backend, OpenRouterBackend):
-        # Phase 1: OpenRouter (chmura) wywoływany bezpośrednio na Kontrolerze (tylko tekst)
-        system_prompt = build_system_prompt(room=room, native_tools=True)
+    if not is_audio and not isinstance(backend, OllamaBackend):
+        # Phase 1: Chmura wywoływana bezpośrednio na Kontrolerze (tylko tekst)
+        mode = getattr(backend, "mode", "extended")
+        system_prompt = build_system_prompt(room=room, mode=mode)
 
         from core.history_utils import build_messages_from_history
         messages = build_messages_from_history(
@@ -51,13 +52,15 @@ def proxy_sse_to_queue(
 
         routing_event = {
             "type": "routing_info",
-            "worker_id": "cloud (OpenRouter)",
+            "worker_id": f"cloud ({backend.get_provider_name()})",
             "model": backend.model_name,
             "provider": backend.get_provider_name(),
         }
         loop.call_soon_threadsafe(q.put_nowait, routing_event)
 
         used_tools_dicts = []
+        profiler_data = {}
+        t_start = time.time()
 
         def on_content_token(token):
             loop.call_soon_threadsafe(q.put_nowait, {"type": "content", "content": token})
@@ -68,16 +71,31 @@ def proxy_sse_to_queue(
         def on_raw_tool_call(tool_data):
             used_tools_dicts.append(tool_data)
 
+        def on_profiler(metric_data):
+            if metric_data and "metric" in metric_data:
+                m = metric_data["metric"]
+                val = metric_data.get("value", 0)
+                profiler_data[m] = profiler_data.get(m, 0) + val
+                loop.call_soon_threadsafe(q.put_nowait, {"type": "profiler", "content": metric_data})
+
         try:
             final_content = backend.generate_response(
                 messages,
                 registry.tools_registry,
                 on_content_token=on_content_token,
                 on_tool_call=on_tool_call,
-                on_raw_tool_call=on_raw_tool_call
+                on_raw_tool_call=on_raw_tool_call,
+                on_profiler=on_profiler
             )
 
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "content": final_content})
+            elapsed_ms = int((time.time() - t_start) * 1000.0)
+
+            loop.call_soon_threadsafe(q.put_nowait, {
+                "type": "done",
+                "content": final_content,
+                "elapsed_ms": elapsed_ms,
+                "profiler": profiler_data
+            })
 
             now = datetime.datetime.now().strftime("%H:%M:%S")
             turn = {
@@ -86,7 +104,10 @@ def proxy_sse_to_queue(
                 "tools": used_tools_dicts,
                 "timestamp": now,
                 "satellite_id": satellite_id,
-                "room": room
+                "room": room,
+                "elapsed_ms": elapsed_ms,
+                "profiler": profiler_data,
+                "model": backend.model_name
             }
             registry.append_to_session(satellite_id, turn)
 
@@ -96,21 +117,29 @@ def proxy_sse_to_queue(
                     "type": "conversation_turn",
                     "user_text": base_payload.get("message", ""),
                     "assistant_text": final_content,
-                    "worker_id": "cloud (OpenRouter)",
+                    "worker_id": f"cloud ({backend.get_provider_name()})",
                     "satellite_id": satellite_id,
                     "room": room,
+                    "tools": used_tools_dicts,
                     "tool_count": len(used_tools_dicts),
+                    "elapsed_ms": elapsed_ms,
+                    "profiler": profiler_data,
+                    "model": backend.model_name
                 }),
                 loop
             )
 
-            from core import config
-            limit = config.load_settings().get("history_limit", 3)
-            hist = registry.get_session_history(satellite_id)
-            if limit <= 0:
+            if mode != "basic":
+                from core import config
+                limit = config.load_settings().get("history_limit", 3)
+                hist = registry.get_session_history(satellite_id)
+                if limit <= 0:
+                    registry.clear_session_history(satellite_id)
+                elif len(hist) > limit:
+                    del hist[:-limit]
+            else:
+                # Basic mode jest bezstanowy
                 registry.clear_session_history(satellite_id)
-            elif len(hist) > limit:
-                del hist[:-limit]
 
             return  # Zakończ sukcesem
 
@@ -118,7 +147,7 @@ def proxy_sse_to_queue(
             logging.warning(f"Błąd w OpenRouterBackend, próba fallbacku na węzeł: {e}")
             force_worker = True
 
-    if is_audio or not isinstance(backend, OpenRouterBackend) or force_worker:
+    if is_audio or isinstance(backend, OllamaBackend) or force_worker:
         workers = registry.get_worker_nodes()
         if not workers:
             loop.call_soon_threadsafe(
@@ -133,7 +162,8 @@ def proxy_sse_to_queue(
         worker_id = worker["id"]
         prio = worker.get("priority", 10)
 
-        system_prompt = build_system_prompt(room=room)
+        mode = worker.get("mode", "extended")
+        system_prompt = build_system_prompt(room=room, mode=mode)
 
         if not is_audio:
             worker_url = f"{worker['base_url']}/v1/chat/stream"
@@ -157,9 +187,12 @@ def proxy_sse_to_queue(
         }
         loop.call_soon_threadsafe(q.put_nowait, routing_event)
 
+        t_worker_start = time.time()
         final_content = ""
         stt_content = ""
         used_tools_dicts = []
+        worker_profiler_data = {}
+        worker_elapsed_ms = None
 
         try:
             if not is_audio:
@@ -183,8 +216,13 @@ def proxy_sse_to_queue(
                             stt_content = event.get("content", "")
                         elif event.get("type") == "tool_dict":
                             used_tools_dicts.append(event.get("content"))
+                        elif event.get("type") == "profiler":
+                            m = event.get("content")
+                            if m and isinstance(m, dict) and "metric" in m:
+                                worker_profiler_data[m["metric"]] = worker_profiler_data.get(m["metric"], 0) + (m.get("value") or 0)
                         elif event.get("type") == "done":
                             final_content = event.get("content", "")
+                            worker_elapsed_ms = event.get("elapsed_ms") or int((time.time() - t_worker_start) * 1000.0)
 
                         loop.call_soon_threadsafe(q.put_nowait, event)
                         if event.get("type") in ("done", "error"):
@@ -192,9 +230,12 @@ def proxy_sse_to_queue(
                     except json.JSONDecodeError:
                         pass
 
+            if not worker_elapsed_ms:
+                worker_elapsed_ms = int((time.time() - t_worker_start) * 1000.0)
+
             if final_content:
                 user_msg = stt_content if is_audio else base_payload.get("message", "")
-                if user_msg and final_content != "Przerwano zapytanie. Przekroczono maksymalną liczbę wywołań narzędzi (timeout pętli ReAct).":
+                if user_msg:
                     now = datetime.datetime.now().strftime("%H:%M:%S")
                     turn = {
                         "user": user_msg,
@@ -202,7 +243,10 @@ def proxy_sse_to_queue(
                         "tools": used_tools_dicts,
                         "timestamp": now,
                         "satellite_id": satellite_id,
-                        "room": room
+                        "room": room,
+                        "elapsed_ms": worker_elapsed_ms,
+                        "profiler": worker_profiler_data,
+                        "model": worker.get("model_name", "nieznany")
                     }
                     registry.append_to_session(satellite_id, turn)
 
@@ -215,18 +259,25 @@ def proxy_sse_to_queue(
                             "worker_id": worker_id,
                             "satellite_id": satellite_id,
                             "room": room,
+                            "tools": used_tools_dicts,
                             "tool_count": len(used_tools_dicts),
+                            "elapsed_ms": worker_elapsed_ms,
+                            "profiler": worker_profiler_data,
+                            "model": worker.get("model_name", "nieznany")
                         }),
                         loop
                     )
 
-                    from core import config
-                    limit = config.load_settings().get("history_limit", 3)
-                    hist = registry.get_session_history(satellite_id)
-                    if limit <= 0:
+                    if mode != "basic":
+                        from core import config
+                        limit = config.load_settings().get("history_limit", 3)
+                        hist = registry.get_session_history(satellite_id)
+                        if limit <= 0:
+                            registry.clear_session_history(satellite_id)
+                        elif len(hist) > limit:
+                            del hist[:-limit]
+                    else:
                         registry.clear_session_history(satellite_id)
-                    elif len(hist) > limit:
-                        del hist[:-limit]
 
         except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError) as e:
             logging.warning(f"Węzeł {worker_id} nie odpowiada (Connect błąd). Usuwam z rejestru.")

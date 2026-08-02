@@ -22,11 +22,12 @@ class RemoteToolsRegistry:
         """
         self.controller_url = controller_url.rstrip("/")
         self.room = room
+        self.session = requests.Session()
 
     def get_global_menu(self) -> str:
         """Pobiera skompilowane Globalne Menu od Kontrolera."""
         try:
-            response = requests.get(f"{self.controller_url}/v1/tools/menu", timeout=10)
+            response = self.session.get(f"{self.controller_url}/v1/tools/menu", timeout=10)
             response.raise_for_status()
             return response.text
         except requests.RequestException as e:
@@ -44,7 +45,7 @@ class RemoteToolsRegistry:
             Wynik narzędzia jako string JSON (identyczny format jak ToolsRegistry).
         """
         try:
-            response = requests.post(
+            response = self.session.post(
                 f"{self.controller_url}/v1/tools/execute",
                 json={"tool_name": tool_name, "arguments": arguments, "room": self.room},
                 timeout=30

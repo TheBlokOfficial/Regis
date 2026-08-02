@@ -49,7 +49,7 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 - [ ] Migracja TTS na model Coqui XTTS v2 ("Incepcja Głosowa" / CPU)
 - [ ] Integracja systemu WakeWord (oczekiwanie na paczki próbek użytkownika do modelu)
 - [ ] Zaprojektowanie i wdrożenie nowej Pamięci Długoterminowej (np. wektorowej)
-- [x] **[ARCH — Phase 1]** Restrukturyzacja pod system providerów LLM: `llm_backends/`, OpenRouter, refaktoryzacja routera (szczegóły: `docs/llm_providers_rfc.md`)
+- [x] **[ARCH — Phase 1]** Restrukturyzacja pod system providerów LLM: `llm_backends/`, OpenRouter, refaktoryzacja routera (Zrealizowano - zarchiwizowano)
 - [ ] **[ARCH — Phase 2]** Abstrakcja STT/TTS backends + split audio pipeline w Kontrolerze (cloud STT/TTS bez Windows Node)
 
 ### [UX / Wstrzymane]
@@ -82,3 +82,9 @@ Narzędzia `get_device_state`, `execute_action`, `get_current_time`, `get_weathe
 
 ### Debugowanie i Obserwowalność
 Wdrożono system logowania warstwy I/O (`core/logger.py`). Logi DEBUG trafiają do `logs/<usługa>_YYYY-MM-DD.log` (FileHandler), konsola pozostaje na INFO. Pokryte: żądania HTTP do HA (przed/po `state_mapping`), iteracje pętli ReAct (TTFT, czas, rozmiar kontekstu), ciche błędy NLU (`JSONDecodeError`), decyzje routingowe Kontrolera, timeouty węzłów.
+
+### Architektura Chmury i Natywne Narzędzia LLM
+Całkowicie zrezygnowano ze stringowej, autorskiej pętli ReAct na rzecz natywnego Tool Callingu (wspieranego przez API Ollamy i OpenRoutera). Zbudowano system dynamicznych `Cloud Providers`, oddzielając tryb `extended` (ReAct, do 10 iteracji) od `basic` (szybki NLU parser, zerowa historia sesji).
+
+### Ascetyczny UX (Web UI - Sidebar)
+Panel Kontrolny przeszedł kompletną restrukturyzację z kafelkowego kokpitu do klasycznego panelu administracyjnego typu Sidebar (z lewym panelem nawigacyjnym). Wprowadzono pełen ascetyzm wizualny, płaskie listy zdarzeń, oraz oddzielono poszczególne funkcje (Pulpit, Chmura, Węzły, Logi, Czat) do pełnoekranowych zakładek, zachowując stuprocentową czytelność danych i zero animacji rozpraszających uwagę.

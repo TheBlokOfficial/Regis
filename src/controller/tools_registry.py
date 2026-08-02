@@ -12,9 +12,21 @@ from core.schemas import BASE_TOOLS_SCHEMA
 class ToolsRegistry:
     """Rejestr narzędzi dostarczanych dla modelu LLM."""
     
-    def __init__(self, ha_client, rooms: dict = None):
-        self.ha_client = ha_client
+    def __init__(self, ha_client=None, rooms: dict = None, integration_registry: dict = None):
+        self._direct_ha_client = ha_client
+        self.integration_registry = integration_registry
         self.rooms = rooms or {}
+
+    @property
+    def ha_client(self):
+        """Zwraca obiekt integracji/klienta HA dla operacji na urządzeniach."""
+        if self._direct_ha_client is not None:
+            return self._direct_ha_client
+        from controller import registry
+        ints = self.integration_registry or registry.integration_registry
+        if "home_assistant" in ints:
+            return ints["home_assistant"]
+        return registry.ha_client
         
     def execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
         """Kieruje wywołanie narzędzia do odpowiedniej logiki."""

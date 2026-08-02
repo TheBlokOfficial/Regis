@@ -40,18 +40,17 @@ export function renderIntegrationCard(integration) {
     const badgeText = labels[status] || status.toUpperCase();
 
     card.id        = `integration-${id}`;
-    card.className = "integration-item";
+    card.className = "list-row";
     card.innerHTML = `
-        <div class="integration-info">
-            <span class="dot ${status}"></span>
-            <span class="integration-name">${escHtml(name)}</span>
-            <span class="integration-type">${escHtml(type)}</span>
+        <span class="dot ${status}"></span>
+        <span class="list-title">${escHtml(name)}</span>
+        <span class="list-meta">(${escHtml(type)}) ${escHtml(detail)}</span>
+        <div class="list-actions">
+            <span class="badge ${status}">${badgeText}</span>
         </div>
-        <div class="integration-detail">${escHtml(detail)}</div>
-        <span class="badge ${status}">${badgeText}</span>
     `;
 
-    const body  = document.getElementById("integrations-body");
+    const body  = document.getElementById("integrations-tree-body");
     if (!body) return;
     const empty = body.querySelector(".empty-state");
     if (empty) empty.remove();
@@ -60,7 +59,7 @@ export function renderIntegrationCard(integration) {
 
     const countEl = document.getElementById("integration-count");
     if (countEl) {
-        countEl.textContent = body.querySelectorAll(".integration-item").length;
+        countEl.textContent = body.querySelectorAll(".list-row").length;
     }
 }
 
@@ -80,128 +79,81 @@ export function updateHAStatus(status) {
     });
 }
 
-// ── Karty węzłów roboczych ─────────────────────────────────────────────────
+// ── Zjednoczone Karty Węzłów Systemowych ─────────────────────────────────
 
-export function renderWorkerCard(worker) {
-    const id       = worker.id;
-    const existing = document.getElementById(`worker-${id}`);
-    const card     = existing || document.createElement("div");
+export function renderNodeCard(node) {
+    const id = node.id;
+    const existing = document.getElementById(`node-${id}`);
+    const card = existing || document.createElement("div");
 
-    const status   = worker.status || "online";
-    const model    = worker.model_name || "—";
-    const priority = worker.priority !== undefined ? worker.priority : "—";
-    const host     = worker.host ? `${worker.host}:${worker.port || "?"}` : "—";
+    const name = node.name || id;
+    const host = node.host ? `${node.host}:${node.port || 8099}` : "—";
+    const services = node.services || {};
+    const isDict = typeof services === 'object' && !Array.isArray(services);
 
-    card.id        = `worker-${id}`;
-    card.className = "node-card";
+    let tagsHtml = '';
+
+    const workerConfig = isDict ? services.worker : (Array.isArray(services) && services.includes("worker") ? node : null);
+    if (workerConfig) {
+        const model = workerConfig.model_name || node.model_name || "qwen3.5:9b";
+        tagsHtml += `<span class="service-tag">WORKER (${escHtml(model)})</span> `;
+    }
+
+    const satConfig = isDict ? services.satellite : (Array.isArray(services) && services.includes("satellite") ? node : null);
+    if (satConfig) {
+        const room = satConfig.room || node.room || "brak";
+        tagsHtml += `<span class="service-tag">SAT (${escHtml(room)}) <span class="vad-status" id="vad-${id}">CISZA</span></span>`;
+    }
+
+    card.id = `node-${id}`;
+    card.className = "list-row";
     card.innerHTML = `
-        <div class="card-title">
-            <span class="dot ${status === "online" ? "online" : "offline"}"></span>
-            ${escHtml(id)}
+        <span class="dot online"></span>
+        <div style="display:flex; flex-direction:column;">
+            <span class="list-title">${escHtml(name)}</span>
+            <span class="list-meta">ID: ${escHtml(id)} | Host: ${escHtml(host)}</span>
+            <div style="margin-top:6px;">${tagsHtml}</div>
         </div>
-        <div class="card-meta">
-            <span><span class="key">Model:</span>${escHtml(model)}</span>
-            <span><span class="key">Priorytet:</span>${escHtml(priority)}</span>
-            <span><span class="key">Host:</span>${escHtml(host)}</span>
-            <span><span class="key">Status:</span><span class="badge ${status}">${status}</span></span>
-        </div>
-        <div class="card-actions">
-            <button class="btn" id="btn-worker-start-${id}" ${status === "online" ? "disabled" : ""}>
-                Uruchom Worker
-            </button>
-            <button class="btn danger" id="btn-worker-stop-${id}" ${status !== "online" ? "disabled" : ""}>
-                Zatrzymaj Worker
-            </button>
-            <button class="btn" id="btn-sat-start-${id}">
-                Uruchom Satelitę
-            </button>
-            <button class="btn danger" id="btn-sat-stop-${id}">
-                Zatrzymaj Satelitę
+        <div class="list-actions">
+            <button class="btn btn-configure-node" id="btn-config-${id}">
+                KONFIGURUJ
             </button>
         </div>
     `;
 
-    // addEventListener zamiast inline onclick — poprawna obsługa modułów ES
-    card.querySelector(`#btn-worker-start-${id}`)
-        .addEventListener("click", () => window.sendNodeCommand(id, "worker_start"));
-    card.querySelector(`#btn-worker-stop-${id}`)
-        .addEventListener("click", () => window.sendNodeCommand(id, "worker_stop"));
-    card.querySelector(`#btn-sat-start-${id}`)
-        .addEventListener("click", () => window.sendNodeCommand(id, "satellite_start"));
-    card.querySelector(`#btn-sat-stop-${id}`)
-        .addEventListener("click", () => window.sendNodeCommand(id, "satellite_stop"));
+    card.querySelector(`#btn-config-${id}`)
+        .addEventListener("click", () => window.openNodeConfigModal(id));
 
-    const body  = document.getElementById("workers-body");
+    const body = document.getElementById("nodes-tree-body");
+    if (!body) return;
     const empty = body.querySelector(".empty-state");
     if (empty) empty.remove();
 
     if (!existing) body.appendChild(card);
 
-    document.getElementById("worker-count").textContent = workerCount();
+    const countEl = document.getElementById("worker-count");
+    if (countEl) {
+        countEl.textContent = body.children.length;
+    }
+}
+
+export function renderWorkerCard(worker) {
+    renderNodeCard(worker);
+}
+
+export function renderSatelliteCard(sat) {
+    renderNodeCard(sat);
 }
 
 export function markWorkerOffline(id) {
-    const card = document.getElementById(`worker-${id}`);
+    const card = document.getElementById(`node-${id}`);
     if (!card) return;
-
-    const dot   = card.querySelector(".dot");
-    const badge = card.querySelector(".badge");
-    if (dot)   { dot.className   = "dot offline"; }
-    if (badge) { badge.className = "badge offline"; badge.textContent = "offline"; }
-
-    const startBtn = document.getElementById(`btn-worker-start-${id}`);
-    const stopBtn  = document.getElementById(`btn-worker-stop-${id}`);
-    if (startBtn) startBtn.disabled = false;
-    if (stopBtn)  stopBtn.disabled  = true;
-
-    document.getElementById("worker-count").textContent = workerCount();
-}
-
-// ── Karty satelit ──────────────────────────────────────────────────────────
-
-export function renderSatelliteCard(sat) {
-    const id       = sat.id;
-    const existing = document.getElementById(`satellite-${id}`);
-    const card     = existing || document.createElement("div");
-
-    const room = sat.room || "—";
-    const type = sat.type || "—";
-    const caps = Array.isArray(sat.capabilities)
-        ? sat.capabilities.join(", ")
-        : (sat.capabilities || "—");
-
-    card.id        = `satellite-${id}`;
-    card.className = "satellite-card";
-    card.innerHTML = `
-        <div class="card-title">
-            <span class="dot online"></span>
-            ${escHtml(id)}
-        </div>
-        <div class="card-meta">
-            <span><span class="key">Pomieszczenie:</span>${escHtml(room)}</span>
-            <span><span class="key">Typ:</span>${escHtml(type)}</span>
-            <span><span class="key">Możliwości:</span>${escHtml(caps)}</span>
-            <span><span class="key">VAD:</span><span class="vad-status" id="vad-${id}">cisza</span></span>
-        </div>
-    `;
-
-    const body  = document.getElementById("satellites-body");
-    const empty = body.querySelector(".empty-state");
-    if (empty) empty.remove();
-
-    if (!existing) body.appendChild(card);
-
-    document.getElementById("satellite-count").textContent = satelliteCount();
+    const dot = card.querySelector(".dot");
+    if (dot) dot.className = "dot offline";
 }
 
 export function markSatelliteOffline(id) {
-    const card = document.getElementById(`satellite-${id}`);
-    if (!card) return;
-
-    const dot = card.querySelector(".dot");
-    if (dot) dot.className = "dot offline";
-
-    document.getElementById("satellite-count").textContent = satelliteCount();
+    markWorkerOffline(id);
 }
 
 export function updateSatelliteVAD(satId, eventType) {
@@ -212,13 +164,13 @@ export function updateSatelliteVAD(satId, eventType) {
     if (!el) return;
 
     if (eventType === "vad_speech") {
-        el.textContent = "mowa";
+        el.textContent = "MOWA";
         el.className   = "vad-status active";
     } else if (eventType === "wakeword") {
-        el.textContent = "WakeWord!";
+        el.textContent = "WAKEWORD";
         el.className   = "vad-status active";
     } else if (eventType === "vad_silence") {
-        el.textContent = "cisza";
+        el.textContent = "CISZA";
         el.className   = "vad-status";
     }
 }

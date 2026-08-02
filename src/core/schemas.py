@@ -95,33 +95,30 @@ BASE_TOOLS_SCHEMA = [
 ]
 
 
-def get_tools_schema() -> list[dict]:
-    """Zwraca kopię schematów dostępnych narzędzi w systemie."""
-    return [tool.copy() for tool in BASE_TOOLS_SCHEMA]
-
-
-def render_tools_for_prompt() -> str:
-    """Renderuje schematy narzędzi do formatu tekstowego kompatybilnego z Hermes/Qwen.
-    
-    Wymagany jest DOKŁADNY ANGIELSKI TEKST, na którym Qwen 2.5 był fine-tune'owany.
-    Tłumaczenie go na polski psuje mechanizm attention dla najmniejszych modeli!
+def get_tools_schema(names: list[str] | None = None) -> list[dict]:
+    """Zwraca kopię schematów dostępnych narzędzi w systemie.
+    Jeśli podano listę 'names', zwraca tylko narzędzia o podanych nazwach.
     """
-    tools = get_tools_schema()
-    tools_json = json.dumps(tools, ensure_ascii=False, indent=2)
-    
-    return f"""# Tools
-You may call one or more functions to assist with the user query. You are provided with function signatures within <tools></tools> XML tags:
-<tools>
-{tools_json}
-</tools>
-For each function call, return a json object with function name and arguments within <action></action> XML tags:
-<action>
-{{"name": <function-name>, "arguments": <args-json-object>}}
-</action>
-The result of the tool execution will be provided to you within <tool_response></tool_response> tags."""
+    if names is None:
+        return [tool.copy() for tool in BASE_TOOLS_SCHEMA]
+    return [tool.copy() for tool in BASE_TOOLS_SCHEMA if tool["function"]["name"] in names]
+
+
 
 
 # ─── Modele Rejestru Encji ─────────────────────────────────────────────────
+
+from typing import Literal
+
+class CloudProviderConfig(BaseModel):
+    """Konfiguracja providera chmurowego (np. OpenRouter, Groq)."""
+    id: str
+    type: str  # np. "openrouter"
+    api_key: str
+    model: str
+    mode: Literal["basic", "extended"] = "extended"
+    priority: int = 50
+
 
 class WorkerRegistrationRequest(BaseModel):
     """Payload wysyłany przez Węzeł Roboczy podczas rejestracji w Kontrolerze."""
@@ -130,6 +127,7 @@ class WorkerRegistrationRequest(BaseModel):
     port: int
     model_name: str
     priority: int = 100  # Wyższa wartość = wyższa ważność (100 = GPU PC, 50 = OpenRouter cloud, 10 = RPi fallback)
+    mode: Literal["basic", "extended"] = "extended"
 
 
 class ToolExecutionRequest(BaseModel):
@@ -149,19 +147,70 @@ class SatelliteRegistrationRequest(BaseModel):
 
 
 class NodeRegistrationRequest(BaseModel):
-    """Payload wysyłany przez Węzeł podczas zbiorczej rejestracji w Kontrolerze."""
+    """Payload wysyłany przez Węzeł podczas zbiorczej rejestracji w Kontrolerze (Node-Service Composition)."""
+
     id: str
     name: str | None = None
     host: str
     port: int = 8099
-    services: list[str] = ["worker", "satellite"]  # oferowane usługi: "worker", "satellite"
-    
-    # Metadane usługi Workera (LLM)
+    # Słownik usług: {"worker": {"model_name": "..."}, "satellite": {"room": "..."}} lub lista dla wstecznej kompatybilności
+    services: dict[str, dict] | list[str] = {}
+
+    # Opcjonalne pola spłaszczone (dla kompatybilności ze starymi żądaniami)
     model_name: str | None = None
     priority: int = 100
-
-    # Metadane usługi Satelity (Audio/VAD)
     room: str | None = None
     node_type: str = "desktop"
     capabilities: list[str] = ["audio_input", "tts_output", "wakeword"]
     wakeword_local: bool = True
+
+    def get_normalized_services(self) -> dict[str, dict]:
+        """Zwraca spójny słownik usług {"service_name": {metadane_usługi}}."""
+        if isinstance(self.services, dict) and self.services:
+            return self.services
+
+        normalized = {}
+        service_list = self.services if isinstance(self.services, list) else ["worker", "satellite"]
+        if "worker" in service_list:
+            normalized["worker"] = {
+                "model_name": self.model_name,
+                "priority": self.priority,
+                "mode": "extended"
+            }
+        if "satellite" in service_list:
+            normalized["satellite"] = {
+                "room": self.room,
+                "node_type": self.node_type,
+                "capabilities": self.capabilities,
+                "wakeword_local": self.wakeword_local,
+            }
+        return normalized
+
+
+SUPPORTED_REGIS_MODELS = [
+    {
+        "id": "qwen3.5:9b",
+        "name": "Regis Agent (Qwen 3.5 9B)",
+        "description": "Oficjalny, zalecany model produkcyjny z pełnym rozumowaniem ReAct.",
+        "default": True,
+    },
+    {
+        "id": "qwen2.5:3b",
+        "name": "Light Agent (Qwen 2.5 3B)",
+        "description": "Szybki, lżejszy agent dla średnich komputera.",
+        "default": False,
+    },
+    {
+        "id": "qwen2.5:0.5b",
+        "name": "Butler NLU (Qwen 2.5 0.5B)",
+        "description": "Kompaktowy parser komend dla słabych urządzeń.",
+        "default": False,
+    },
+]
+
+
+class NodeConfigRequest(BaseModel):
+    """Payload aktualizacji konfiguracji Węzła z poziomu Kontrolera / Web UI."""
+    name: str | None = None
+    services: dict[str, dict] = {}
+

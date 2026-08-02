@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     settings = config.load_settings()
 
     worker_priority = int(settings.get("worker_priority", 100))
-    selected_model = settings.get("selected_model", "qwen3.5:9b")
+    selected_model = settings.get("selected_model", "qwen3.5:4b")
 
     worker_node = WorkerNode(
         model_name=selected_model,

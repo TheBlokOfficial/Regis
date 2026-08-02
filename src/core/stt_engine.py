@@ -22,7 +22,7 @@ if os.name == 'nt':
 from faster_whisper import WhisperModel
 
 class STTEngine:
-    def __init__(self, model_size="medium", language="pl"):
+    def __init__(self, model_size="small", language="pl"):
         logging.info(f"Ładowanie modelu STT faster-whisper (rozmiar: {model_size})...")
         self.language = language
         self.model_size = model_size

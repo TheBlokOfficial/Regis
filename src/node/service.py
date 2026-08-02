@@ -12,36 +12,135 @@ import socketserver
 import queue as _q
 from collections import deque
 from http.server import BaseHTTPRequestHandler
+import psutil
+import atexit
+import signal
 from core.config import DATA_DIR
 
-# ─── Event Bus (satelita → monitor głosowy) ───────────────────────────────────
-_event_history: deque = deque(maxlen=200)
-_event_subscribers: list[_q.Queue] = []
-_event_subscribers_lock = threading.Lock()
+import asyncio
+import websockets
 
+_ws_loop = None
+_ws_client = None
 
 def _bus_publish(event: dict) -> None:
-    """Wrzuca event do historii i rozsyła do wszystkich aktywnych subskrybentów SSE."""
+    """Wysyła zdarzenie bezpośrednio przez otwarty WebSocket do Kontrolera."""
     if "timestamp" not in event:
         event["timestamp"] = time.strftime("%H:%M:%S")
-    with _event_subscribers_lock:
-        _event_history.append(event)
-        for sub in _event_subscribers:
-            try:
-                sub.put_nowait(event)
-            except _q.Full:
-                pass
+    
+    if _ws_loop and _ws_client:
+        payload = json.dumps({
+            "type": "satellite_event",
+            "event_type": event.get("type", "unknown"),
+            "data": event
+        }, ensure_ascii=False)
+        asyncio.run_coroutine_threadsafe(_ws_client.send(payload), _ws_loop)
 
 worker_process = None
 satellite_process = None
 tray_icon = None
 
+_settings_lock = threading.Lock()
+
 def get_settings():
-    settings_path = os.path.join("data", "settings.json")
-    if os.path.exists(settings_path):
-        with open(settings_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    with _settings_lock:
+        settings_path = os.path.join("data", "settings.json")
+        if os.path.exists(settings_path):
+            with open(settings_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {}
+
+
+def save_settings(settings_dict: dict) -> None:
+    with _settings_lock:
+        os.makedirs("data", exist_ok=True)
+        settings_path = os.path.join("data", "settings.json")
+        with open(settings_path, "w", encoding="utf-8") as f:
+            json.dump(settings_dict, f, indent=4, ensure_ascii=False)
+
+
+def _is_model_present_locally(model_name: str) -> bool:
+    try:
+        import requests
+        settings = get_settings()
+        ollama_url = settings.get("ollama_url", "http://127.0.0.1:11434")
+        resp = requests.get(f"{ollama_url}/api/tags", timeout=3.0)
+        if resp.ok:
+            models = [m.get("name") for m in resp.json().get("models", [])]
+            return any(model_name in m or m in model_name for m in models)
+    except Exception:
+        pass
+    return False
+
+def _ensure_ollama_model(model_name: str, start_after: bool = False) -> None:
+    """Sprawdza w lokalnej Ollamie czy model jest pobrany; jeśli nie, dociąga w tle."""
+    def _do_pull():
+        try:
+            import requests
+            settings = get_settings()
+            ollama_url = settings.get("ollama_url", "http://127.0.0.1:11434")
+
+            if _is_model_present_locally(model_name):
+                if start_after and not is_worker_running():
+                    start_worker()
+                return
+
+            print(f"[Ollama Pull] Rozpoczynam pobieranie modelu '{model_name}'...")
+            requests.post(f"{ollama_url}/api/pull", json={"name": model_name}, timeout=600)
+            print(f"[Ollama Pull] Model '{model_name}' pobrany pomyślnie.")
+            if start_after and not is_worker_running():
+                start_worker()
+        except Exception as e:
+            print(f"[Ollama Pull] Błąd pobierania modelu '{model_name}': {e}")
+
+    threading.Thread(target=_do_pull, daemon=True).start()
+
+
+def _apply_node_config(config_data: dict, from_registration: bool = False) -> None:
+    settings = get_settings()
+
+    if "name" in config_data:
+        settings["instance_name"] = config_data["name"]
+
+    services = config_data.get("services", {})
+
+    # 1. Konfiguracja Workera (LLM)
+    if "worker" in services:
+        w_cfg = services["worker"]
+        needs_pull = False
+        if "model_name" in w_cfg:
+            settings["selected_model"] = w_cfg["model_name"]
+            needs_pull = not _is_model_present_locally(w_cfg["model_name"])
+        if "priority" in w_cfg:
+            settings["worker_priority"] = w_cfg["priority"]
+        settings["autostart_worker"] = True
+        
+        if needs_pull:
+            _ensure_ollama_model(w_cfg["model_name"], start_after=True)
+        else:
+            if not is_worker_running():
+                start_worker()
+    else:
+        settings["autostart_worker"] = False
+        if is_worker_running():
+            stop_worker()
+
+    # 2. Konfiguracja Satelity (Audio/VAD)
+    if "satellite" in services:
+        s_cfg = services["satellite"]
+        if "room" in s_cfg:
+            settings["room"] = s_cfg["room"]
+        settings["autostart_satellite"] = True
+        if not is_satellite_running():
+            start_satellite()
+    else:
+        settings["autostart_satellite"] = False
+        if is_satellite_running():
+            stop_satellite()
+
+    save_settings(settings)
+    if not from_registration:
+        register_node_with_controller()
 
 def create_default_icon():
     # Tworzenie prostej kwadratowej ikony 64x64
@@ -54,6 +153,86 @@ def get_executable_command(module_name):
     venv_python = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".venv", "Scripts", "python.exe"))
     exe = venv_python if os.path.exists(venv_python) else sys.executable
     return [exe, "-m", f"node.{module_name}"]
+
+def _kill_process_tree(pid: int) -> None:
+    try:
+        parent = psutil.Process(pid)
+        for child in parent.children(recursive=True):
+            try:
+                child.kill()
+            except psutil.NoSuchProcess:
+                pass
+        parent.kill()
+    except psutil.NoSuchProcess:
+        pass
+
+def _assign_to_job_object(proc) -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
+                        ("PerJobUserTimeLimit", ctypes.c_int64),
+                        ("LimitFlags", wintypes.DWORD),
+                        ("MinimumWorkingSetSize", ctypes.c_size_t),
+                        ("MaximumWorkingSetSize", ctypes.c_size_t),
+                        ("ActiveProcessLimit", wintypes.DWORD),
+                        ("Affinity", ctypes.c_size_t),
+                        ("PriorityClass", wintypes.DWORD),
+                        ("SchedulingClass", wintypes.DWORD)]
+                        
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [("ReadOperationCount", ctypes.c_uint64),
+                        ("WriteOperationCount", ctypes.c_uint64),
+                        ("OtherOperationCount", ctypes.c_uint64),
+                        ("ReadTransferCount", ctypes.c_uint64),
+                        ("WriteTransferCount", ctypes.c_uint64),
+                        ("OtherTransferCount", ctypes.c_uint64)]
+                        
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                        ("IoInfo", IO_COUNTERS),
+                        ("ProcessMemoryLimit", ctypes.c_size_t),
+                        ("JobMemoryLimit", ctypes.c_size_t),
+                        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                        ("PeakJobMemoryUsed", ctypes.c_size_t)]
+                        
+        job = ctypes.windll.kernel32.CreateJobObjectW(None, None)
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = 0x2000 # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        
+        ctypes.windll.kernel32.SetInformationJobObject(
+            job, 9, ctypes.pointer(info), ctypes.sizeof(info)
+        )
+        
+        # 0x1F0FFF = PROCESS_ALL_ACCESS
+        hProcess = ctypes.windll.kernel32.OpenProcess(0x1F0FFF, False, proc.pid)
+        if hProcess:
+            ctypes.windll.kernel32.AssignProcessToJobObject(job, hProcess)
+            ctypes.windll.kernel32.CloseHandle(hProcess)
+            # Zatrzymujemy uchwyt joba by Windows go nie zniszczył przedwcześnie
+            proc._win_job_handle = job
+    except Exception as e:
+        print(f"Błąd przypisywania procesu do Job Object: {e}")
+
+def _cleanup_orphaned_processes() -> None:
+    current_pid = os.getpid()
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if proc.info['pid'] == current_pid:
+                continue
+            cmdline = proc.info.get('cmdline') or []
+            cmd_str = " ".join(cmdline).lower()
+            if "python" in (proc.info.get('name') or "").lower() or "python" in cmd_str:
+                if "node.satellite" in cmd_str or "node.node" in cmd_str:
+                    print(f"[Cleanup] Uśmiercanie starego procesu-sieroty: PID {proc.info['pid']} ({cmd_str})")
+                    _kill_process_tree(proc.info['pid'])
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+
 
 def start_worker():
     global worker_process
@@ -79,6 +258,7 @@ def start_worker():
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             
         worker_process = subprocess.Popen(cmd, **kwargs)
+        _assign_to_job_object(worker_process)
         return True
     return True
 
@@ -92,8 +272,7 @@ def stop_worker():
             requests.post(f"http://127.0.0.1:{port}/v1/system/shutdown", timeout=5)
         except Exception:
             pass
-        worker_process.terminate()
-        worker_process.wait()
+        _kill_process_tree(worker_process.pid)
         worker_process = None
 
 def start_satellite():
@@ -115,14 +294,14 @@ def start_satellite():
         env["PYTHONUNBUFFERED"] = "1"
             
         satellite_process = subprocess.Popen(cmd, env=env, **kwargs)
+        _assign_to_job_object(satellite_process)
         return True
     return True
 
 def stop_satellite():
     global satellite_process
     if satellite_process is not None:
-        satellite_process.terminate()
-        satellite_process.wait()
+        _kill_process_tree(satellite_process.pid)
         satellite_process = None
 
 def is_worker_running():
@@ -147,28 +326,35 @@ def register_node_with_controller():
                 except Exception:
                     controller_url = "http://192.168.0.119:8000"
                     
-            services = []
+            services_dict = {}
             if is_worker_running() or settings.get("autostart_worker"):
-                services.append("worker")
+                services_dict["worker"] = {
+                    "model_name": settings.get("selected_model", "qwen3.5:9b"),
+                    "priority": settings.get("worker_priority", 100),
+                }
             if is_satellite_running() or settings.get("autostart_satellite"):
-                services.append("satellite")
-                
+                services_dict["satellite"] = {
+                    "room": settings.get("room", "pracownia_glowna"),
+                    "node_type": "desktop",
+                    "capabilities": ["audio_input", "tts_output", "wakeword"],
+                    "wakeword_local": True,
+                }
+
             payload = {
                 "id": node_id,
                 "name": settings.get("instance_name", node_id),
                 "host": get_local_ip(),
                 "port": 8099,
-                "services": services,
-                "model_name": settings.get("selected_model", "qwen3.5:9b"),
-                "priority": settings.get("worker_priority", 100),
-                "room": settings.get("room", "pracownia_glowna"),
-                "node_type": "desktop",
-                "capabilities": ["audio_input", "tts_output", "wakeword"],
-                "wakeword_local": True
+                "services": services_dict,
             }
             resp = requests.post(f"{controller_url}/v1/nodes/register", json=payload, timeout=5)
             resp.raise_for_status()
             print(f"Zjednoczony Węzeł '{node_id}' zarejestrowany w Kontrolerze ({controller_url}).")
+            
+            config_data = resp.json().get("config")
+            if config_data:
+                _apply_node_config(config_data, from_registration=True)
+                
         except Exception as e:
             print(f"Nie udało się zarejestrować Węzła w Kontrolerze: {e}")
 
@@ -191,139 +377,71 @@ def unregister_node_with_controller():
     except Exception:
         pass
 
-MANAGEMENT_PORT = 8099
-
-class _ServiceHandler(BaseHTTPRequestHandler):
-    """Minimalistyczny HTTP handler dla API zarządzania usługą."""
-
-    def log_message(self, format, *args):
-        pass  # wycisz logi HTTP w konsoli
-
-    def _send_json(self, data: dict, status: int = 200):
-        body = json.dumps(data).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _handle_sse(self):
-        """Obsługuje long-lived SSE połączenie. Blokuje wątek do rozłączenia klienta."""
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
-        self.end_headers()
-
-        sub: _q.Queue = _q.Queue(maxsize=500)
-
-        with _event_subscribers_lock:
-            # Odtwórz historię dla nowego klienta
-            for past_event in _event_history:
-                data = json.dumps(past_event, ensure_ascii=False)
-                self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
-            self.wfile.flush()
-            _event_subscribers.append(sub)
-
+async def _ws_client_loop():
+    global _ws_client
+    settings = get_settings()
+    node_id = settings.get("instance_name", settings.get("satellite_id", "RTX-5070"))
+    controller_url = settings.get("controller_url", "auto")
+    if controller_url == "auto":
         try:
-            while True:
-                try:
-                    event = sub.get(timeout=15)
-                    data = json.dumps(event, ensure_ascii=False)
-                    self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
-                    self.wfile.flush()
-                except _q.Empty:
-                    # Heartbeat co 15s — utrzymuje połączenie
-                    self.wfile.write(b": heartbeat\n\n")
-                    self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            pass
-        finally:
-            with _event_subscribers_lock:
-                try:
-                    _event_subscribers.remove(sub)
-                except ValueError:
-                    pass
+            from core.discovery import discover_controller
+            controller_url = discover_controller()
+        except Exception:
+            controller_url = "http://192.168.0.119:8000"
+            
+    ws_url = controller_url.replace("http://", "ws://").replace("https://", "wss://") + f"/v1/ws/nodes/{node_id}"
+    
+    while True:
+        try:
+            async with websockets.connect(ws_url) as ws:
+                _ws_client = ws
+                print(f"Połączono z Kontrolerem przez WebSocket ({ws_url}).")
+                
+                async for message in ws:
+                    try:
+                        data = json.loads(message)
+                        cmd = data.get("command")
+                        payload = data.get("data", {})
+                        
+                        if cmd == "config":
+                            _apply_node_config(payload, from_registration=True)
+                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
+                        elif cmd == "worker_start":
+                            success = start_worker()
+                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": success}))
+                        elif cmd == "worker_stop":
+                            stop_worker()
+                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
+                        elif cmd == "satellite_start":
+                            start_satellite()
+                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
+                        elif cmd == "satellite_stop":
+                            stop_satellite()
+                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
+                        elif cmd == "status":
+                            await ws.send(json.dumps({
+                                "type": "command_result", 
+                                "command": cmd, 
+                                "success": True, 
+                                "result": {
+                                    "worker": "running" if is_worker_running() else "stopped",
+                                    "satellite": "running" if is_satellite_running() else "stopped",
+                                    "autostart_worker": get_settings().get("autostart_worker", False),
+                                    "autostart_satellite": get_settings().get("autostart_satellite", False),
+                                }
+                            }))
+                    except Exception as e:
+                        print(f"Błąd przetwarzania komendy WS: {e}")
+        except Exception as e:
+            _ws_client = None
+            print(f"Rozłączono z Kontrolerem. Ponawiam za 5s... ({e})")
+            await asyncio.sleep(5)
 
-    def do_GET(self):
-        if self.path == "/status":
-            self._send_json({
-                "worker": "running" if is_worker_running() else "stopped",
-                "satellite": "running" if is_satellite_running() else "stopped",
-                "autostart_worker": get_settings().get("autostart_worker", False),
-                "autostart_satellite": get_settings().get("autostart_satellite", False),
-            })
-        elif self.path == "/satellite/events":
-            self._handle_sse()
-        else:
-            self._send_json({"error": "not found"}, 404)
-
-    def do_POST(self):
-        if self.path == "/worker/toggle":
-            if is_worker_running():
-                stop_worker()
-                self._send_json({"worker": "stopped"})
-            else:
-                success = start_worker()
-                if not success:
-                    self._send_json({"error": "Ollama is offline"}, 400)
-                    return
-                self._send_json({"worker": "running"})
-
-        elif self.path == "/worker/start":
-            if is_worker_running():
-                self._send_json({"worker": "running", "note": "already running"})
-            else:
-                success = start_worker()
-                if not success:
-                    self._send_json({"error": "Ollama is offline"}, 400)
-                    return
-                self._send_json({"worker": "running"})
-
-        elif self.path == "/worker/stop":
-            stop_worker()
-            self._send_json({"worker": "stopped"})
-
-        elif self.path == "/satellite/toggle":
-            if is_satellite_running():
-                stop_satellite()
-            else:
-                start_satellite()
-            self._send_json({"satellite": "running" if is_satellite_running() else "stopped"})
-
-        elif self.path == "/satellite/start":
-            if is_satellite_running():
-                self._send_json({"satellite": "running", "note": "already running"})
-            else:
-                start_satellite()
-                self._send_json({"satellite": "running"})
-
-        elif self.path == "/satellite/stop":
-            stop_satellite()
-            self._send_json({"satellite": "stopped"})
-
-        elif self.path == "/satellite/event":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length)
-            try:
-                event = json.loads(body)
-                _bus_publish(event)
-                self._send_json({"ok": True})
-            except Exception:
-                self._send_json({"error": "invalid json"}, 400)
-
-        elif self.path == "/shutdown":
-            self._send_json({"status": "shutting_down"})
-            # Dajemy chwilę na odesłanie odpowiedzi, potem zamykamy
-            threading.Thread(target=lambda: (time.sleep(0.5), quit_all(None, None))).start()
-
-        else:
-            self._send_json({"error": "not found"}, 404)
-
-
-def _start_management_server(server):
-    """Uruchamia serwer zarządzania w tle (daemon thread)."""
-    server.serve_forever()
+def _start_ws_client():
+    global _ws_loop
+    _ws_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_ws_loop)
+    _ws_loop.run_until_complete(_ws_client_loop())
 
 def open_dashboard():
     settings = get_settings()
@@ -359,16 +477,19 @@ def get_menu():
 
 
 def run_service():
-    try:
-        # ThreadingTCPServer — każde połączenie dostaje własny wątek.
-        # Wymagane dla SSE (long-lived connections), które blokowałyby TCPServer.
-        server = socketserver.ThreadingTCPServer(("127.0.0.1", MANAGEMENT_PORT), _ServiceHandler)
-        server.allow_reuse_address = True
-    except OSError:
-        print(f"Usługa Regis Node działa już w tle (port {MANAGEMENT_PORT} zajęty).")
-        sys.exit(0)
-        
     global tray_icon
+    
+    # 1. Bezwzględne czyszczenie wszystkich starych podprocesów-sierot z poprzednich awarii
+    _cleanup_orphaned_processes()
+    
+    # 2. Rejestracja globalnego hooka atexit i sygnałów (zabije podprocesy przy dowolnym stopie)
+    atexit.register(quit_all)
+    try:
+        signal.signal(signal.SIGTERM, lambda signum, frame: quit_all())
+        signal.signal(signal.SIGINT, lambda signum, frame: quit_all())
+    except ValueError:
+        pass # Ignoruj jeśli nie jesteśmy w głównym wątku
+
     settings = get_settings()
     if settings.get("autostart_worker"):
         def _autostart_with_retry():
@@ -391,9 +512,8 @@ def run_service():
 
     tray_icon = pystray.Icon("node", create_default_icon(), "Regis Node", menu=get_menu())
     
-    mgmt_thread = threading.Thread(target=_start_management_server, args=(server,), daemon=True)
-    mgmt_thread.start()
-    
+    ws_thread = threading.Thread(target=_start_ws_client, daemon=True)
+    ws_thread.start()
 
     tray_icon.run()
 

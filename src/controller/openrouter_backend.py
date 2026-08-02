@@ -11,19 +11,37 @@ from core.exceptions import LLMConnectionError
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 class OpenRouterBackend(LLMBackend):
-    def __init__(self, temperature: float = 0.5):
+    def __init__(self, api_key: str, model_name: str, mode: str = "extended", temperature: float = 0.5):
+        self.api_key = api_key
+        self.model_name = model_name
+        self.mode = mode
         self.temperature = temperature
-        from core import config
-        # Wymuszamy załadowanie .env by mieć pewność
-        config.load_settings()
-        self.api_key = os.environ.get("OPENROUTER_API_KEY", "")
-        self.model_name = os.environ.get("OPENROUTER_MODEL", "")
         
     def is_available(self) -> bool:
         return bool(self.api_key and self.model_name)
 
     def get_provider_name(self) -> str:
         return "openrouter"
+
+    @staticmethod
+    def _accumulate_tool_call(accumulator: dict[int, dict], tc: dict, tc_pos: int) -> None:
+        """Bezpiecznie dokleja lub inicjalizuje fragment wywołania narzędzia ze strumienia delta SSE."""
+        idx = tc.get("index", tc_pos)
+        entry = accumulator.setdefault(idx, {
+            "id": tc.get("id", f"call_{idx}"),
+            "type": tc.get("type", "function"),
+            "function": {"name": "", "arguments": ""}
+        })
+
+        if "id" in tc and tc["id"]:
+            entry["id"] = tc["id"]
+
+        fn = tc.get("function")
+        if isinstance(fn, dict):
+            if name := fn.get("name"):
+                entry["function"]["name"] += name
+            if args := fn.get("arguments"):
+                entry["function"]["arguments"] += args
 
     def generate_response(
         self,
@@ -36,7 +54,7 @@ class OpenRouterBackend(LLMBackend):
         on_profiler: Any = None
     ) -> str:
         if not self.is_available():
-            raise LLMConnectionError("Brak klucza OPENROUTER_API_KEY lub OPENROUTER_MODEL w środowisku.")
+            raise LLMConnectionError("Brak klucza OPENROUTER_API_KEY lub OPENROUTER_MODEL.")
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -46,7 +64,11 @@ class OpenRouterBackend(LLMBackend):
         }
 
         # Iteracyjna pętla pozwalająca na wywołanie narzędzi i zwrócenie wyniku do modelu
-        while True:
+        max_iterations = 3 if self.mode == "basic" else 10
+        iteration_count = 0
+
+        while iteration_count < max_iterations:
+            iteration_count += 1
             payload = {
                 "model": self.model_name,
                 "messages": messages,
@@ -57,9 +79,16 @@ class OpenRouterBackend(LLMBackend):
             
             if tools_registry:
                 from core.schemas import get_tools_schema
-                payload["tools"] = get_tools_schema()
+                if self.mode == "basic":
+                    payload["tools"] = get_tools_schema(names=["execute_action"])
+                else:
+                    payload["tools"] = get_tools_schema()
 
             try:
+                import time
+                t_req_start = time.time()
+                t_first_token = None
+
                 response = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=120, stream=True)
                 if response.status_code != 200:
                     raise LLMConnectionError(f"HTTP {response.status_code}: {response.text}")
@@ -88,36 +117,24 @@ class OpenRouterBackend(LLMBackend):
                             
                             if "content" in delta and delta["content"]:
                                 piece = delta["content"]
+                                if t_first_token is None:
+                                    t_first_token = time.time()
+                                    ttft_ms = (t_first_token - t_req_start) * 1000.0
+                                    if on_profiler:
+                                        on_profiler({"metric": "llm_ttft", "value": ttft_ms})
                                 full_content += piece
                                 if on_content_token:
                                     on_content_token(piece)
                                     
                             if "tool_calls" in delta:
                                 for tc_pos, tc in enumerate(delta["tool_calls"]):
-                                    idx = tc.get("index", tc_pos)
-                                    if idx not in tool_calls_accumulator:
-                                        tool_calls_accumulator[idx] = tc.copy()
-                                        if "id" not in tool_calls_accumulator[idx]:
-                                            tool_calls_accumulator[idx]["id"] = f"call_{idx}"
-                                        if "type" not in tool_calls_accumulator[idx]:
-                                            tool_calls_accumulator[idx]["type"] = "function"
-                                        if "function" not in tool_calls_accumulator[idx]:
-                                            tool_calls_accumulator[idx]["function"] = {"name": "", "arguments": ""}
-                                        else:
-                                            tool_calls_accumulator[idx]["function"] = tc["function"].copy()
-                                            if "name" not in tool_calls_accumulator[idx]["function"]:
-                                                tool_calls_accumulator[idx]["function"]["name"] = ""
-                                            if "arguments" not in tool_calls_accumulator[idx]["function"]:
-                                                tool_calls_accumulator[idx]["function"]["arguments"] = ""
-                                    else:
-                                        if "function" in tc:
-                                            if "name" in tc["function"] and tc["function"]["name"]:
-                                                tool_calls_accumulator[idx]["function"]["name"] += tc["function"]["name"]
-                                            if "arguments" in tc["function"] and tc["function"]["arguments"]:
-                                                tool_calls_accumulator[idx]["function"]["arguments"] += tc["function"]["arguments"]
-                                        
+                                    self._accumulate_tool_call(tool_calls_accumulator, tc, tc_pos)
                         except json.JSONDecodeError:
                             continue
+
+                if t_first_token is not None and on_profiler:
+                    gen_ms = (time.time() - t_first_token) * 1000.0
+                    on_profiler({"metric": "llm_gen", "value": gen_ms})
 
                 if usage_stats:
                     logging.debug(f"Zużycie tokenów OpenRouter: {usage_stats}")
@@ -148,10 +165,14 @@ class OpenRouterBackend(LLMBackend):
                         if on_tool_call:
                             on_tool_call(log_text)
                                 
+                        t_tool_start = time.time()
                         if tools_registry:
                             tool_result = tools_registry.execute_tool(function_name, args_dict)
                         else:
                             tool_result = "Błąd: Brak dostępu do narzędzi."
+                        t_tool_dur = (time.time() - t_tool_start) * 1000.0
+                        if on_profiler:
+                            on_profiler({"metric": "tools", "value": t_tool_dur})
 
                         if on_raw_tool_call:
                             on_raw_tool_call({
@@ -174,3 +195,6 @@ class OpenRouterBackend(LLMBackend):
             except RequestException as e:
                 logging.error(f"OpenRouter API Error: {e}")
                 raise LLMConnectionError(f"Odrzucono zapytanie (HTTP Error): {e}")
+
+        logging.warning(f"OpenRouter: przekroczono max_iterations ({max_iterations}). Przerywam pętlę.")
+        return "Przerwano zapytanie. Przekroczono maksymalną liczbę wywołań narzędzi."

@@ -13,7 +13,7 @@ import {
     workers, satellites,
 } from './state.js';
 import {
-    renderWorkerCard, markWorkerOffline,
+    renderNodeCard, renderWorkerCard, markWorkerOffline,
     renderSatelliteCard, markSatelliteOffline,
     updateSatelliteVAD, appendLog,
 } from './renderer.js';
@@ -25,17 +25,14 @@ export function handleEvent(event) {
 
     switch (event.type) {
 
-        case "node_registered": {
+        case "node_registered":
+        case "node_updated": {
             const node = event.node || event;
-            if (node.services && node.services.includes("worker")) {
-                upsertWorker({ id: node.id, host: node.host, port: node.port, model_name: node.model_name, priority: node.priority, status: "online" });
-                renderWorkerCard(workers[node.id]);
-            }
-            if (node.services && node.services.includes("satellite")) {
-                upsertSatellite({ id: node.id, room: node.room, type: node.node_type || "desktop", capabilities: node.capabilities });
-                renderSatelliteCard(satellites[node.id]);
-            }
-            appendLog(now, `[${node.id}]`, `Zjednoczony Węzeł zarejestrowany — usługi: ${node.services ? node.services.join(", ") : ""}`, "node_registered");
+            renderNodeCard(node);
+            const services = node.services || {};
+            const isDict = typeof services === 'object' && !Array.isArray(services);
+            const serviceList = isDict ? Object.keys(services) : (Array.isArray(services) ? services : []);
+            appendLog(now, `[${node.id}]`, `Zjednoczony Węzeł zaktualizowany — usługi: ${serviceList.join(", ")}`, "node_registered");
             break;
         }
 
@@ -88,28 +85,17 @@ export function handleEvent(event) {
             const satId  = event.satellite_id || event.id;
             const evType = event.data?.type || event.event_type || "";
             updateSatelliteVAD(satId, evType);
-
-            const labels = {
-                "vad_speech":  "VAD: mowa wykryta",
-                "vad_silence": "VAD: cisza",
-                "wakeword":    "WakeWord wykryty",
-            };
-            const label = labels[evType] || evType;
-            if (label) appendLog(now, `[${satId}]`, label, "satellite_event");
+            // VAD / audio nie zaśmiecają dziennika technicznego
             break;
         }
 
         case "routing_decision": {
-            const msg = `Routing → ${event.worker_id || "?"} | ${event.model_name || event.model || ""}`;
-            appendLog(now, "[routing]", msg, "routing_decision");
+            // Decyzje routingowe usunięte z dziennika głównego
             break;
         }
 
         case "conversation_turn": {
-            const wid   = event.worker_id ? ` · ${event.worker_id}` : "";
-            const tools = event.tool_count ? ` · ${event.tool_count} narzędzi` : "";
-            appendLog(now, "[turn]", `Wykonano turę konwersacji${wid}${tools}`, "conversation_turn");
-
+            // Szczegóły tury trafiają do czatu konwersacyjnego, nie do dziennika
             const activeSat = getActiveSatelliteId();
             const eventSat = event.satellite_id || "web_ui";
             if (activeSat === eventSat) {
@@ -117,18 +103,24 @@ export function handleEvent(event) {
                     user: event.user_text,
                     assistant: event.assistant_text,
                     timestamp: now,
-                    tools: event.tool_count ? new Array(event.tool_count) : []
+                    tools: event.tools || [],
+                    tool_count: event.tool_count || 0,
+                    model: event.model,
+                    elapsed_ms: event.elapsed_ms,
+                    profiler: event.profiler
                 });
             }
             break;
         }
 
         case "node_command_result": {
-            const ok  = event.success ? "OK" : "BŁĄD";
-            const err = event.error ? ` — ${event.error}` : "";
-            appendLog(now, `[${event.node_id}]`,
-                `Komenda: ${event.command} → ${ok}${err}`,
-                "node_command_result");
+            // Logujemy tylko niepowodzenia komend (błędy)
+            if (!event.success) {
+                const err = event.error ? ` — ${event.error}` : "";
+                appendLog(now, `[${event.node_id}]`,
+                    `Błąd wykonania komendy '${event.command}': ${err}`,
+                    "error");
+            }
             break;
         }
 

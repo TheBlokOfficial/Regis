@@ -103,6 +103,97 @@ export async function loadSessionHistory(satelliteId) {
     }
 }
 
+function _formatDuration(ms) {
+    if (!ms || ms <= 0) return "";
+    return ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : ms + "ms";
+}
+
+export function formatAssistantMeta(turn) {
+    const parts = [];
+
+    // 1. Tożsamość + Model
+    const modelStr = turn.model ? ` (${turn.model})` : "";
+    parts.push(`Regis${modelStr}`);
+
+    // 2. Liczba narzędzi
+    const toolCount = turn.tools ? turn.tools.length : (turn.tool_count || 0);
+    if (toolCount > 0) {
+        const label = toolCount === 1 ? "narzędzie" : (toolCount < 5 ? "narzędzia" : "narzędzi");
+        parts.push(`${toolCount} ${label}`);
+    }
+
+    // 3. Łączny czas wykonania
+    if (turn.elapsed_ms) {
+        parts.push(_formatDuration(turn.elapsed_ms));
+    }
+
+    // 4. Szczegóły telemetrii z Profilera
+    const profiler = turn.profiler || {};
+    const profParts = [];
+    if (profiler.stt) profParts.push(`STT: ${_formatDuration(profiler.stt)}`);
+    if (profiler.llm_ttft) profParts.push(`TTFT: ${_formatDuration(profiler.llm_ttft)}`);
+    if (profiler.llm_gen) profParts.push(`Gen: ${_formatDuration(profiler.llm_gen)}`);
+    if (profiler.tools) profParts.push(`Narzędzia: ${_formatDuration(profiler.tools)}`);
+
+    if (profParts.length > 0) {
+        parts.push(`[${profParts.join(" | ")}]`);
+    }
+
+    // 5. Timestamp
+    if (turn.timestamp) {
+        parts.push(turn.timestamp);
+    }
+
+    return parts.join(" · ");
+}
+
+export function renderToolsBlock(tools) {
+    if (!tools || tools.length === 0) return "";
+
+    let html = `<div class="tool-calls-container">`;
+    tools.forEach(t => {
+        if (!t) return;
+        const name = t.name || "tool";
+        const thought = t.thought || "";
+        let argsStr = "";
+        if (t.arguments) {
+            if (typeof t.arguments === "object") {
+                argsStr = Object.entries(t.arguments).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ");
+            } else {
+                argsStr = String(t.arguments);
+            }
+        }
+        const resultStr = t.result !== undefined ? (typeof t.result === "object" ? JSON.stringify(t.result, null, 2) : String(t.result)) : "";
+
+        let thoughtHtml = "";
+        if (thought) {
+            thoughtHtml = `
+                <div class="tool-call-thought">
+                    <div><strong>Monolog (Myśl):</strong></div>
+                    <pre class="thought-content">${escHtml(thought)}</pre>
+                </div>
+            `;
+        }
+
+        html += `
+            <details class="tool-call-block">
+                <summary class="tool-call-summary">
+                    <span>🛠️</span>
+                    <span class="tool-call-name">${escHtml(name)}</span>
+                    <span class="tool-call-args">(${escHtml(argsStr)})</span>
+                </summary>
+                ${thoughtHtml}
+                <div class="tool-call-result">
+                    <div><strong>Wynik Kontrolera:</strong></div>
+                    <pre class="result-content">${escHtml(resultStr)}</pre>
+                </div>
+            </details>
+        `;
+    });
+    html += `</div>`;
+    return html;
+}
+
 export function getActiveSatelliteId() {
     return _activeSatelliteId;
 }
@@ -127,10 +218,12 @@ export function appendTurnToChat(turn) {
     if (turn.assistant) {
         const aMsg = document.createElement("div");
         aMsg.className = "msg-wrapper assistant";
-        const toolsText = turn.tools && turn.tools.length > 0 ? ` · ${turn.tools.length} narzędzi` : "";
+        const toolsHtml = renderToolsBlock(turn.tools);
+        const metaStr = formatAssistantMeta(turn);
         aMsg.innerHTML = `
+            ${toolsHtml}
             <div class="msg-bubble">${escHtml(turn.assistant)}</div>
-            <div class="msg-meta">Regis ${toolsText} · ${escHtml(turn.timestamp || "")}</div>
+            <div class="msg-meta">${escHtml(metaStr)}</div>
         `;
         container.appendChild(aMsg);
     }
@@ -159,6 +252,7 @@ function _bindChatForm() {
         const aMsg = document.createElement("div");
         aMsg.className = "msg-wrapper assistant";
         aMsg.innerHTML = `
+            <div id="streaming-tools"></div>
             <div class="msg-bubble" id="streaming-bubble">...</div>
             <div class="msg-meta" id="streaming-meta">Regis · generowanie...</div>
         `;
@@ -167,7 +261,12 @@ function _bindChatForm() {
 
         const bubble = document.getElementById("streaming-bubble");
         const meta   = document.getElementById("streaming-meta");
+        const toolsContainer = document.getElementById("streaming-tools");
         let fullText = "";
+        let currentModel = "";
+        let usedTools = [];
+        let profilerData = {};
+        let elapsedMs = null;
 
         try {
             const resp = await fetch("/v1/chat/stream", {
@@ -183,27 +282,72 @@ function _bindChatForm() {
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
             const reader = resp.body.getReader();
-            const decoder = new TextDecoder();
+            const decoder = new TextDecoder("utf-8");
+            let buffer = "";
 
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) {
+                    if (buffer.trim()) {
+                        // Process any remaining complete or incomplete line
+                        let line = buffer.trim();
+                        if (line.startsWith("data: ")) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.type === "done") {
+                                    elapsedMs = data.elapsed_ms || null;
+                                    if (bubble && !fullText) bubble.textContent = data.content;
+                                    const finalMetaStr = formatAssistantMeta({
+                                        model: currentModel,
+                                        tools: usedTools,
+                                        elapsed_ms: elapsedMs,
+                                        profiler: profilerData,
+                                        timestamp: now
+                                    });
+                                    if (meta) meta.textContent = finalMetaStr;
+                                }
+                            } catch (_) {}
+                        }
+                    }
+                    break;
+                }
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split("\n");
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop(); // Keep the last, incomplete line in the buffer
 
                 for (let line of lines) {
                     line = line.trim();
-                    if (line.startswith("data: ")) {
+                    if (line.startsWith("data: ")) {
                         try {
                             const data = JSON.parse(line.slice(6));
-                            if (data.type === "content") {
+                            if (data.type === "routing_info") {
+                                currentModel = data.model || "";
+                                if (meta) meta.textContent = formatAssistantMeta({ model: currentModel, timestamp: "generowanie..." });
+                            } else if (data.type === "content") {
                                 fullText += data.content;
                                 if (bubble) bubble.textContent = fullText;
                                 _scrollToBottom();
+                            } else if (data.type === "tool_dict") {
+                                usedTools.push(data.content);
+                                if (toolsContainer) toolsContainer.innerHTML = renderToolsBlock(usedTools);
+                                _scrollToBottom();
+                            } else if (data.type === "profiler") {
+                                const m = data.content;
+                                if (m && m.metric) {
+                                    profilerData[m.metric] = (profilerData[m.metric] || 0) + (m.value || 0);
+                                }
                             } else if (data.type === "done") {
-                                if (meta) meta.textContent = `Regis · ${now}`;
+                                elapsedMs = data.elapsed_ms || null;
                                 if (bubble && !fullText) bubble.textContent = data.content;
+                                const finalMetaStr = formatAssistantMeta({
+                                    model: currentModel,
+                                    tools: usedTools,
+                                    elapsed_ms: elapsedMs,
+                                    profiler: profilerData,
+                                    timestamp: now
+                                });
+                                if (meta) meta.textContent = finalMetaStr;
                             }
                         } catch (_) {}
                     }
@@ -214,6 +358,7 @@ function _bindChatForm() {
         } finally {
             if (bubble) bubble.removeAttribute("id");
             if (meta) meta.removeAttribute("id");
+            if (toolsContainer) toolsContainer.removeAttribute("id");
         }
     });
 }

@@ -133,7 +133,7 @@ def test_remote_tools_registry_passes_room():
     mock_response.text = json.dumps({"devices": []})
     mock_response.raise_for_status = MagicMock()
 
-    with patch("requests.post", return_value=mock_response) as mock_post:
+    with patch("requests.Session.post", return_value=mock_response) as mock_post:
         registry = RemoteToolsRegistry("http://127.0.0.1:8000", room="salon")
         registry.execute_tool("get_devices", {})
 
@@ -147,7 +147,7 @@ def test_remote_tools_registry_room_none_passes_null():
     mock_response.text = json.dumps({"devices": []})
     mock_response.raise_for_status = MagicMock()
 
-    with patch("requests.post", return_value=mock_response) as mock_post:
+    with patch("requests.Session.post", return_value=mock_response) as mock_post:
         registry = RemoteToolsRegistry("http://127.0.0.1:8000", room=None)
         registry.execute_tool("get_devices", {})
 

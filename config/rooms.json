@@ -1,7 +1,7 @@
 {
     "pracownia_glowna": {
         "name": "Pracownia Główna",
-        "metadata": ["mój pokój", "pokój TheBloka", "komputer", "łóżko", "TheBlok"],
+        "metadata": ["komputer", "łóżko"],
         "devices": [
             "light.pracownia_glowna",
             "light.nad_lozkiem",

@@ -74,18 +74,42 @@ def test_build_messages_from_history_handles_tool_dicts_and_filters_raw_logs():
 
     messages = build_messages_from_history("System Prompt", history, current_message="Włącz światło")
 
-    # Powinny być: System prompt, User prompt, Assistant <thought>+<action>, User <tool_response>, Assistant final, Current User message
-    assert len(messages) == 6
+    # Powinny być: System prompt, User prompt, Assistant final, Current User message
+    assert len(messages) == 4
     assert messages[0]["role"] == "system"
     assert messages[1]["content"] == "Wyłącz światło"
-    assert "<thought>\nWyłączam światło w pracowni\n</thought>\n<action>" in messages[2]["content"]
-    assert messages[3]["role"] == "user"
-    assert "<tool_response>" in messages[3]["content"]
-    assert messages[4]["content"] == "Światło wyłączone."
-    assert messages[5]["content"] == "Włącz światło"
+    assert messages[2]["content"] == "Światło wyłączone."
+    assert messages[3]["content"] == "Włącz światło"
 
     # Upewnijmy się, że żaden komunikat assistant nie zawiera surowego napisowego logu CLI
     for m in messages:
         if m["role"] == "assistant":
             assert "< Kontroler zwrócił:" not in m["content"]
+
+
+def test_openrouter_accumulate_tool_call():
+    accumulator = {}
+
+    # Chunk 1: inicjalizacja nazwy i id
+    chunk_1 = {
+        "index": 0,
+        "id": "call_abc123",
+        "function": {"name": "execute_action", "arguments": '{"action":'}
+    }
+    OpenRouterBackend._accumulate_tool_call(accumulator, chunk_1, 0)
+
+    assert 0 in accumulator
+    assert accumulator[0]["id"] == "call_abc123"
+    assert accumulator[0]["function"]["name"] == "execute_action"
+    assert accumulator[0]["function"]["arguments"] == '{"action":'
+
+    # Chunk 2: doklejenie argumentów
+    chunk_2 = {
+        "index": 0,
+        "function": {"arguments": ' "turn_on"}'}
+    }
+    OpenRouterBackend._accumulate_tool_call(accumulator, chunk_2, 0)
+
+    assert accumulator[0]["function"]["arguments"] == '{"action": "turn_on"}'
+
 

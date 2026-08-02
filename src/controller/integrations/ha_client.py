@@ -192,19 +192,6 @@ class HomeAssistantClient:
         # HA obsługuje listę entity_id domyślnie, nie trzeba robić pętli!
         domain = entity_id[0].split(".")[0] if isinstance(entity_id, list) else entity_id.split(".")[0]
         
-        # Weryfikacja fizycznej dostępności urządzeń przed wysłaniem komendy
-        for eid in entity_id:
-            try:
-                state_resp = self.session.get(f"{self.url}/api/states/{eid}", timeout=2)
-                if state_resp.status_code == 200:
-                    state_data = state_resp.json()
-                    if state_data.get("state") == "unavailable":
-                        raise ValueError(f"Urządzenie '{eid}' jest aktualnie niedostępne (unavailable / offline).")
-            except ValueError as ve:
-                raise ve
-            except Exception as e:
-                logging.warning(f"[HA CLIENT] Nie udało się zweryfikować stanu dla {eid}: {e}")
-                
         if action == "turn_on":
             service = "turn_on"
         elif action == "turn_off":

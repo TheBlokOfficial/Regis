@@ -80,7 +80,7 @@ def test_remote_tools_registry_success():
     mock_response.text = expected
     mock_response.raise_for_status = MagicMock()
 
-    with patch("requests.post", return_value=mock_response) as mock_post:
+    with patch("requests.Session.post", return_value=mock_response) as mock_post:
         registry = RemoteToolsRegistry("http://127.0.0.1:8000", "regis")
         result = registry.execute_tool("get_current_time", {})
 
@@ -92,7 +92,7 @@ def test_remote_tools_registry_success():
 
 def test_remote_tools_registry_connection_error():
     import requests as req_lib
-    with patch("requests.post", side_effect=req_lib.RequestException("timeout")):
+    with patch("requests.Session.post", side_effect=req_lib.RequestException("timeout")):
         registry = RemoteToolsRegistry("http://127.0.0.1:8000", "regis")
         result = registry.execute_tool("get_current_time", {})
 

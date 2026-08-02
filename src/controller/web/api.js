@@ -155,3 +155,111 @@ function _commandToBtnId(nodeId, command) {
     };
     return map[command] || null;
 }
+
+// ── Konfiguracja Węzłów ───────────────────────────────────────────────────
+
+export async function fetchSupportedModels() {
+    try {
+        const resp = await fetch("/v1/nodes/supported_models");
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return data.models || [];
+    } catch (e) {
+        console.error("Błąd pobierania wspieranych modeli:", e);
+        return [];
+    }
+}
+
+export async function fetchNodeConfig(nodeId) {
+    try {
+        const resp = await fetch(`/v1/nodes/${encodeURIComponent(nodeId)}/config`);
+        if (!resp.ok) return null;
+        return await resp.json();
+    } catch (e) {
+        console.error(`Błąd pobierania konfiguracji węzła ${nodeId}:`, e);
+        return null;
+    }
+}
+
+export async function saveNodeConfig(nodeId, configData) {
+    try {
+        const resp = await fetch(`/v1/nodes/${encodeURIComponent(nodeId)}/config`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(configData),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return await resp.json();
+    } catch (e) {
+        console.error(`Błąd zapisu konfiguracji węzła ${nodeId}:`, e);
+        throw e;
+    }
+}
+
+// ── Cloud Providers API ───────────────────────────────────────────────────
+
+export async function fetchCloudProviders() {
+    try {
+        const resp = await fetch("/api/cloud-providers");
+        if (!resp.ok) return [];
+        return await resp.json();
+    } catch (e) {
+        console.error("Błąd pobierania cloud providers:", e);
+        return [];
+    }
+}
+
+export async function addCloudProvider(providerData) {
+    try {
+        const resp = await fetch("/api/cloud-providers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(providerData),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return await resp.json();
+    } catch (e) {
+        console.error("Błąd dodawania cloud providera:", e);
+        throw e;
+    }
+}
+
+export async function patchCloudProvider(providerId, updates) {
+    try {
+        const resp = await fetch(`/api/cloud-providers/${encodeURIComponent(providerId)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updates),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return await resp.json();
+    } catch (e) {
+        console.error(`Błąd aktualizacji providera ${providerId}:`, e);
+        throw e;
+    }
+}
+
+export async function deleteCloudProvider(providerId) {
+    try {
+        const resp = await fetch(`/api/cloud-providers/${encodeURIComponent(providerId)}`, {
+            method: "DELETE"
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return true;
+    } catch (e) {
+        console.error(`Błąd usuwania providera ${providerId}:`, e);
+        throw e;
+    }
+}

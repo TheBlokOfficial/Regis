@@ -134,11 +134,7 @@ async def get_status():
 
 @router_ui.post("/api/node/{node_id}/command")
 async def node_command(node_id: str, body: NodeCommand):
-    """Przekazuje komendę do węzła Windows przez HTTP i zwraca wynik.
-
-    Kontroler pełni rolę proxy — węzeł nigdy nie jest eksponowany bezpośrednio
-    do przeglądarki.
-    """
+    """Przekazuje komendę do węzła Windows przez WebSocket."""
     command = body.command
 
     if command not in _COMMAND_MAP:
@@ -155,37 +151,22 @@ async def node_command(node_id: str, body: NodeCommand):
             status_code=404
         )
 
-    method, path = _COMMAND_MAP[command]
-    url = f"http://{node['host']}:8099{path}"
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            if method == "POST":
-                resp = await client.post(url)
-            else:
-                resp = await client.get(url)
-            resp.raise_for_status()
-            result = resp.json()
-    except httpx.HTTPError as e:
-        logging.warning(f"[UI] Komenda '{command}' do węzła '{node_id}' nie powiodła się: {e}")
+    success = await registry.node_manager.send_command(node_id, command, {})
+    if not success:
+        error_msg = f"Węzeł {node_id} jest nieosiągalny (brak aktywnego połączenia WebSocket)."
+        logging.warning(f"[UI] Komenda '{command}' do węzła '{node_id}' nie powiodła się: {error_msg}")
         await event_bus.publish({
             "type": "node_command_result",
             "node_id": node_id,
             "command": command,
             "success": False,
-            "error": str(e),
+            "error": error_msg,
         })
-        return JSONResponse({"error": str(e)}, status_code=502)
+        return JSONResponse({"error": error_msg}, status_code=502)
 
-    await event_bus.publish({
-        "type": "node_command_result",
-        "node_id": node_id,
-        "command": command,
-        "success": True,
-    })
-
-    logging.info(f"[UI] Komenda '{command}' do węzła '{node_id}' wykonana.")
-    return {"status": "ok", "node_id": node_id, "command": command, "result": result}
+    # Sukces wysłania komendy - odpowiedź przyjdzie przez WebSocket jako `command_result`
+    logging.info(f"[UI] Komenda '{command}' wysłana do węzła '{node_id}' przez WS.")
+    return {"status": "pending", "node_id": node_id, "command": command}
 
 
 # ---------------------------------------------------------------------------
