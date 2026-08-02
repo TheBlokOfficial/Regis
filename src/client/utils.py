@@ -15,6 +15,8 @@ RegisCoreException = RegisClientException
 
 # ─── Narzędzia Pomocnicze ──────────────────────────────────────────────────────
 
+# TODO: W przyszłości zmienić historię w Kontrolerze z par tur (user/assistant)
+# na płaską strukturę wiadomości zgodną ze standardem komunikatorów i API LLM (role: user/assistant/tool).
 def build_messages_from_history(system_prompt: str, history: list[dict], current_message: str = None) -> list[dict]:
     """Odbudowuje listę wiadomości na podstawie historii konwersacji do struktury zgodnej z API LLM."""
     messages = [{"role": "system", "content": system_prompt}]
