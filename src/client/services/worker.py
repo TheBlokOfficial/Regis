@@ -34,7 +34,7 @@ _selected_model: str = "qwen3.5:9b"
 
 def get_args():
     parser = argparse.ArgumentParser(description="Regis Worker Service")
-    parser.add_argument("--model", type=str, default=None, help="LLM Model to use")
+    parser.add_argument("--model", "--model-name", type=str, default=None, help="LLM Model to use")
     parser.add_argument("--port", type=int, default=None, help="Worker port")
     parser.add_argument("--controller-url", type=str, default=None, help="Controller URL")
     # Zwraca puste args dla trybu pytest/innych wywołań
