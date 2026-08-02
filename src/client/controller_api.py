@@ -142,27 +142,20 @@ async def _cmd_config(payload: dict) -> dict:
 async def _cmd_status(payload: dict) -> dict:
     return {"success": True, "result": get_all_services_status()}
 
-async def _cmd_worker_start(payload: dict) -> dict:
-    return {"success": start_service("worker")}
-
-async def _cmd_worker_stop(payload: dict) -> dict:
-    stop_service("worker")
-    return {"success": True}
-
-async def _cmd_satellite_start(payload: dict) -> dict:
-    return {"success": start_service("satellite")}
-
-async def _cmd_satellite_stop(payload: dict) -> dict:
-    stop_service("satellite")
-    return {"success": True}
+async def _cmd_service_control(payload: dict) -> dict:
+    service = payload.get("service")
+    action = payload.get("action")
+    if action == "start":
+        return {"success": start_service(service)}
+    elif action == "stop":
+        stop_service(service)
+        return {"success": True}
+    return {"success": False, "error": f"Nieznana akcja: {action} dla usługi {service}"}
 
 COMMAND_HANDLERS = {
     "config": _cmd_config,
     "status": _cmd_status,
-    "worker_start": _cmd_worker_start,
-    "worker_stop": _cmd_worker_stop,
-    "satellite_start": _cmd_satellite_start,
-    "satellite_stop": _cmd_satellite_stop,
+    "service_control": _cmd_service_control,
 }
 
 async def _handle_ws_message(ws: Any, message: str) -> None:

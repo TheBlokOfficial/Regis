@@ -27,8 +27,8 @@ router_ui = APIRouter()
 # ---------------------------------------------------------------------------
 
 class NodeCommand(BaseModel):
-    command: str  # worker_start | worker_stop | satellite_start | satellite_stop | status
-
+    command: str  # np. service_control, status, config
+    data: dict = {}
 
 class SatelliteEvent(BaseModel):
     satellite_id: str
@@ -36,17 +36,7 @@ class SatelliteEvent(BaseModel):
     data: dict = {}
 
 
-# ---------------------------------------------------------------------------
-# Mapowanie komend na endpointy węzła (port 8099)
-# ---------------------------------------------------------------------------
-
-_COMMAND_MAP: dict[str, tuple[str, str]] = {
-    "worker_start":     ("POST", "/worker/start"),
-    "worker_stop":      ("POST", "/worker/stop"),
-    "satellite_start":  ("POST", "/satellite/start"),
-    "satellite_stop":   ("POST", "/satellite/stop"),
-    "status":           ("GET",  "/status"),
-}
+# (Usunięto stare mapowanie _COMMAND_MAP HTTP, używamy tylko WebSocket z dowolnym JSON)
 
 
 # ---------------------------------------------------------------------------
@@ -138,12 +128,7 @@ async def get_status():
 async def node_command(node_id: str, body: NodeCommand):
     """Przekazuje komendę do węzła Windows przez WebSocket."""
     command = body.command
-
-    if command not in _COMMAND_MAP:
-        return JSONResponse(
-            {"error": f"Nieznana komenda: {command}. Dostępne: {list(_COMMAND_MAP)}"},
-            status_code=400
-        )
+    payload = body.data
 
     # Szukamy węzła w rejestrze Zjednoczonych Węzłów lub workerów
     node = registry.node_registry.get(node_id) or registry.worker_registry.get(node_id)
@@ -153,7 +138,7 @@ async def node_command(node_id: str, body: NodeCommand):
             status_code=404
         )
 
-    success = await registry.node_manager.send_command(node_id, command, {})
+    success = await registry.node_manager.send_command(node_id, command, payload)
     if not success:
         error_msg = f"Węzeł {node_id} jest nieosiągalny (brak aktywnego połączenia WebSocket)."
         logging.warning(f"[UI] Komenda '{command}' do węzła '{node_id}' nie powiodła się: {error_msg}")

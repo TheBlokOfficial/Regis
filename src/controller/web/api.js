@@ -118,19 +118,15 @@ export function connectSSE() {
  * Eksportowana na window.sendNodeCommand — wymagane dla event listenerów w renderer.js.
  *
  * @param {string} nodeId
- * @param {string} command  worker_start | worker_stop | satellite_start | satellite_stop
+ * @param {string} command  Komenda do wykonania np. "service_control", "config"
+ * @param {object} payload  Opcjonalne dane, np. {service: "worker", action: "start"}
  */
-export async function sendNodeCommand(nodeId, command) {
-    const btnId = _commandToBtnId(nodeId, command);
-    const btn   = btnId ? document.getElementById(btnId) : null;
-
-    if (btn) btn.disabled = true;
-
+export async function sendNodeCommand(nodeId, command, payload = {}) {
     try {
         const resp = await fetch(`/api/node/${encodeURIComponent(nodeId)}/command`, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ command }),
+            body:    JSON.stringify({ command, data: payload }),
         });
 
         if (!resp.ok) {
@@ -142,18 +138,7 @@ export async function sendNodeCommand(nodeId, command) {
         // Wynik pojawi się przez EventBus (node_command_result)
     } catch (e) {
         appendLog(fmtTime(null), `[${nodeId}]`, `Błąd sieci: ${e.message}`, "error");
-        if (btn) btn.disabled = false;
     }
-}
-
-function _commandToBtnId(nodeId, command) {
-    const map = {
-        worker_start:    `btn-worker-start-${nodeId}`,
-        worker_stop:     `btn-worker-stop-${nodeId}`,
-        satellite_start: `btn-sat-start-${nodeId}`,
-        satellite_stop:  `btn-sat-stop-${nodeId}`,
-    };
-    return map[command] || null;
 }
 
 // ── Konfiguracja Węzłów ───────────────────────────────────────────────────
