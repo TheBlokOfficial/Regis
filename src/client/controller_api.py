@@ -91,7 +91,7 @@ def register() -> None:
             from protocol.schemas import ClientRegistrationRequest
             
             settings = load_settings()
-            node_id = settings.get("node_id", settings.get("instance_name", "client-default"))
+            node_id = str(settings.get("node_id") or settings.get("instance_name") or "client-default")
             controller_url = get_controller_url()
                     
             reg_request = ClientRegistrationRequest(
@@ -118,7 +118,7 @@ def unregister() -> None:
     """Wyrejestrowuje Klienta z Kontrolera."""
     try:
         settings = load_settings()
-        node_id = settings.get("node_id", settings.get("instance_name", "client-default"))
+        node_id = str(settings.get("node_id") or settings.get("instance_name") or "client-default")
         controller_url = get_controller_url()
         requests.delete(f"{controller_url}/v1/nodes/{node_id}", timeout=2)
         print(f"Wyrejestrowano Klienta '{node_id}' z Kontrolera.")
@@ -165,7 +165,7 @@ async def _handle_ws_message(ws: Any, message: str) -> None:
 async def _ws_client_loop() -> None:
     global _ws_client
     settings = load_settings()
-    node_id = settings.get("node_id", settings.get("instance_name", "node-default"))
+    node_id = str(settings.get("node_id") or settings.get("instance_name") or "client-default")
     controller_url = get_controller_url()
             
     ws_url = controller_url.replace("http://", "ws://").replace("https://", "wss://") + f"/v1/ws/nodes/{node_id}"
