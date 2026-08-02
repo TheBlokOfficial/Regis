@@ -204,7 +204,7 @@ async def chat_stream(request: ChatRequest):
         loop.call_soon_threadsafe(q.put_nowait, {"type": "profiler", "content": metric_data})
 
     def run_inference():
-        from core.history_utils import build_messages_from_history
+        from node.history_utils import build_messages_from_history
         try:
             # Budowa struktury messages przy użyciu utility
             messages = build_messages_from_history(

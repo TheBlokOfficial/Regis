@@ -6,9 +6,9 @@ import asyncio
 from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 
-from core.llm_engine import LLMEngine
-from core.stt_engine import STTEngine
-from core.tts_engine import TTSEngine
+from node.engines.llm_engine import LLMEngine
+from node.engines.stt_engine import STTEngine
+from node.engines.tts_engine import TTSEngine
 
 
 class WorkerNode:
@@ -108,7 +108,7 @@ class WorkerNode:
         if on_profiler:
             on_profiler({"metric": "stt", "value": int(stt_elapsed * 1000)})
 
-        from core.history_utils import build_messages_from_history
+        from node.history_utils import build_messages_from_history
         
         history = history or []
         messages = build_messages_from_history(

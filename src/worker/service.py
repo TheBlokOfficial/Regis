@@ -48,7 +48,7 @@ class WorkerInferenceService:
         remote_tools = RemoteToolsRegistry(controller_url, room=room)
 
         def run_inference():
-            from core.history_utils import build_messages_from_history
+            from worker.history_utils import build_messages_from_history
             try:
                 messages = build_messages_from_history(
                     system_prompt=system_prompt,

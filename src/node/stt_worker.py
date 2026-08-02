@@ -5,7 +5,7 @@ import os
 import re
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from core.stt_engine import STTEngine
+from node.engines.stt_engine import STTEngine
 from core import config
 
 # Regex został usunięty, ponieważ przechodzimy na inteligentne filtrowanie po czasie (timestampach)!

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 import os
 
-from core.llm_backends.ollama import OllamaBackend
+from controller.llm_backends.ollama import OllamaBackend
 from controller.openrouter_backend import OpenRouterBackend
 import controller.providers as providers
 import controller.registry as registry
@@ -59,7 +59,7 @@ def test_get_llm_backend_returns_none_if_no_worker(mock_openrouter_avail):
 
 
 def test_build_messages_from_history_handles_tool_dicts_and_filters_raw_logs():
-    from core.history_utils import build_messages_from_history
+    from node.history_utils import build_messages_from_history
 
     history = [
         {

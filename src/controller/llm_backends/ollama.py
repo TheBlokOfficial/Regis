@@ -5,7 +5,7 @@ import requests
 from requests.exceptions import RequestException
 from typing import Any
 
-from core.llm_backends.base import LLMBackend
+from controller.llm_backends.base import LLMBackend
 from core.exceptions import LLMConnectionError
 from core import config
 

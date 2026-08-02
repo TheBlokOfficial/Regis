@@ -5,7 +5,7 @@ from requests.exceptions import RequestException
 from typing import Any
 import os
 
-from core.llm_backends.base import LLMBackend
+from controller.llm_backends.base import LLMBackend
 from core.exceptions import LLMConnectionError
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"

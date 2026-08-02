@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-from core.llm_backends.base import LLMBackend
-from core.llm_backends.ollama import OllamaBackend
+from controller.llm_backends.base import LLMBackend
+from controller.llm_backends.ollama import OllamaBackend
 
 class LLMEngine:
     """Fasada dla wstecznej kompatybilności Węzła Roboczego (WorkerNode).

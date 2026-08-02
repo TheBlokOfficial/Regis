@@ -1,17 +1,14 @@
 # Regis Project Handoff
 
 ## Ostatnia Sesja (Zrealizowano)
-- **Layout UI & Ergonomia Szerokości (Pulpit vs Czat/Logi):** Zaimplementowano dynamiczny układ interfejsu. Widoki tekstowe (*Czat & Konwersacje* oraz *Dziennik Zdarzeń*) zachowują ergonomiczne centrowanie do 1000px (`calc((100% - 1000px) / 2)`), zapobiegając bieganiu wzrokiem od krawędzi do krawędzi na panoramicznych monitorach 16:9. *Pulpit Systemu* korzysta z 10% bocznego marginesu i siatki 3 bezwzględnie równych kolumn (`repeat(3, minmax(0, 1fr))`), w których rozmieszczono odpowiednio: **Węzły Lokalne**, **Dostawców Zewnętrznych (LLM)** oraz **Integracje**.
-- **Kompaktowe Kafelki i Stałe Wysokości:** Górne kafelki statusowe zostały zwężone i wycentrowane pośrodku ekranu (`justify-content: center`). Dolne panele zasobów otrzymały ujednoliconą wysokość (380px) z wewnętrznym scrollowaniem pionowym (`overflow-y: auto`). Wprowadzono klasę `.list-info` zapobiegającą łamaniu wierszy i obcinającą zbyt długie nazwy modeli/dostawców przy użyciu wielokropka (`ellipsis`).
-- **Czysty Dziennik Zdarzeń (Filtrowanie & Ustandaryzowany Format):** Usunięto szum informacyjny z mikro-zdarzeń pod-usług (worker/satelita) oraz wyeliminowano powtórne odtwarzanie historii przy odświeżaniu SSE (`is_history`). Wdrożono nowy, profesjonalny format wpisów przypominający logi systemowe: `[CZAS]  [INFO / OFFLINE / ERROR]  Treść komunikatu`.
-- **Oczyszczenie Kart Węzłów:** Usunięto rozbijający wiersze wskaźnik VAD z kafelków na rzecz czystych, minimalistycznych badge'y (np. `SAT (pracownia_glowna)`). Wyczyszczono przestarzały fallback portu `:8099` (Zjednoczony Węzeł łączy się wychodząco po WebSocket, prezentowany jest czysty adres IP).
-- **Naprawa Testów Jednostkowych:** Zaktualizowano sygnatury w `tests/test_llm_backends.py` dopasowane do nowej architektury `OpenRouterBackend` (100% przechodzących testów pytest).
+- **Restrukturyzacja LLM Backends (Faza 2 czyszczenia):** Przeniesiono cały katalog `src/core/llm_backends/` do `src/controller/llm_backends/`. Usunięto z domeny `core/` logikę, która należy wyłącznie do zarządzania dostawcami modeli wewnątrz Kontrolera.
+- **Aktualizacja Zależności:** Wszystkie wewnętrzne odwołania w kontrolerze (w tym `providers.py`, `openrouter_backend.py`, `chat_service.py`), jak również referencje ze zgodnością wsteczną w silnikach (`src/node/engines/llm_engine.py` i `src/worker/engines/llm_engine.py`) zaktualizowano tak, by korzystały z `controller.llm_backends`.
+- **Weryfikacja (QA):** Uruchomiono `pytest` wektorujący wszystkie powiązane z backendami testy, zachowując 100% pozytywny wynik. Brak jakichkolwiek "sierot" importowych po `core.llm_backends` w projekcie.
 
 ## Aktualny stan kodu
-Frontend (`src/controller/web/`) jest w pełni reaktywny, zoptymalizowany pod kątem proporcji na monitorach 16:9 i wolny od szumów informacyjnych. Backend (`src/controller/`) sprawnie obsługuje separację Zjednoczonych Węzłów od Dostawców Chmurowych oraz strumieniowanie SSE i Tool Calling.
+Architektura w warstwie abstrakcji modeli LLM została uprzątnięta. Logika specyficzna dla routingu modeli znajduje się teraz całkowicie w podsystemie Kontrolera, zostawiając folder `core/` wyłącznie dla współdzielonych schematów i podstawowych interfejsów (które i tak nie powinny trzymać hardcodowanych logik poszczególnych backendów). System i testy działają stabilnie.
 
 ## Kroki Startowe dla Nowego Agenta
-1. Zapoznaj się z dokumentami `docs/MANIFEST.md` i `docs/AGENT_GUIDE.md` (priorytety: czystość kodu, determinizm, brak niepotrzebnego szumu wizualnego).
-2. Otwórz `d:\Projekty\Regis\src\controller\web\index.html` oraz `style.css` i przejrzyj wyczyszczoną siatkę `dashboard-grid` oraz 3-zakładkowy układ Sidebara.
-3. Uruchom testy jednostkowe `pytest` w głównym katalogu, aby upewnić się, że całe środowisko jest stabilne.
-4. Przejdź do pliku `.agents/TASKS.md` w celu podjęcia kolejnego zadania z listy (np. dociągnięcie abstrakcji STT/TTS lub przygotowanie instalatora Windows).
+1. Zapoznaj się z plikami `docs/MANIFEST.md` i `docs/AGENT_GUIDE.md`, aby uszanować rozstrzygnięte decyzje architektoniczne.
+2. Odpal polecenie `pytest` w korzeniu projektu w celu upewnienia się, że nie wystąpiła żadna regresja.
+3. Przejdź do `.agents/TASKS.md`, by podjąć kolejne zadanie (np. dociągnięcie abstrakcji w STT/TTS lub kwestie instalatora Windows).

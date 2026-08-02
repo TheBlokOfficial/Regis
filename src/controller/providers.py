@@ -3,9 +3,9 @@ import os
 import json
 from pathlib import Path
 
-from core.llm_backends.base import LLMBackend
+from controller.llm_backends.base import LLMBackend
 from controller.openrouter_backend import OpenRouterBackend
-from core.llm_backends.ollama import OllamaBackend
+from controller.llm_backends.ollama import OllamaBackend
 import controller.registry as registry
 from core import config
 

@@ -3,8 +3,8 @@ import json
 import logging
 
 
-from core.llm_engine import LLMEngine
-from core.stt_engine import STTEngine
+from worker.engines.llm_engine import LLMEngine
+from worker.engines.stt_engine import STTEngine
 
 
 class WorkerNode:
@@ -111,7 +111,7 @@ class WorkerNode:
         if on_stt_result:
             on_stt_result(text)
 
-        from core.history_utils import build_messages_from_history
+        from worker.history_utils import build_messages_from_history
         
         history = history or []
         messages = build_messages_from_history(

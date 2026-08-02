@@ -57,6 +57,9 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 
 ## Zarchiwizowane (Historia Sesji)
 
+### Refaktoryzacja LLM Backends (Faza 2 czyszczenia - Sierpień 2026)
+Wyczyszczono katalog `core/` z komponentów `llm_backends/` (przeniesiono do `src/controller/llm_backends/`), co finalizuje pierwszą część separacji providerów zdefiniowanych wyłącznie pod Kontroler. Zaktualizowano wszystkie importy, wliczając w to lokalne fasady w węzłach (`node`, `worker`).
+
 ### Refaktoryzacja UX Web UI & Layout 16:9 (Sierpień 2026)
 Przeprowadzono gruntowną optymalizację ergonomii i estetyki panelu kontrolnego:
 1. Rozdzielono strategię wyświetlania – Czat oraz Dziennik Zdarzeń posiadają dynamiczne wycentrowanie do max 1000px, eliminując skakanie wzrokiem po panoramicznych ekranach 16:9.
