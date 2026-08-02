@@ -2,6 +2,7 @@ import argparse
 import atexit
 import os
 import signal
+import socket
 import sys
 import threading
 import pystray
@@ -12,6 +13,24 @@ from client.process_manager import cleanup_orphaned_processes, stop_all_services
 from client.tray import create_default_icon, get_menu
 
 app_tray: pystray.Icon | None = None
+_instance_socket: socket.socket | None = None
+
+
+def ensure_single_instance(port: int = 47829) -> None:
+    """Sprawdza czy kolejna instancja Regis Client nie jest już uruchomiona w systemie.
+
+    Korzysta z zamka gniazda na pętli zwrotnej (127.0.0.1). Jeśli port jest zajęty,
+    aplikacja wypisuje komunikat i natychmiast się wyłącza.
+    """
+    global _instance_socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", port))
+        s.listen(1)
+        _instance_socket = s
+    except OSError:
+        print("[Single Instance] Aplikacja Regis Client jest już uruchomiona w tle.")
+        sys.exit(0)
 
 
 def quit_all(icon=None) -> None:
@@ -50,6 +69,9 @@ def setup_signal_handlers() -> None:
 def main() -> None:
     """Główny punkt wejścia (Entry Point) aplikacji klienckiej Regis."""
     global app_tray
+
+    # 0. Zabezpieczenie przed podwójnym uruchomieniem
+    ensure_single_instance()
 
     parser = argparse.ArgumentParser(description="Regis Client Application")
     parser.add_argument("--console", action="store_true", help="Pokaż okno konsoli i wyjście logów (tryb debugowania)")
