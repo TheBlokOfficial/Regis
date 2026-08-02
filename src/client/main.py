@@ -43,12 +43,12 @@ def main() -> None:
     # 3. Rejestracja Klienta w Kontrolerze
     controller_client.register()
 
-    # 4. Uruchomienie ikony w zasobniku oraz klienta WebSocket
-    tray_icon = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
-    
+    # 4. Uruchomienie klienta WebSocket w osobnym wątku (komunikacja w czasie rzeczywistym)
     ws_thread = threading.Thread(target=controller_client.start_ws_client, daemon=True)
     ws_thread.start()
 
+    # 5. Uruchomienie ikony w zasobniku systemowym (pętla interfejsu użytkownika)
+    tray_icon = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
     tray_icon.run()
 
 
