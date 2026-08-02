@@ -150,12 +150,37 @@ class OllamaBackend(LLMBackend):
     def get_provider_name(self) -> str:
         return "ollama"
 
+    async def _ensure_model_exists(self, client: httpx.AsyncClient, ollama_url: str) -> None:
+        """Sprawdza czy model jest obecny, jeśli nie, próbuje go pobrać."""
+        try:
+            tags_resp = await client.get(f"{ollama_url}/api/tags")
+            tags_resp.raise_for_status()
+            models = [m.get("name") for m in tags_resp.json().get("models", [])]
+            
+            if not any(self.model_name in m or m in self.model_name for m in models):
+                logging.info(f"[Ollama Pull] Rozpoczynam pobieranie brakującego modelu '{self.model_name}'...")
+                pull_resp = await client.post(
+                    f"{ollama_url}/api/pull", 
+                    json={"name": self.model_name}, 
+                    timeout=600.0
+                )
+                pull_resp.raise_for_status()
+                logging.info(f"[Ollama Pull] Model '{self.model_name}' pobrany pomyślnie.")
+        except Exception as e:
+            logging.error(f"[Ollama] Błąd weryfikacji/pobierania modelu: {e}")
+            raise LLMConnectionError(f"Nie udało się zweryfikować lub pobrać modelu: {e}")
+
     async def preload_model(self) -> None:
         settings = config.load_settings()
-        url = f"{settings.get('ollama_url', 'http://127.0.0.1:11434')}/api/generate"
-        payload = {"model": self.model_name, "keep_alive": -1}
+        ollama_url = settings.get('ollama_url', 'http://127.0.0.1:11434')
+        
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
+                await self._ensure_model_exists(client, ollama_url)
+                
+                url = f"{ollama_url}/api/generate"
+                payload = {"model": self.model_name, "keep_alive": -1}
+                
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
             logging.info(f"Wstępnie załadowano model {self.model_name} do VRAM.")

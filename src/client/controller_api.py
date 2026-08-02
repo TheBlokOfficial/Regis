@@ -8,7 +8,7 @@ from typing import Any
 
 from client.config import load_settings, save_settings
 from client.process_manager import (
-    SERVICES, control_service,
+    control_service,
     get_active_services_registration, get_all_services_status
 )
 from protocol.schemas import (
@@ -66,19 +66,21 @@ def apply_node_config(config_data: dict, from_registration: bool = False) -> Non
 
     services = config_data.get("services", {})
 
+    active_statuses = get_all_services_status()
+
     # 1. Konfiguracja Workera (LLM)
     if "worker" in services:
         control_service("worker", "start", services["worker"])
     else:
-        if SERVICES["worker"].is_running():
+        if active_statuses.get("worker") == "running":
             control_service("worker", "stop")
 
     # 2. Konfiguracja Satelity (Audio/VAD)
     if "satellite" in services:
-        if not SERVICES["satellite"].is_running():
+        if active_statuses.get("satellite") != "running":
             control_service("satellite", "start", services["satellite"])
     else:
-        if SERVICES["satellite"].is_running():
+        if active_statuses.get("satellite") == "running":
             control_service("satellite", "stop")
     
     if not from_registration:
