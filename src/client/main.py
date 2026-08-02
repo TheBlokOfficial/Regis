@@ -14,20 +14,6 @@ from client.tray import create_default_icon, get_menu
 tray_icon: pystray.Icon | None = None
 
 
-def set_console_visibility(visible: bool) -> None:
-    """Kontroluje widoczność okna konsoli w systemie Windows."""
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-            if hwnd:
-                SW_HIDE = 0
-                SW_SHOW = 5
-                ctypes.windll.user32.ShowWindow(hwnd, SW_SHOW if visible else SW_HIDE)
-        except Exception:
-            pass
-
-
 def quit_all(icon=None, item=None) -> None:
     """Zatrzymuje wszystkie procesy potomne, wyrejestrowuje klienta i zamyka ikonę zasobnika."""
     stop_all_services()
@@ -40,29 +26,30 @@ def quit_all(icon=None, item=None) -> None:
 
 
 def main() -> None:
-    """Główny punkt wejścia (Entry Point) aplikacji klienckiej Regis.
-
-    Zarządza cyklem życia aplikacji (sygnały OS, okno konsoli, ikona w zasobniku, połączenie z Kontrolerem).
-    """
+    """Główny punkt wejścia (Entry Point) aplikacji klienckiej Regis."""
     global tray_icon
 
-    parser = argparse.ArgumentParser(description="Aplikacja Kliencka Regis")
-    parser.add_argument("--debug", action="store_true", help="Uruchamia pełny tryb debugowania (wyświetla konsolę z logami DEBUG)")
-    parser.add_argument("--gui", action="store_true", help="Pokaż okno konsoli z logami w czasie rzeczywistym")
-    parser.add_argument("--headless", action="store_true", help="Uruchom w trybie bezgłowym (bez ikony w zasobniku systemowym)")
-    parser.add_argument("--no-console", action="store_true", help="Ukryj okno konsoli i wyłącz wyjście na konsolę")
+    parser = argparse.ArgumentParser(description="Regis Client Application")
+    parser.add_argument("--console", action="store_true", help="Pokaż okno konsoli i wyjście logów (tryb debugowania)")
     args = parser.parse_args()
 
-    # Logika widoczności konsoli: domyślnie pokazuje okno jeśli podano --debug lub --gui, ukrywa jeśli podano --no-console
-    show_console = (args.debug or args.gui) and not args.no_console
-    set_console_visibility(show_console)
+    # 1. Konfiguracja logowania (zawsze do pliku, do konsoli tylko gdy podano --console)
+    setup_logging("client", console_output=args.console)
 
-    setup_logging(service_name="client", debug=args.debug, enable_console=show_console)
+    # 2. Jeśli jesteśmy na Windowsie i brak flagi --console, ukryj okno wiersza poleceń
+    if sys.platform == "win32" and not args.console:
+        try:
+            import ctypes
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd != 0:
+                ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+        except Exception:
+            pass
 
-    # 1. Czyszczenie starych podprocesów-sierot
+    # 3. Bezwzględne czyszczenie starych podprocesów-sierot
     cleanup_orphaned_processes()
 
-    # 2. Rejestracja globalnych sygnałów wyjścia OS
+    # 4. Rejestracja globalnych sygnałów wyjścia
     atexit.register(quit_all)
     try:
         signal.signal(signal.SIGTERM, lambda signum, frame: quit_all())
@@ -70,22 +57,16 @@ def main() -> None:
     except ValueError:
         pass  # Ignoruj jeśli nie jesteśmy w głównym wątku
 
-    # 3. Rejestracja Klienta w Kontrolerze
+    # 5. Rejestracja Klienta w Kontrolerze
     controller_client.register()
 
-    # 4. Uruchomienie klienta WebSocket w osobnym wątku (komunikacja w czasie rzeczywistym)
+    # 6. Uruchomienie klienta WebSocket w osobnym wątku (komunikacja w czasie rzeczywistym)
     ws_thread = threading.Thread(target=controller_client.start_ws_client, daemon=True)
     ws_thread.start()
 
-    # 5. Uruchomienie pętli interfejsu (Zasobnik systemowy lub utrzymanie wątku w trybie headless)
-    if not args.headless:
-        tray_icon = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
-        tray_icon.run()
-    else:
-        try:
-            ws_thread.join()
-        except KeyboardInterrupt:
-            quit_all()
+    # 7. Uruchomienie ikony w zasobniku systemowym (pętla interfejsu użytkownika)
+    tray_icon = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
+    tray_icon.run()
 
 
 if __name__ == "__main__":

@@ -4,8 +4,17 @@ import os
 from datetime import date
 
 
-def setup_logging(service_name: str = "regis", debug: bool = False, enable_console: bool = True) -> None:
-    """Konfiguruje globalny system logowania dla danej usługi."""
+def setup_logging(service_name: str = "regis", console_output: bool = False) -> None:
+    """Konfiguruje globalny system logowania dla danej usługi.
+
+    Ustawia handlery:
+    - FileHandler (DEBUG) — plik logs/<service_name>_YYYY-MM-DD.log (zawsze aktywny)
+    - StreamHandler (INFO) — konsola (aktywne tylko przy console_output=True)
+
+    Args:
+        service_name: Nazwa usługi, np. "client" lub "controller".
+        console_output: Czy wypisywać logi na konsolę (stdout).
+    """
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     log_dir = os.path.join(root_dir, "logs")
     os.makedirs(log_dir, exist_ok=True)
@@ -29,9 +38,9 @@ def setup_logging(service_name: str = "regis", debug: bool = False, enable_conso
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(file_handler)
 
-    if enable_console:
+    if console_output:
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.DEBUG if debug else logging.INFO)
+        console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(fmt)
         root_logger.addHandler(console_handler)
 
