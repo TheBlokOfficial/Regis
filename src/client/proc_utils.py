@@ -15,7 +15,7 @@ def get_executable_command(module_name: str) -> list[str]:
         exe = venv_nix
     else:
         exe = sys.executable
-    return [exe, "-m", f"node.{module_name}"]
+    return [exe, "-m", f"client.{module_name}"]
 
 def kill_process_tree(pid: int) -> None:
     """Uśmierca cały drzewo procesów o podanym PID."""
@@ -91,7 +91,7 @@ def cleanup_orphaned_processes() -> None:
             cmdline = proc.info.get('cmdline') or []
             cmd_str = " ".join(cmdline).lower()
             if "python" in (proc.info.get('name') or "").lower() or "python" in cmd_str:
-                if "node.services.satellite" in cmd_str or "node.services.worker" in cmd_str or "node.satellite" in cmd_str or "node.node" in cmd_str:
+                if "client.services.satellite" in cmd_str or "client.services.worker" in cmd_str or "client.satellite" in cmd_str or "client.client" in cmd_str:
                     print(f"[Cleanup] Uśmiercanie starego procesu-sieroty: PID {proc.info['pid']} ({cmd_str})")
                     kill_process_tree(proc.info['pid'])
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
