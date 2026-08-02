@@ -133,8 +133,40 @@ def bus_publish(event: dict) -> None:
         asyncio.run_coroutine_threadsafe(_ws_client.send(ws_event.model_dump_json()), _ws_loop)
 
 
+# --- Handlery Komend (Command Registry) ---
+
+async def _cmd_config(payload: dict) -> dict:
+    apply_node_config(payload, from_registration=True)
+    return {"success": True}
+
+async def _cmd_status(payload: dict) -> dict:
+    return {"success": True, "result": get_all_services_status()}
+
+async def _cmd_worker_start(payload: dict) -> dict:
+    return {"success": start_service("worker")}
+
+async def _cmd_worker_stop(payload: dict) -> dict:
+    stop_service("worker")
+    return {"success": True}
+
+async def _cmd_satellite_start(payload: dict) -> dict:
+    return {"success": start_service("satellite")}
+
+async def _cmd_satellite_stop(payload: dict) -> dict:
+    stop_service("satellite")
+    return {"success": True}
+
+COMMAND_HANDLERS = {
+    "config": _cmd_config,
+    "status": _cmd_status,
+    "worker_start": _cmd_worker_start,
+    "worker_stop": _cmd_worker_stop,
+    "satellite_start": _cmd_satellite_start,
+    "satellite_stop": _cmd_satellite_stop,
+}
+
 async def _handle_ws_message(ws: Any, message: str) -> None:
-    """Obsługuje pojedynczą wiadomość z Kontrolera przez WebSocket."""
+    """Obsługuje pojedynczą wiadomość z Kontrolera przez WebSocket (Dispatcher)."""
     try:
         data = json.loads(message)
         ws_cmd = WSCommand(**data)
@@ -142,37 +174,21 @@ async def _handle_ws_message(ws: Any, message: str) -> None:
         print(f"Nieprawidłowy format komendy WS: {e}")
         return
 
-    cmd = ws_cmd.command
-    payload = ws_cmd.data
-
-    if cmd == "config":
-        apply_node_config(payload, from_registration=True)
-        res = WSCommandResult(command=cmd, success=True)
+    handler = COMMAND_HANDLERS.get(ws_cmd.command)
+    if not handler:
+        res = WSCommandResult(command=ws_cmd.command, success=False, error=f"Nieznana komenda: {ws_cmd.command}")
         await ws.send(res.model_dump_json())
         return
 
-    if cmd == "status":
-        settings = _get_settings()
-        status_dict = get_all_services_status()
-        status_dict["autostart_worker"] = settings.get("autostart_worker", False)
-        status_dict["autostart_satellite"] = settings.get("autostart_satellite", False)
-        res = WSCommandResult(command=cmd, success=True, result=status_dict)
+    try:
+        response_data = await handler(ws_cmd.data)
+        success = response_data.get("success", True)
+        result = response_data.get("result")
+        res = WSCommandResult(command=ws_cmd.command, success=success, result=result)
         await ws.send(res.model_dump_json())
-        return
-
-    # Generyczna obsługa komend dynamicznych: <service_name>_start / <service_name>_stop
-    if "_" in cmd:
-        srv_name, action = cmd.rsplit("_", 1)
-        if action == "start":
-            success = start_service(srv_name)
-            res = WSCommandResult(command=cmd, success=success)
-            await ws.send(res.model_dump_json())
-            return
-        elif action == "stop":
-            stop_service(srv_name)
-            res = WSCommandResult(command=cmd, success=True)
-            await ws.send(res.model_dump_json())
-            return
+    except Exception as e:
+        res = WSCommandResult(command=ws_cmd.command, success=False, error=str(e))
+        await ws.send(res.model_dump_json())
 
 
 async def _ws_client_loop() -> None:
