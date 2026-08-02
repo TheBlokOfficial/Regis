@@ -79,7 +79,7 @@ def register() -> None:
     """Wysyła zbiorczą rejestrację Zjednoczonego Węzła do Kontrolera."""
     def _do_reg():
         try:
-            from core.discovery import discover_controller, get_local_ip
+            from protocol.discovery import discover_controller, get_local_ip
             
             settings = load_settings()
             node_id = settings.get("node_id", settings.get("instance_name", "node-default"))
@@ -114,7 +114,7 @@ def register() -> None:
 def unregister() -> None:
     """Wyrejestrowuje Węzeł z Kontrolera."""
     try:
-        from core.discovery import discover_controller
+        from protocol.discovery import discover_controller
         settings = load_settings()
         node_id = settings.get("node_id", settings.get("instance_name", "node-default"))
         controller_url = settings.get("controller_url", "auto")
@@ -172,7 +172,7 @@ async def _ws_client_loop() -> None:
     controller_url = settings.get("controller_url", "auto")
     if controller_url == "auto":
         try:
-            from core.discovery import discover_controller
+            from protocol.discovery import discover_controller
             controller_url = discover_controller()
         except Exception:
             controller_url = "http://192.168.0.119:8000"

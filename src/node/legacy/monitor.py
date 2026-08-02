@@ -101,7 +101,7 @@ def run_monitor() -> None:
     server_url = settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
 
     if server_url == "auto":
-        from core.discovery import discover_controller
+        from protocol.discovery import discover_controller
         try:
             server_url = discover_controller()
         except Exception as e:

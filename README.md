@@ -11,7 +11,7 @@ Projekt Regis to centralny serwer prywatnego asystenta głosowego (LLM-based) s�
 
 ## Architektura i działanie
 
-System korzysta z założeń architektury Monorepo. Główny rdzeń logiki (komunikacja z Ollamą, promptowanie, narzędzia) znajduje się w katalogu `core/`, a zewnetrzne integracje w `integrations/`. 
+System korzysta z założeń architektury Monorepo. Główny rdzeń logiki (komunikacja z Ollamą, promptowanie, narzędzia) znajduje się w katalogu `protocol/`, a zewnetrzne integracje w `integrations/`. 
 Rzeczywiste programy uruchamiane przez użytkownika (punkty wejściowe) zostały rozdzielone na odrębne aplikacje w katalogu `apps/`:
 - `server`: demon REST API dla Maliny
 - `terminal`: okienkowy interfejs CLI

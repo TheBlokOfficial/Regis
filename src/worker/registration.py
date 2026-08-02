@@ -17,7 +17,7 @@ class WorkerRegistrationManager:
     def resolve_controller_url(self, settings: dict) -> str:
         url = settings.get("controller_url", "http://127.0.0.1:8000")
         if url == "auto":
-            from core.discovery import discover_controller
+            from protocol.discovery import discover_controller
             try:
                 return discover_controller()
             except Exception as e:
@@ -29,7 +29,7 @@ class WorkerRegistrationManager:
         self.worker_id = settings.get("worker_id", f"worker-{socket.gethostname()}")
         self.controller_url = self.resolve_controller_url(settings)
 
-        from core.discovery import get_local_ip
+        from protocol.discovery import get_local_ip
 
         worker_port = settings.get("worker_port", 8001)
         worker_host = settings.get("worker_host", get_local_ip())

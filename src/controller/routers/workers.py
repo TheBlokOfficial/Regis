@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter
 
-from core.schemas import WorkerRegistrationRequest
+from protocol.schemas import WorkerRegistrationRequest
 import controller.event_bus as event_bus
 import controller.registry as registry
 

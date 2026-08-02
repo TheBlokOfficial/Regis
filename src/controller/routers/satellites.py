@@ -1,7 +1,7 @@
 import time
 from fastapi import APIRouter
 
-from core.schemas import SatelliteRegistrationRequest
+from protocol.schemas import SatelliteRegistrationRequest
 import controller.event_bus as event_bus
 import controller.registry as registry
 

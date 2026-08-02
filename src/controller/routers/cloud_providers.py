@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 
 from controller import config
-from core.schemas import CloudProviderConfig
+from protocol.schemas import CloudProviderConfig
 
 logger = logging.getLogger(__name__)
 

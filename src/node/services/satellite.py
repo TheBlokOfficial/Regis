@@ -123,7 +123,7 @@ class SatelliteNode:
         settings = config.load_settings()
         self.server_url = settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
         if self.server_url == "auto":
-            from core.discovery import discover_controller
+            from protocol.discovery import discover_controller
             try:
                 self.server_url = discover_controller()
             except Exception:

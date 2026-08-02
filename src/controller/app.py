@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from controller import config
-from core.discovery import get_local_ip, start_discovery_server
+from protocol.discovery import get_local_ip, start_discovery_server
 from controller.logger import setup_logging
 from controller import registry
 from controller.integrations.loader import load_integrations

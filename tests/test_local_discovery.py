@@ -1,6 +1,6 @@
 import time
 import logging
-from core.discovery import start_discovery_server, discover_controller
+from protocol.discovery import start_discovery_server, discover_controller
 
 logging.basicConfig(level=logging.INFO)
 

@@ -19,7 +19,7 @@ def open_dashboard() -> None:
     server_url = settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
     if server_url == "auto":
         try:
-            from core.discovery import discover_controller
+            from protocol.discovery import discover_controller
             server_url = discover_controller()
         except Exception:
             server_url = "http://127.0.0.1:8000"

@@ -9,7 +9,7 @@ import json
 import pytest
 from unittest.mock import MagicMock, patch
 
-from core.schemas import SatelliteRegistrationRequest, ToolExecutionRequest
+from protocol.schemas import SatelliteRegistrationRequest, ToolExecutionRequest
 from controller.tools_registry import ToolsRegistry
 from node.services.remote_tools_registry import RemoteToolsRegistry
 

@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
     def _resolve_controller():
         global _controller_url
         if _controller_url_setting == "auto":
-            from core.discovery import discover_controller
+            from protocol.discovery import discover_controller
             try:
                 _controller_url = discover_controller()
             except Exception as e:
@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
 
     _resolve_controller()
 
-    from core.discovery import get_local_ip
+    from protocol.discovery import get_local_ip
     worker_host = settings.get("worker_host", get_local_ip())
     registration_host = get_local_ip() if worker_host == "0.0.0.0" else worker_host
 

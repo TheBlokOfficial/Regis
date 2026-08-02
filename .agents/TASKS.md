@@ -21,7 +21,7 @@ Używaj konwencji: `[ ]` do zrobienia, `[/]` w trakcie, `[x]` ukończone.
 
 ### [FEATURE / ARCH] Wdrożenie Zjednoczonego Węzła (Node-Centric Architecture)
 
-- [x] **[NODE-CENTRIC — Etap 1]** Schematy & Rejestr: `src/core/schemas.py` (`NodeRegistrationRequest`), `src/controller/registry.py` (`node_registry`), `src/controller/routers/nodes.py` (`/v1/nodes/register`).
+- [x] **[NODE-CENTRIC — Etap 1]** Schematy & Rejestr: `src/protocol/schemas.py` (`NodeRegistrationRequest`), `src/controller/registry.py` (`node_registry`), `src/controller/routers/nodes.py` (`/v1/nodes/register`).
 - [x] **[NODE-CENTRIC — Etap 2]** Menedżer Węzła PC: `src/node/service.py` (zbiorcza rejestracja `services: ["worker", "satellite"]` i wyrejestrowywanie całej maszyny).
 - [x] **[NODE-CENTRIC — Etap 3]** Routing i Heartbeat: `src/controller/services/chat_service.py` (routing do Węzła), `src/controller/routers/ui.py` (odbiór `POST /api/node/event`), heartbeat na porcie 8099.
 - [x] **[NODE-CENTRIC — Etap 4]** Reaktywny Web UI: `src/controller/web/` (unifikacja kart w "Węzły Systemowe" z połączonym podglądem modeli LLM oraz VAD Satelity).
@@ -66,18 +66,18 @@ Przeprowadzono gruntowne unowocześnienie i usprawnienie architektury modułu `s
 4. **Obiektowy `BaseSubservice`** – stworzono klasę bazową dla podprocesów oraz rejestr `SERVICES`. Uporządkowano zamykanie procesów (`stop_all_services()`), wyrejestrowywanie oraz raportowanie statusu przez WebSocket.
 5. Wynik: 34/34 testy pytest przechodzą.
 
-### Pełna Izolacja Usług — Restrukturyzacja `src/core/` (Sierpień 2026)
-Przeprowadzono gruntowną reorganizację monorepo. Folder `src/core/` jest teraz chudym kontraktem sieciowym zawierającym wyłącznie `discovery.py` i `schemas.py` (klasy rejestracyjne). Wykonane kroki:
-1. Silniki (`llm_engine`, `stt_engine`, `tts_engine`, `stream_parser`) przeniesione z `core/` do `src/node/engines/` i `src/worker/engines/`.
+### Pełna Izolacja Usług — Restrukturyzacja `src/protocol/` (Sierpień 2026)
+Przeprowadzono gruntowną reorganizację monorepo. Folder `src/protocol/` jest teraz chudym kontraktem sieciowym zawierającym wyłącznie `discovery.py` i `schemas.py` (klasy rejestracyjne). Wykonane kroki:
+1. Silniki (`llm_engine`, `stt_engine`, `tts_engine`, `stream_parser`) przeniesione z `protocol/` do `src/node/engines/` i `src/worker/engines/`.
 2. `history_utils.py` przeniesiony do `src/node/` i `src/worker/`.
 3. `llm_backends/` przeniesiony do `src/controller/llm_backends/`; własne kopie dodane do `src/node/llm_backends/` i `src/worker/llm_backends/`.
-4. `config.py`, `logger.py`, `exceptions.py` zduplikowane do każdej usługi i usunięte z `core/`.
+4. `config.py`, `logger.py`, `exceptions.py` zduplikowane do każdej usługi i usunięte z `protocol/`.
 5. `BASE_TOOLS_SCHEMA` przeniesiony do `src/controller/schemas_tools.py`.
 6. Audyt QA wykrył i naprawiono 2 cross-importy (`controller→node`, `worker→node`) i 1 zestarzały import w testach.
 Wynik: zero cross-importów, 34/34 testów przechodzi.
 
-### Refaktoryzacja LLM Backends (historycznie — wchłonięta przez restrukturyzację core/)
-Wyczyszczono katalog `core/` z komponentów `llm_backends/` (przeniesiono do `src/controller/llm_backends/`). Zaktualizowano wszystkie importy.
+### Refaktoryzacja LLM Backends (historycznie — wchłonięta przez restrukturyzację protocol/)
+Wyczyszczono katalog `protocol/` z komponentów `llm_backends/` (przeniesiono do `src/controller/llm_backends/`). Zaktualizowano wszystkie importy.
 
 ### Refaktoryzacja UX Web UI & Layout 16:9 (Sierpień 2026)
 Przeprowadzono gruntowną optymalizację ergonomii i estetyki panelu kontrolnego.

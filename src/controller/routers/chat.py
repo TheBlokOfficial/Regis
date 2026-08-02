@@ -29,7 +29,7 @@ async def chat_stream(request: ChatRequest):
 
     controller_url = registry._settings_cache.get("controller_url", "auto")
     if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
-        from core.discovery import get_local_ip
+        from protocol.discovery import get_local_ip
         controller_url = f"http://{get_local_ip()}:8000"
 
     room = request.room
@@ -69,7 +69,7 @@ async def chat_audio_stream(
     audio_bytes = await file.read()
     controller_url = registry._settings_cache.get("controller_url", "auto")
     if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
-        from core.discovery import get_local_ip
+        from protocol.discovery import get_local_ip
         controller_url = f"http://{get_local_ip()}:8000"
 
     if not room and satellite_id and satellite_id in registry.satellite_registry:

@@ -1,5 +1,5 @@
 import logging
-from core.discovery import discover_controller
+from protocol.discovery import discover_controller
 
 logging.basicConfig(level=logging.INFO)
 print("Rozpoczynam wyszukiwanie...")

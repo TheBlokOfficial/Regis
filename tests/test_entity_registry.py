@@ -9,7 +9,7 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 
-from core.schemas import WorkerRegistrationRequest, ToolExecutionRequest
+from protocol.schemas import WorkerRegistrationRequest, ToolExecutionRequest
 from node.services.remote_tools_registry import RemoteToolsRegistry
 
 

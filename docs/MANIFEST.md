@@ -100,7 +100,7 @@ Przyszłe integracje mogą obejmować m.in.:
 - Własne skrypty i usługi sieciowe
 - Dowolny inny endpoint, który ma sens w kontekście sterowania domem
 
-**Konsekwencja dla kodu:** `ToolsRegistry` i `RemoteToolsRegistry` są agnostyczne wobec źródła narzędzi — rozmawiają z `integrations/` przez abstrakcyjny interfejs, nie bezpośrednio z HA. Dodanie nowej integracji oznacza: nowy plik w `integrations/`, nowe narzędzie w `core/schemas.py` i nowy handler w `core/tools_registry.py`. Żadne inne warstwy nie wymagają zmian.
+**Konsekwencja dla kodu:** `ToolsRegistry` i `RemoteToolsRegistry` są agnostyczne wobec źródła narzędzi — rozmawiają z `integrations/` przez abstrakcyjny interfejs, nie bezpośrednio z HA. Dodanie nowej integracji oznacza: nowy plik w `integrations/`, nowe narzędzie w `protocol/schemas.py` i nowy handler w `protocol/tools_registry.py`. Żadne inne warstwy nie wymagają zmian.
 
 ---
 
@@ -225,9 +225,9 @@ Regis jest **charakterny, rzeczowy i bezpośredni.** Nie owija w bawełnę. Prio
 **Zrealizowano (historycznie):**
 - Rozbicie monolitu na trzy niezależne usługi (`controller`, `controller.worker`, `node`)
 - Izolacja konfiguracji na profile per instancja (pliki `.env`)
-- Auto-Discovery węzłów (UDP Broadcast Zero-Conf, `core/discovery.py`)
+- Auto-Discovery węzłów (UDP Broadcast Zero-Conf, `protocol/discovery.py`)
 - Rejestr Encji (Satelity i Węzły rejestrują się w Kontrolerze)
-- **Izolacja usług (monorepo):** `src/core/` oczyszczony do roli chudego kontraktu sieciowego. Każda usługa (`controller`, `node`, `worker`) ma własne kopie `config.py`, `logger.py`, `exceptions.py`, `history_utils.py`, `llm_backends/`. Zero cross-importów między usługami.
+- **Izolacja usług (monorepo):** `src/protocol/` oczyszczony do roli chudego kontraktu sieciowego. Każda usługa (`controller`, `node`, `worker`) ma własne kopie `config.py`, `logger.py`, `exceptions.py`, `history_utils.py`, `llm_backends/`. Zero cross-importów między usługami.
 - **Warstwa abstrakcji LLM (`llm_backends/`)** w Kontrolerze zaimplementowana (`controller/llm_backends/`). OpenRouter i Ollama jako oddzielne backendy z wspólnym interfejsem `LLMBackend`.
 
 **Aktualny dług (oczekuje realizacji):**
