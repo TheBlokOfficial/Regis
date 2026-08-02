@@ -1,3 +1,4 @@
+from protocol.schemas import ServiceAction
 from client.proc_utils import cleanup_orphaned_processes
 from client.subservices import WorkerSubservice, SatelliteSubservice, BaseSubservice
 
@@ -7,27 +8,25 @@ SERVICES: dict[str, BaseSubservice] = {
     "satellite": SatelliteSubservice(),
 }
 
-def control_service(name: str, action: str, config_data: dict = None) -> bool:
-    """Zarządza stanem pojedynczej usługi. 
-    Wspierane akcje: 'start', 'stop', 'restart'."""
+def control_service(name: str, action: ServiceAction | str, config_data: dict = None) -> bool:
+    """Zarządza stanem pojedynczej usługi (start, stop, restart)."""
     if name not in SERVICES:
         return False
         
     srv = SERVICES[name]
-    
-    # Rozpakowujemy jeśli podano Enum
-    act = action.value if hasattr(action, "value") else action
+    act = action if isinstance(action, ServiceAction) else ServiceAction(action)
 
-    if act == "start":
-        return srv.start(config_data)
-    elif act == "stop":
-        srv.stop()
-        return True
-    elif act == "restart":
-        srv.stop()
-        return srv.start(config_data)
-        
-    return False
+    match act:
+        case ServiceAction.START:
+            return srv.start(config_data)
+        case ServiceAction.STOP:
+            srv.stop()
+            return True
+        case ServiceAction.RESTART:
+            srv.stop()
+            return srv.start(config_data)
+        case _:
+            return False
 
 def stop_all_services() -> None:
     for srv in SERVICES.values():
