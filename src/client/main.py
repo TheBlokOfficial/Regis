@@ -7,7 +7,7 @@ import sys
 import threading
 import pystray
 
-from client import controller_client
+from client import controller_api
 from client.logger import setup_logging
 from client.process_manager import cleanup_orphaned_processes, stop_all_services
 from client.tray import create_default_icon, get_menu
@@ -36,7 +36,7 @@ def ensure_single_instance(port: int = 47829) -> None:
 def quit_all(icon=None) -> None:
     """Zatrzymuje wszystkie procesy potomne, wyrejestrowuje klienta i zamyka aplikację w zasobniku."""
     stop_all_services()
-    controller_client.unregister()
+    controller_api.unregister()
     if app_tray:
         app_tray.stop()
     elif icon:
@@ -89,8 +89,8 @@ def main() -> None:
     setup_signal_handlers()
 
     # 4. Rejestracja Klienta i start komunikacji WebSocket w tle
-    controller_client.register()
-    ws_thread = threading.Thread(target=controller_client.start_ws_client, daemon=True)
+    controller_api.register()
+    ws_thread = threading.Thread(target=controller_api.start_ws_client, daemon=True)
     ws_thread.start()
 
     # 5. Uruchomienie interfejsu w zasobniku systemowym (pętla główna)

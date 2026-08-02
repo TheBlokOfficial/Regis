@@ -74,10 +74,10 @@ class EventBus:
         self.worker_thread.start()
         
     def _worker(self):
-        from client.controller_client import bus_publish
+        from client.controller_api import bus_publish
         while True:
             event = self.queue.get()
-            # Używamy ujednoliconego klienta WebSocket z controller_client
+            # Używamy ujednoliconego klienta WebSocket z controller_api
             try:
                 if self.satellite_id:
                     event["satellite_id"] = self.satellite_id
