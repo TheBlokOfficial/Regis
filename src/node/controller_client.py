@@ -129,6 +129,42 @@ def unregister() -> None:
         pass
 
 
+async def _handle_ws_message(ws: Any, message: str) -> None:
+    """Obsługuje pojedynczą wiadomość z Kontrolera przez WebSocket."""
+    data = json.loads(message)
+    cmd = data.get("command", "")
+    payload = data.get("data", {})
+
+    if cmd == "config":
+        apply_node_config(payload, from_registration=True)
+        await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
+        return
+
+    if cmd == "status":
+        status_dict = get_all_services_status()
+        status_dict["autostart_worker"] = load_settings().get("autostart_worker", False)
+        status_dict["autostart_satellite"] = load_settings().get("autostart_satellite", False)
+        await ws.send(json.dumps({
+            "type": "command_result", 
+            "command": cmd, 
+            "success": True, 
+            "result": status_dict
+        }))
+        return
+
+    # Generyczna obsługa komend dynamicznych: <service_name>_start / <service_name>_stop
+    if "_" in cmd:
+        srv_name, action = cmd.rsplit("_", 1)
+        if action == "start":
+            success = start_service(srv_name)
+            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": success}))
+            return
+        elif action == "stop":
+            stop_service(srv_name)
+            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
+            return
+
+
 async def _ws_client_loop() -> None:
     global _ws_client
     settings = load_settings()
@@ -151,35 +187,7 @@ async def _ws_client_loop() -> None:
                 
                 async for message in ws:
                     try:
-                        data = json.loads(message)
-                        cmd = data.get("command")
-                        payload = data.get("data", {})
-                        
-                        if cmd == "config":
-                            apply_node_config(payload, from_registration=True)
-                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
-                        elif cmd == "worker_start":
-                            success = start_service("worker")
-                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": success}))
-                        elif cmd == "worker_stop":
-                            stop_service("worker")
-                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
-                        elif cmd == "satellite_start":
-                            success = start_service("satellite")
-                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": success}))
-                        elif cmd == "satellite_stop":
-                            stop_service("satellite")
-                            await ws.send(json.dumps({"type": "command_result", "command": cmd, "success": True}))
-                        elif cmd == "status":
-                            status_dict = get_all_services_status()
-                            status_dict["autostart_worker"] = load_settings().get("autostart_worker", False)
-                            status_dict["autostart_satellite"] = load_settings().get("autostart_satellite", False)
-                            await ws.send(json.dumps({
-                                "type": "command_result", 
-                                "command": cmd, 
-                                "success": True, 
-                                "result": status_dict
-                            }))
+                        await _handle_ws_message(ws, message)
                     except Exception as e:
                         print(f"Błąd przetwarzania komendy WS: {e}")
         except Exception as e:
