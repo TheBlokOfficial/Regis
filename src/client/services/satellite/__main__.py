@@ -26,26 +26,20 @@ SILENCE_THRESHOLD = 150
 
 class SatelliteService:
     """Główny orkiestrator Satelity z maszyną stanów (WAKEWORD, STREAMING, RESPONDING)."""
-    def __init__(self):
-        import argparse
-        parser = argparse.ArgumentParser(description="Regis Satellite Service")
-        parser.add_argument("--room", type=str, default=None, help="Satelite Room")
-        parser.add_argument("--satellite-id", type=str, default=None, help="Satellite ID")
-        parser.add_argument("--controller-url", type=str, default=None, help="Controller URL")
-        args = parser.parse_known_args()[0]
-
+    def __init__(self, config=None):
         from protocol.schemas import SatelliteConfig
-        raw_config = os.environ.get("SERVICE_CONFIG")
-        if raw_config:
-            config = SatelliteConfig.model_validate_json(raw_config)
-        else:
-            config = SatelliteConfig()
+        if config is None:
+            raw_config = os.environ.get("SERVICE_CONFIG")
+            if raw_config:
+                config = SatelliteConfig.model_validate_json(raw_config)
+            else:
+                config = SatelliteConfig()
 
-        settings = config.load_settings() if hasattr(config, 'load_settings') else {}
         from client import config as client_config
         settings = client_config.load_settings()
 
-        self.server_url = args.controller_url or config.controller_url or settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
+        self.config = config
+        self.server_url = config.controller_url or settings.get("server_url", settings.get("controller_url", "http://127.0.0.1:8000"))
         if self.server_url == "auto":
             from protocol.discovery import discover_controller
             try:
@@ -53,14 +47,15 @@ class SatelliteService:
             except Exception:
                 self.server_url = "http://127.0.0.1:8000"
 
-        self.satellite_id = args.satellite_id or config.satellite_id or settings.get("instance_name", settings.get("satellite_id", "RTX-5070"))
-        self.room = args.room or config.room or "salon"
+        self.satellite_id = config.satellite_id or settings.get("instance_name", settings.get("satellite_id", "RTX-5070"))
+        self.room = config.room or "salon"
 
         self.event_bus = EventBus(satellite_id=self.satellite_id)
         
         self.vad = EnergyVAD(threshold=config.wakeword_threshold * 230 if config.wakeword_threshold < 1.0 else SILENCE_THRESHOLD)
         self.state = "WAKEWORD"
         self.ring_buffer = collections.deque(maxlen=30)
+
         
         model_path = os.path.abspath(os.path.join("data", "models", "wakeword.onnx"))
         if not os.path.exists(model_path):
@@ -220,7 +215,29 @@ class SatelliteService:
             self.audio_queue.get_nowait()
 
 async def main():
-    service = SatelliteService()
+    import argparse
+    from protocol.schemas import SatelliteConfig
+
+    parser = argparse.ArgumentParser(description="Regis Satellite Service")
+    parser.add_argument("--room", type=str, default=None, help="Satellite Room")
+    parser.add_argument("--satellite-id", type=str, default=None, help="Satellite ID")
+    parser.add_argument("--controller-url", type=str, default=None, help="Controller URL")
+    args = parser.parse_known_args()[0]
+
+    raw_config = os.environ.get("SERVICE_CONFIG")
+    if raw_config:
+        config = SatelliteConfig.model_validate_json(raw_config)
+    else:
+        config = SatelliteConfig()
+
+    if args.room:
+        config.room = args.room
+    if args.satellite_id:
+        config.satellite_id = args.satellite_id
+    if args.controller_url:
+        config.controller_url = args.controller_url
+
+    service = SatelliteService(config=config)
     await service.run()
 
 
