@@ -2,4 +2,4 @@
 cd /d "%~dp0.."
 set PYTHONPATH=%~dp0..\src
 if exist .venv\Scripts\activate.bat call .venv\Scripts\activate.bat
-start "" python -m client.main
+start "" pythonw -m client.main

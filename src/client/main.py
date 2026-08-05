@@ -1,4 +1,3 @@
-import argparse
 import atexit
 import os
 import signal
@@ -11,7 +10,7 @@ if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
+    except AttributeError:
         pass
 
 from client import controller_api
@@ -51,18 +50,6 @@ def quit_all(icon=None) -> None:
     os._exit(0)
 
 
-def hide_console_window() -> None:
-    """Ukrywa okno konsoli w systemie Windows (SW_HIDE)."""
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-            if hwnd != 0:
-                ctypes.windll.user32.ShowWindow(hwnd, 0)
-        except Exception:
-            pass
-
-
 def setup_signal_handlers() -> None:
     """Podłącza sygnały wyjścia z systemu operacyjnego do funkcji wyjścia."""
     atexit.register(quit_all)
@@ -73,15 +60,6 @@ def setup_signal_handlers() -> None:
         pass  # Ignoruj jeśli nie jesteśmy w głównym wątku
 
 
-def parse_cli_args() -> argparse.Namespace:
-    """Parsuje argumenty wiersza poleceń dla aplikacji klienckiej."""
-    parser = argparse.ArgumentParser(description="Regis Client Application")
-    parser.add_argument(
-        "--console", action="store_true", help="Pokaż okno konsoli i wyjście logów (tryb debugowania)"
-    )
-    return parser.parse_args()
-
-
 def main() -> None:
     """Główny punkt wejścia (Entry Point) aplikacji klienckiej Regis."""
     global app_tray
@@ -89,28 +67,23 @@ def main() -> None:
     # 0. Zabezpieczenie przed podwójnym uruchomieniem
     ensure_single_instance()
 
-    # 1. Parsowanie argumentów CLI
-    args = parse_cli_args()
+    # 1. Konfiguracja logowania
+    setup_logging("client")
 
-    # 2. Konfiguracja logowania i widoczności konsoli
-    setup_logging("client", console_output=args.console)
-    if not args.console:
-        hide_console_window()
-
-    # 3. Inicjalizacja środowiska i sygnałów wyjścia
+    # 2. Inicjalizacja środowiska i sygnałów wyjścia
     cleanup_orphaned_processes()
     setup_signal_handlers()
 
-    # 4. Uruchomienie wewnętrznego proxy
+    # 3. Uruchomienie wewnętrznego proxy
     from client.internal_proxy import start_internal_proxy_thread
     start_internal_proxy_thread()
 
-    # 5. Rejestracja Klienta i start komunikacji WebSocket w tle
+    # 4. Rejestracja Klienta i start komunikacji WebSocket w tle
     controller_api.register()
     ws_thread = threading.Thread(target=controller_api.start_ws_client, daemon=True)
     ws_thread.start()
 
-    # 6. Uruchomienie interfejsu w zasobniku systemowym (pętla główna)
+    # 5. Uruchomienie interfejsu w zasobniku systemowym (pętla główna)
     app_tray = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
     app_tray.run()
 

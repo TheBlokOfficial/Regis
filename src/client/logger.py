@@ -4,16 +4,17 @@ import os
 from datetime import date
 
 
-def setup_logging(service_name: str = "regis", console_output: bool = False) -> None:
+def setup_logging(service_name: str = "regis") -> None:
     """Konfiguruje globalny system logowania dla danej usługi.
 
     Ustawia handlery:
     - FileHandler (DEBUG) — plik logs/<service_name>_YYYY-MM-DD.log (zawsze aktywny)
-    - StreamHandler (INFO) — konsola (aktywne tylko przy console_output=True)
+
+    Widoczność logów na konsoli jest domeną launchera (python vs pythonw),
+    a nie parametru tej funkcji.
 
     Args:
         service_name: Nazwa usługi, np. "client" lub "controller".
-        console_output: Czy wypisywać logi na konsolę (stdout).
     """
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     log_dir = os.path.join(root_dir, "logs")
@@ -37,12 +38,6 @@ def setup_logging(service_name: str = "regis", console_output: bool = False) -> 
 
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(file_handler)
-
-    if console_output:
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(fmt)
-        root_logger.addHandler(console_handler)
 
     # Wyciszamy szum z bibliotek zewnętrznych — interesuje nas tylko nasz kod
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
