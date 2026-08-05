@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from datetime import datetime
 import asyncio
@@ -7,17 +8,20 @@ import requests
 import websockets
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 def _get_timestamp() -> str:
     return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 from client.config import load_settings, save_settings
 from client.process_manager import (
     control_service,
-    get_active_services_registration, get_all_services_status
+    get_active_services_registration, get_all_services_status,
+    DISPLAY_NAMES
 )
 from protocol.schemas import (
     WSSatelliteEvent, WSCommand, WSCommandResult, ClientRegistrationRequest,
-    ServiceControlPayload, ServiceAction
+    ServiceAction
 )
 from protocol.discovery import get_local_ip, discover_controller
 
@@ -42,6 +46,13 @@ def reload_settings() -> None:
 
 
 _discovered_controller_url: str | None = None
+
+
+def reset_discovered_controller_url() -> None:
+    """Czyści zapamiętany adres Kontrolera, wymuszając ponowne Auto-Discovery przy błędu połączenia."""
+    global _discovered_controller_url
+    _discovered_controller_url = None
+
 
 def get_controller_url(allow_fallback: bool = False) -> str:
     """Zwraca adres URL Kontrolera z konfiguracji lub z Discovery."""
@@ -68,8 +79,15 @@ def _get_node_id() -> str:
     return str(settings.get("node_id") or settings.get("instance_name") or "client-default")
 
 
+_last_applied_config: dict | None = None
+
 def apply_node_config(config_data: dict, from_registration: bool = False) -> None:
     """Aplikuje nową konfigurację z Kontrolera dla Klienta."""
+    global _last_applied_config
+    if _last_applied_config == config_data:
+        return
+    _last_applied_config = config_data
+
     # Zapisz tylko imię (jeśli uległo zmianie) – to element tożsamości
     if "name" in config_data:
         settings = _get_settings()
@@ -78,13 +96,14 @@ def apply_node_config(config_data: dict, from_registration: bool = False) -> Non
             save_settings(settings)
 
     services = config_data.get("services", {})
-    active_statuses = get_all_services_status()
+    enabled_list = [DISPLAY_NAMES.get(s, s) for s in services.keys()]
+    enabled_str = ", ".join(enabled_list) if enabled_list else "brak"
 
     if not from_registration:
-        ts = _get_timestamp()
-        print(f"[{ts}] [Klient] Zastosowano nową konfigurację z Kontrolera (Web UI).")
+        logger.info(f"[Klient] Zastosowano nową konfigurację z Kontrolera (Web UI). Aktywne usługi: {enabled_str}.")
 
     # Konfiguracja poszczególnych mikrousług: llm, audio, satellite
+    active_statuses = get_all_services_status()
     target_services = ["llm", "audio", "satellite"]
     for s_name in target_services:
         if s_name in services:
@@ -101,33 +120,46 @@ def apply_node_config(config_data: dict, from_registration: bool = False) -> Non
         register()
 
 
-def register() -> None:
+def fetch_config_and_register() -> dict | None:
+    """Rejestruje Klienta w Kontrolerze i zwraca pobraną konfigurację."""
+    try:
+        node_id = _get_node_id()
+        controller_url = get_controller_url()
+                
+        reg_request = ClientRegistrationRequest(
+            id=node_id,
+            name=node_id,
+            host=get_local_ip(),
+            services=get_active_services_registration(),
+        )
+        resp = requests.post(f"{controller_url}/v1/nodes/register", json=reg_request.model_dump(), timeout=5)
+        resp.raise_for_status()
+        logger.info(f"Aplikacja Kliencka '{node_id}' zarejestrowana w Kontrolerze ({controller_url}).")
+        
+        config_data = resp.json().get("config")
+        if config_data:
+            services = config_data.get("services", {})
+            enabled_list = [DISPLAY_NAMES.get(s, s) for s in services.keys()]
+            enabled_str = ", ".join(enabled_list) if enabled_list else "brak"
+            logger.info(f"Odebrano konfigurację z Kontrolera. Przypisane usługi: {enabled_str}.")
+            return config_data
+    except Exception as e:
+        reset_discovered_controller_url()
+        logger.error(f"Nie udało się zarejestrować Klienta w Kontrolerze: {e}")
+    return None
+
+
+def register(sync: bool = False) -> None:
     """Wysyła zbiorczą rejestrację Aplikacji Klienckiej do Kontrolera."""
     def _do_reg():
-        try:
-            node_id = _get_node_id()
-            controller_url = get_controller_url()
-                    
-            reg_request = ClientRegistrationRequest(
-                id=node_id,
-                name=node_id,
-                host=get_local_ip(),
-                services=get_active_services_registration(),
-            )
-            resp = requests.post(f"{controller_url}/v1/nodes/register", json=reg_request.model_dump(), timeout=5)
-            resp.raise_for_status()
-            ts = _get_timestamp()
-            print(f"[{ts}] Aplikacja Kliencka '{node_id}' zarejestrowana w Kontrolerze ({controller_url}).")
-            
-            config_data = resp.json().get("config")
-            if config_data:
-                apply_node_config(config_data, from_registration=True)
-                
-        except Exception as e:
-            ts = _get_timestamp()
-            print(f"[{ts}] Nie udało się zarejestrować Klienta w Kontrolerze: {e}")
+        cfg = fetch_config_and_register()
+        if cfg:
+            apply_node_config(cfg, from_registration=True)
 
-    threading.Thread(target=_do_reg, daemon=True).start()
+    if sync:
+        _do_reg()
+    else:
+        threading.Thread(target=_do_reg, daemon=True).start()
 
 
 def unregister() -> None:
@@ -136,8 +168,7 @@ def unregister() -> None:
         node_id = _get_node_id()
         controller_url = get_controller_url()
         requests.delete(f"{controller_url}/v1/nodes/{node_id}", timeout=2)
-        ts = _get_timestamp()
-        print(f"[{ts}] Wyrejestrowano Klienta '{node_id}' z Kontrolera.")
+        logger.info(f"Wyrejestrowano Klienta '{node_id}' z Kontrolera.")
     except Exception:
         pass
 
@@ -158,7 +189,7 @@ def bus_publish(event: dict) -> None:
 def send_audio_complete() -> None:
     """
     Informuje Kontroler przez WebSocket, że Satelita zakończyła odtwarzanie audio.
-    Wywołuje to Kontroler do wysłania komendy start_listening z powrotem do Satelity.
+    Wywołuje to Kontroler do wysłania komendy start_working z powrotem do Satelity.
     """
     if _ws_loop and _ws_client:
         msg = json.dumps({"type": "audio_complete"})
@@ -176,15 +207,9 @@ async def _cmd_config(payload: dict) -> dict:
 async def _cmd_status(payload: dict) -> dict:
     return {"success": True, "result": get_all_services_status()}
 
-async def _cmd_service_control(payload: dict) -> dict:
-    ctrl_req = ServiceControlPayload(**payload)
-    success = control_service(ctrl_req.service, ctrl_req.action)
-    return {"success": success}
-
 SYSTEM_COMMAND_HANDLERS = {
     "config": _cmd_config,
     "status": _cmd_status,
-    "service_control": _cmd_service_control,
 }
 
 _wake_check_callback = None
@@ -211,10 +236,10 @@ async def request_wake_permission(timeout: float = 2.0) -> bool:
         result = await asyncio.wait_for(future, timeout)
         return result
     except asyncio.TimeoutError:
-        print("Timeout podczas oczekiwania na wake_check_result.")
+        logger.warning("Timeout podczas oczekiwania na wake_check_result.")
         return False
     except Exception as e:
-        print(f"Błąd podczas request_wake_permission: {e}")
+        logger.error(f"Błąd podczas request_wake_permission: {e}")
         return False
     finally:
         _wake_check_callback = None
@@ -232,7 +257,7 @@ async def _handle_ws_message(ws: Any, message: str) -> None:
             
         ws_cmd = WSCommand(**data)
     except Exception as e:
-        print(f"Nieprawidłowy format komendy WS: {e} ({message})")
+        logger.warning(f"Nieprawidłowy format komendy WS: {e} ({message})")
         return
 
     # 1. Komendy systemowe Zarządcy Węzła (config, status, service_control)
@@ -261,6 +286,12 @@ def send_task_result(task_id: str, event: dict) -> None:
         asyncio.run_coroutine_threadsafe(_ws_client.send(payload), _ws_loop)
 
 
+_ws_connected_event = threading.Event()
+
+def wait_for_ws_connection(timeout: float = 3.0) -> bool:
+    """Oczekuje synchronicznie na nawiązanie połączenia WebSocket z Kontrolerem."""
+    return _ws_connected_event.wait(timeout=timeout)
+
 async def _ws_client_loop() -> None:
     global _ws_client
     
@@ -273,20 +304,19 @@ async def _ws_client_loop() -> None:
             
             async with websockets.connect(ws_url) as ws:
                 _ws_client = ws
-                ts = _get_timestamp()
-                print(f"[{ts}] Połączono z Kontrolerem przez WebSocket ({ws_url}).")
-                register()
+                logger.info(f"Połączono z Kontrolerem przez WebSocket ({ws_url}).")
+                _ws_connected_event.set()
                 
                 async for message in ws:
                     try:
                         await _handle_ws_message(ws, message)
                     except Exception as e:
-                        ts = _get_timestamp()
-                        print(f"[{ts}] Błąd przetwarzania komendy WS: {e}")
+                        logger.error(f"Błąd przetwarzania komendy WS: {e}")
         except Exception as e:
             _ws_client = None
-            ts = _get_timestamp()
-            print(f"[{ts}] Brak połączenia z Kontrolerem. Ponawiam za 5s... ({e})")
+            _ws_connected_event.clear()
+            reset_discovered_controller_url()
+            logger.warning(f"Brak połączenia z Kontrolerem. Ponawiam za 5s... ({e})")
             await asyncio.sleep(5)
 
 

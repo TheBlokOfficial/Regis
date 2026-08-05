@@ -17,25 +17,29 @@ def setup_logging(service_name: str = "regis") -> None:
         service_name: Nazwa usługi, np. "node" lub "controller".
                       Staje się prefiksem nazwy pliku logu.
     """
-    # Ścieżka do katalogu logs/ w korzeniu repozytorium (dwa poziomy wyżej od src/core/)
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    log_dir = os.path.join(root_dir, "logs")
-    os.makedirs(log_dir, exist_ok=True)
+    from pathlib import Path
+    controller_dir = Path(__file__).resolve().parent
+    log_dir = controller_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-    log_filename = os.path.join(log_dir, f"{service_name}_{date.today().isoformat()}.log")
+    log_filename = log_dir / f"{service_name}_{date.today().isoformat()}.log"
 
-    fmt = logging.Formatter(
-        fmt="%(asctime)s.%(msecs)03d [%(levelname)-7s] %(name)s - %(message)s",
+    file_fmt = logging.Formatter(
+        fmt="%(asctime)s.%(msecs)03d [%(levelname)s] %(name)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    console_fmt = logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S"
     )
 
     file_handler = logging.FileHandler(log_filename, encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(fmt)
+    file_handler.setFormatter(file_fmt)
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(fmt)
+    console_handler.setFormatter(console_fmt)
 
     root_logger = logging.getLogger()
 

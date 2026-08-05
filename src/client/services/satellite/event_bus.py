@@ -1,3 +1,4 @@
+import logging
 import queue as _q
 import threading
 
@@ -22,15 +23,15 @@ class EventBus:
                 if self.satellite_id:
                     event["satellite_id"] = self.satellite_id
                 bus_publish(event)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"EventBus emit error: {e}")
             self.queue.task_done()
                 
     def emit(self, event: dict):
         try:
             self.queue.put_nowait(event)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"EventBus queue error: {e}")
             
     def log(self, message: str):
         """Pomocnik rzucający logi w Monitor Audio, wyłapywane jako info."""

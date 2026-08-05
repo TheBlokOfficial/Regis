@@ -9,15 +9,11 @@ import sys
 import asyncio
 import json
 import logging
-import httpx
-
 from client import config
 from client.engines.llm_engine import LLMEngine
-from client.logger import setup_logging
 from client.services.remote_tools_registry import RemoteToolsRegistry
 from protocol.schemas import LLMConfig
-
-setup_logging("service_llm")
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 class LLMService:

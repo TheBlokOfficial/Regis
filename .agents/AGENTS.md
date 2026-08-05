@@ -28,5 +28,8 @@ Kiedy użytkownik zasygnalizuje koniec pracy (hasła: "na dziś to wszystko", "k
 3. **Zapisz zmiany w repozytorium**: Użyj narzędzia `run_command` w głównym katalogu projektu, aby odpalić kolejno: `git add . ; git commit -m "Auto-zapis sesji agenta: [podsumowanie]" ; git push`. (używaj średników w PowerShell, nie &&)
 Dopiero po pomyślnym wykonaniu tych kroków, poinformuj użytkownika wylistowując co dokładnie zaktualizowałeś, potwierdź wysłanie do repozytorium i pożegnaj się.
 
+**[PLANOWANIE - OBOWIĄZKOWE]**
+Przed stworzeniem lub aktualizacją artefaktów `implementation_plan.md` lub `task.md` MASZ OBOWIĄZEK wczytać i zastosować skill `regis-planning` (`.agents/skills/regis-planning/SKILL.md`). Nie twórz tych artefaktów bez wcześniejszego przeczytania skilla.
+
 **[FILOZOFIA I ARCHITEKTURA PROJEKTU]**
 Bezwzględnie zapoznaj się z plikiem `docs/MANIFEST.md` (najwyższy autorytet) oraz `docs/AGENT_GUIDE.md` (praktyczne wytyczne dla agentów). Te dokumenty muszą przyświecać każdej Twojej decyzji programistycznej. Plik `docs/ARCHITECTURE.md` jest starszym dokumentem — w przypadku sprzeczności, `MANIFEST.md` ma pierwszeństwo.

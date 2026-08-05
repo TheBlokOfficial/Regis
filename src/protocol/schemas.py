@@ -49,6 +49,13 @@ class TTSConfig(AudioConfig):
 WorkerConfig = LLMConfig
 
 
+class NodeServicesConfig(BaseModel):
+    """Oficjalny, silnie typowany zagregowany zestaw konfiguracji usług dla Węzła Klienta."""
+    satellite: SatelliteConfig | None = None
+    audio: AudioConfig | None = None
+    llm: LLMConfig | None = None
+
+
 class WorkerRegistrationRequest(BaseModel):
     """Payload wysyłany przez Węzeł Roboczy podczas rejestracji w Kontrolerze."""
     id: str
@@ -153,7 +160,7 @@ SUPPORTED_REGIS_MODELS = [
 class ClientConfigRequest(BaseModel):
     """Payload aktualizacji konfiguracji Klienta z poziomu Kontrolera / Web UI."""
     name: str | None = None
-    services: dict[str, dict] = {}
+    services: NodeServicesConfig | dict[str, dict] = {}
 
 
 NodeConfigRequest = ClientConfigRequest
@@ -167,9 +174,14 @@ from enum import Enum
 
 class ServiceAction(str, Enum):
     """Oficjalny spis dopuszczalnych akcji na usługach Węzła."""
-    START = "start"
-    STOP = "stop"
-    RESTART = "restart"
+    RESUME = "resume"
+    PAUSE = "pause"
+
+
+class ServiceCommand(str, Enum):
+    """Oficjalny spis dopuszczalnych komend sieciowych (SSE) dla usług."""
+    PLAY_AUDIO = "play_audio"
+    SERVICE_CONTROL = "service_control"
 
 
 class ServiceControlPayload(BaseModel):

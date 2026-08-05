@@ -1,293 +1,240 @@
 import os
-import sys
-import json
-import logging
 import asyncio
-import collections
-import wave
-import io
-import sounddevice as sd
-import httpx
+import logging
 
-from .vad import EnergyVAD
+from protocol.schemas import SatelliteConfig
+from client.config import DATA_DIR
+
+from .states import SatelliteState
 from .event_bus import EventBus
-from .player import AudioPlayer
-from .sse_client import SSEClient
+from .network import SatelliteAPIClient
+from .readiness import ReadinessChecker
+from .audio.recorder import AudioStreamManager
+from .audio.wakeword import WakeWordEngine
+from .audio.vad import EnergyVAD
+from .audio.player import AudioPlayer
 
-try:
-    from openwakeword.model import Model
-    from openwakeword.utils import download_models
-except ImportError:
-    logging.info("Brak openwakeword. Zainstaluj: pip install openwakeword")
-    sys.exit(1)
-
-SAMPLE_RATE = 16000
-CHUNK_SIZE = 1600
-SILENCE_TIMEOUT_MS = 700
 SILENCE_THRESHOLD = 150
 
-
 class SatelliteService:
-    """Główny orkiestrator Satelity z maszyną stanów (WAKEWORD, STREAMING, RESPONDING).
+    """Główny orkiestrator Satelity zarządzający maszyną stanów (INITIALIZING, WAITING, WAKEWORD, LISTENING, STREAMING, PROCESSING, SPEAKING)."""
 
-    Satelita jest czystym wykonawcą komend – nie zawiera logiki biznesowej decydującej
-    o kolejności operacji. Kontroler decyduje kiedy odtwarzać audio i kiedy wrócić
-    do nasłuchu Wake Word.
-    """
-
-    def __init__(self, config=None):
-        from protocol.schemas import SatelliteConfig
-        if config is None:
-            raw_config = os.environ.get("SERVICE_CONFIG")
-            if raw_config:
-                config = SatelliteConfig.model_validate_json(raw_config)
-            else:
-                config = SatelliteConfig()
-
-        self.config = config
-        self.internal_proxy_url = config.internal_proxy_url
-
+    def __init__(self, config: SatelliteConfig = None):
+        self.config = self._resolve_config(config)
         self.event_bus = EventBus(satellite_id="satellite_proxy")
+        self.network = SatelliteAPIClient(self.config.internal_proxy_url, self.event_bus)
+        
+        self.audio_manager = AudioStreamManager()
+        self.wakeword = WakeWordEngine(str(DATA_DIR))
+        self.vad = self._init_vad(self.config)
+        self.readiness = ReadinessChecker(self.wakeword, self.audio_manager, self.event_bus)
+        
+        self.state = SatelliteState.INITIALIZING
+        self._paused: bool = True
+        self._listening_task: asyncio.Task | None = None
 
-        self.vad = EnergyVAD(threshold=config.wakeword_threshold * 230 if config.wakeword_threshold < 1.0 else SILENCE_THRESHOLD)
-        self.state = "WAKEWORD"
-        self.ring_buffer = collections.deque(maxlen=30)
+    @staticmethod
+    def _resolve_config(config: SatelliteConfig = None) -> SatelliteConfig:
+        if config is not None:
+            return config
+        raw_config = os.environ.get("SERVICE_CONFIG")
+        if raw_config:
+            return SatelliteConfig.model_validate_json(raw_config)
+        return SatelliteConfig()
 
-        model_path = os.path.abspath(os.path.join("data", "models", "wakeword.onnx"))
-        if not os.path.exists(model_path):
-            logging.info(f"Brak modelu {model_path}. Działanie awaryjne.")
-            self.oww_model = None
-        else:
-            try:
-                download_models()
-            except Exception:
-                pass
-            self.oww_model = Model(wakeword_models=[model_path], inference_framework="onnx")
-
-        self.stream = sd.InputStream(
-            samplerate=SAMPLE_RATE, channels=1, dtype='int16',
-            blocksize=CHUNK_SIZE, callback=self._audio_callback
+    @staticmethod
+    def _init_vad(config: SatelliteConfig) -> EnergyVAD:
+        threshold = (
+            config.wakeword_threshold * 230
+            if config.wakeword_threshold < 1.0
+            else SILENCE_THRESHOLD
         )
-
-    def _audio_callback(self, indata, frames, time_info, status):
-        try:
-            if hasattr(self, 'loop') and hasattr(self, 'audio_queue'):
-                self.loop.call_soon_threadsafe(self.audio_queue.put_nowait, indata.copy())
-        except Exception:
-            pass
+        return EnergyVAD(threshold=threshold)
 
     async def run(self):
-        self.loop = asyncio.get_running_loop()
-        self.audio_queue = asyncio.Queue()
-        logging.info("Regis Satellite Service (Streaming & Smart Energy VAD)")
-        self.event_bus.emit({"type": "state", "state": "WAKEWORD"})
-        self.event_bus.log("Satelita uruchomiona - gotowość do nasłuchu Wake Word.")
-        self.stream.start()
+        loop = asyncio.get_running_loop()
+        self.audio_manager.set_loop(loop)
+        logging.info("Regis Satellite Service (Self-Healing Audio & Streaming VAD)")
 
-        # Uruchom odbiornik komend od Kontrolera jako niezależny task asyncio
-        asyncio.create_task(self._listen_for_commands())
+        # 1. Sprawdzenie sprzętu
+        await self.readiness.ensure_ready()
+        self._set_state(SatelliteState.WAITING)
+
+        from protocol.schemas import ServiceCommand
+        
+        command_handlers = {
+            ServiceCommand.SERVICE_CONTROL: self._handle_service_control,
+            ServiceCommand.PLAY_AUDIO: self._handle_play_audio,
+        }
 
         try:
-            while True:
-                if self.state == "WAKEWORD":
-                    await self._handle_wakeword()
-                elif self.state == "STREAMING":
-                    await self._handle_streaming()
-                elif self.state == "RESPONDING":
-                    await asyncio.sleep(0.1)  # Czekamy na komendę start_listening od Kontrolera
+            # 2. Główny pasywny punkt oczekiwania na komendy SSE
+            await self.network.listen_for_commands(command_handlers)
         except asyncio.CancelledError:
             pass
         finally:
-            self.stream.stop()
-            self.stream.close()
+            # 3. Sprzątanie przy wyłączaniu
+            if self._listening_task and not self._listening_task.done():
+                self._listening_task.cancel()
+            self.audio_manager.stop_stream()
 
-    async def _listen_for_commands(self):
-        """
-        Nasłuchuje na komendy od Kontrolera przez SSE z Internal Proxy.
-        Satelita jest czystym wykonawcą: reaguje na play_audio i start_listening.
-        Pętla z automatycznym reconnect.
-        """
-        cmd_url = f"{self.internal_proxy_url}/internal/service_commands"
-        while True:
-            try:
-                async with httpx.AsyncClient(timeout=None) as client:
-                    async with client.stream("GET", cmd_url) as response:
-                        async for line in response.aiter_lines():
-                            if not line.startswith("data: "):
-                                continue
-                            try:
-                                cmd = json.loads(line[6:])
-                                command = cmd.get("command")
+    def _handle_service_control(self, cmd_data: dict):
+        """Uniwersalny handler do sterowania stanem usług."""
+        action = cmd_data.get("action")
+        if action == "resume":
+            self.resume_communication()
+        elif action == "pause":
+            self.pause_communication()
 
-                                if command == "play_audio":
-                                    audio_b64 = cmd.get("audio_b64", "")
-                                    self.event_bus.log("Odtwarzam odpowiedź lektora...")
-                                    try:
-                                        await asyncio.to_thread(AudioPlayer.play_tts_audio, audio_b64)
-                                    except Exception as e:
-                                        self.event_bus.log(f"Błąd odtwarzania TTS: {e}")
-                                    # Poinformuj Kontrolera że skończyliśmy – to on zdecyduje co dalej
-                                    try:
-                                        async with httpx.AsyncClient(timeout=5.0) as c:
-                                            await c.post(f"{self.internal_proxy_url}/internal/audio_complete")
-                                    except Exception as e:
-                                        self.event_bus.log(f"Błąd zgłoszenia audio_complete: {e}")
+    def resume_communication(self):
+        """Wznawia komunikację (komenda RESUME z Kontrolera) i uaktywnia WAKEWORD z stanu WAITING."""
+        self._paused = False
+        self.event_bus.log("Otrzymano polecenie RESUME: Wznowienie komunikacji.")
+        if self.state == SatelliteState.WAITING:
+            self._start_wakeword_listening()
 
-                                elif command == "start_listening":
-                                    # Kontroler podjął decyzję – wracamy do nasłuchu
-                                    self._reset_to_wakeword()
+    def pause_communication(self):
+        """Wstrzymuje komunikację (komenda PAUSE z Kontrolera). Ustawia flagę _paused."""
+        self._paused = True
+        self.event_bus.log("Otrzymano polecenie PAUSE: Wstrzymanie komunikacji.")
 
-                            except json.JSONDecodeError:
-                                pass
-            except Exception as e:
-                self.event_bus.log(f"Utracono połączenie z kanałem komend. Ponawiam za 3s... ({e})")
-                await asyncio.sleep(3)
+    def _start_wakeword_listening(self):
+        if self._listening_task and not self._listening_task.done():
+            self._listening_task.cancel()
+            
+        self.audio_manager.empty_queue()
+        self.wakeword.reset()
+        self._set_state(SatelliteState.WAKEWORD)
+        self.event_bus.emit({"type": "state", "state": SatelliteState.WAKEWORD})
+        self.event_bus.log("Uruchomiono nasłuch Wake Word.")
+        
+        self._listening_task = asyncio.create_task(self._listening_loop())
 
-    async def _handle_wakeword(self):
-        if self.oww_model is None:
-            await asyncio.to_thread(input, "Naciśnij ENTER, aby rozpocząć strumieniowanie...")
-            self._set_state("STREAMING")
-            return
+    async def _listening_loop(self):
+        """Pętla asynchroniczna nasłuchu mowy (WAKEWORD -> LISTENING/STREAMING)."""
+        try:
+            while self.state == SatelliteState.WAKEWORD:
+                await self._handle_wakeword()
+                if self._paused:
+                    break
+                
+            if self.state == SatelliteState.STREAMING and not self._paused:
+                await self._handle_streaming()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.event_bus.log(f"Błąd w pętli nasłuchu: {e}")
+        finally:
+            if self.state != SatelliteState.WAITING:
+                self._set_state(SatelliteState.WAITING)
+                self.event_bus.emit({"type": "state", "state": SatelliteState.WAITING})
+                self.event_bus.log("Nasłuch zakończony. Powrót do uśpienia (WAITING).")
 
-        chunk = await self.audio_queue.get()
-        self.ring_buffer.append(chunk)
-
+    def _process_vad_for_wakeword(self, chunk) -> bool:
         is_speech = self.vad.is_speech(chunk)
         current_speech_state = "vad_speech" if is_speech else "vad_silence"
+        
         if getattr(self, "_last_wakeword_speech_state", None) != current_speech_state:
             self.event_bus.emit({"type": current_speech_state})
             if current_speech_state == "vad_speech":
-                for pre_chunk in list(self.ring_buffer):
-                    self.oww_model.predict(pre_chunk[:, 0])
+                for pre_chunk in list(self.audio_manager.ring_buffer):
+                    self.wakeword.predict(pre_chunk[:, 0])
             self._last_wakeword_speech_state = current_speech_state
+            
+        return is_speech
 
+    async def _handle_wakeword(self):
+        try:
+            chunk = await self.audio_manager.get_chunk()
+        except Exception:
+            await asyncio.sleep(0.1)
+            return
+
+        self.audio_manager.ring_buffer.append(chunk)
+
+        is_speech = self._process_vad_for_wakeword(chunk)
         if not is_speech:
             return
 
         pcm16_1d = chunk[:, 0]
-        prediction = self.oww_model.predict(pcm16_1d)
+        prediction = self.wakeword.predict(pcm16_1d)
 
         for mdl, score in prediction.items():
             if score > 0.65:
-                self.event_bus.emit({"type": "wakeword", "score": score})
-                self.event_bus.log(f"Wykryto Wake Word '{mdl}' z wynikiem: {score:.2f}! Sprawdzam dostępność Kontrolera...")
-
-                wake_url = f"{self.internal_proxy_url}/internal/wake_check"
-                try:
-                    async with httpx.AsyncClient(timeout=2.0) as client:
-                        resp = await client.post(wake_url)
-                        permitted = resp.status_code == 200 and resp.json().get("permitted", False)
-                except Exception as e:
-                    logging.warning(f"Błąd połączenia z proxy: {e}")
-                    permitted = False
-
-                if permitted:
-                    AudioPlayer.play_system_sound("Speech On")
-                    self.event_bus.emit({"type": "state", "state": "LISTENING"})
-                    self.event_bus.log("Start nagrywania...")
-                    self._empty_queue()
-                    self._set_state("STREAMING")
-                else:
-                    AudioPlayer.play_system_sound("Speech Off")
-                    self.event_bus.log("Odmowa nagrywania (Brak workerów lub błąd komunikacji).")
-
+                await self._on_wakeword_detected(mdl, score)
                 break
+
+    async def _on_wakeword_detected(self, mdl, score):
+        self.event_bus.emit({"type": "wakeword", "score": score})
+        self.event_bus.log(f"Wykryto Wake Word '{mdl}' z wynikiem: {score:.2f}! Sprawdzam dostępność Kontrolera...")
+
+        permitted = await self.network.check_wake_permission()
+        if permitted and not self._paused:
+            AudioPlayer.play_system_sound("Speech On")
+            self.event_bus.emit({"type": "state", "state": SatelliteState.LISTENING})
+            self.event_bus.log("Start nagrywania...")
+            self.audio_manager.empty_queue()
+            self._set_state(SatelliteState.STREAMING)
+        else:
+            AudioPlayer.play_system_sound("Speech Off")
+            self.event_bus.log("Odmowa nagrywania (Wstrzymana komunikacja lub brak workerów).")
 
     async def _handle_streaming(self):
         self.event_bus.log("Słucham... (VAD śledzi dynamikę zdania)")
 
-        silence_frames = 0
-        max_silence_frames = max(1, int((SILENCE_TIMEOUT_MS / 1000.0) * SAMPLE_RATE / CHUNK_SIZE))
-        collected_chunks = []
-        last_speech_state = None
-
-        while self.ring_buffer:
-            collected_chunks.append(self.ring_buffer.popleft().tobytes())
-
         try:
-            while self.state == "STREAMING":
-                chunk = await self.audio_queue.get()
-                is_speech = self.vad.is_speech(chunk)
-                collected_chunks.append(chunk.tobytes())
-
-                current_speech_state = "vad_speech" if is_speech else "vad_silence"
-                if current_speech_state != last_speech_state:
-                    self.event_bus.emit({"type": current_speech_state})
-                    last_speech_state = current_speech_state
-
-                if not is_speech:
-                    silence_frames += 1
-                else:
-                    silence_frames = 0
-
-                if silence_frames > max_silence_frames:
-                    self.event_bus.emit({"type": "vad_silence"})
-                    self.event_bus.log(f"Wykryto {SILENCE_TIMEOUT_MS}ms ciszy. Koniec nagrywania.")
-                    self._set_state("RESPONDING")
-                    self.event_bus.emit({"type": "state", "state": "RESPONDING"})
-
-                    AudioPlayer.play_system_sound("Speech Sleep")
-                    break
+            collected_chunks = await self.audio_manager.record_until_silence(
+                self.vad, self.event_bus, lambda: self.state
+            )
         except Exception as e:
             self.event_bus.log(f"Błąd nagrywania audio: {e}")
-            self._reset_to_wakeword()
             return
 
-        wav_io = io.BytesIO()
-        with wave.open(wav_io, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(SAMPLE_RATE)
-            wf.writeframes(b''.join(collected_chunks))
+        self._set_state(SatelliteState.PROCESSING)
+        self.event_bus.emit({"type": "state", "state": SatelliteState.PROCESSING})
+        AudioPlayer.play_system_sound("Speech Sleep")
 
-        wav_bytes = wav_io.getvalue()
-        self.event_bus.log(f"Przygotowano paczkę audio ({len(wav_bytes)} bajtów). Wysyłam do Kontrolera...")
+        wav_bytes = self.audio_manager.create_wav_payload(collected_chunks)
+        self.event_bus.log(f"Przygotowano paczkę audio ({len(wav_bytes)} bajtów). Wysyłam do Kontrolera (PROCESSING)...")
 
-        url = f"{self.internal_proxy_url}/internal/audio"
+        loop = asyncio.get_running_loop()
+        try:
+            await asyncio.to_thread(
+                self.network.post_audio_and_process_sse,
+                wav_bytes, loop
+            )
+        finally:
+            self._set_state(SatelliteState.WAITING)
+            self.event_bus.emit({"type": "state", "state": SatelliteState.WAITING})
 
-        # reset_callback wywoływany WYŁĄCZNIE przy błędzie – normalny reset przychodzi
-        # przez kanał WS (komenda start_listening od Kontrolera, po audio_complete od nas).
-        await asyncio.to_thread(
-            SSEClient.post_and_process,
-            url, wav_bytes, self.event_bus, self.loop, self._reset_to_wakeword
-        )
+    async def _handle_play_audio(self, cmd_data: dict):
+        """Odtwarzanie odpowiedzi głosowej lektora."""
+        audio_b64 = cmd_data.get("audio_b64", "")
+        self._set_state(SatelliteState.SPEAKING)
+        self.event_bus.emit({"type": "state", "state": SatelliteState.SPEAKING})
+        self.event_bus.log("Odtwarzam odpowiedź lektora (SPEAKING)...")
+        try:
+            await asyncio.to_thread(AudioPlayer.play_tts_audio, audio_b64)
+        except Exception as e:
+            self.event_bus.log(f"Błąd odtwarzania TTS: {e}")
+        finally:
+            await self.network.report_audio_complete()
+            self._set_state(SatelliteState.WAITING)
+            self.event_bus.emit({"type": "state", "state": SatelliteState.WAITING})
 
-    def _reset_to_wakeword(self):
-        self._empty_queue()
-        if self.oww_model is not None:
-            self.oww_model.reset()
-        self._set_state("WAKEWORD")
-        self.event_bus.emit({"type": "state", "state": "WAKEWORD"})
-        self.event_bus.log("Cykl odpowiedzi zakończony. Powrót do nasłuchu Wake Word.")
-
-    def _set_state(self, new_state):
+    def _set_state(self, new_state: SatelliteState):
         self.state = new_state
 
-    def _empty_queue(self):
-        while not self.audio_queue.empty():
-            self.audio_queue.get_nowait()
 
+def _setup_logging():
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 async def main():
-    import argparse
-    from protocol.schemas import SatelliteConfig
-
-    parser = argparse.ArgumentParser(description="Regis Satellite Service")
-    parser.add_argument("--internal-proxy-url", type=str, default=None, help="Adres serwera proxy (domyślnie http://127.0.0.1:47831)")
-    args = parser.parse_known_args()[0]
-
-    raw_config = os.environ.get("SERVICE_CONFIG")
-    if raw_config:
-        config = SatelliteConfig.model_validate_json(raw_config)
-    else:
-        config = SatelliteConfig()
-
-    if args.internal_proxy_url:
-        config.internal_proxy_url = args.internal_proxy_url
-
-    service = SatelliteService(config=config)
+    _setup_logging()
+    service = SatelliteService()
     await service.run()
-
 
 if __name__ == "__main__":
     try:

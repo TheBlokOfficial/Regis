@@ -28,9 +28,7 @@ class RegistrationManager:
 
     def get_registration_payload(self) -> dict:
         from protocol.discovery import get_local_ip
-        settings = config.load_settings()
-        host = settings.get("worker_host", get_local_ip())
-        reg_host = get_local_ip() if host == "0.0.0.0" else host
+        reg_host = get_local_ip()
 
         return {
             "id": llm_service.node_id,

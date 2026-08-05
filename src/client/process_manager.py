@@ -2,41 +2,36 @@ import os
 import sys
 import subprocess
 import json
-from protocol.schemas import ServiceAction
+import logging
+import time
+import threading
 from client.proc_utils import cleanup_orphaned_processes, get_executable_command, kill_process_tree, assign_to_job_object
 from client.config import DATA_DIR
 
+logger = logging.getLogger(__name__)
+
 _active_processes: dict[str, subprocess.Popen] = {}
 _service_configs: dict[str, dict] = {}
+_process_lock = threading.Lock()
 
-def control_service(name: str, action: ServiceAction | str, config_data: dict = None) -> bool:
-    """Zarządza stanem dowolnej usługi w systemie (start, stop, restart)."""
-    act = action if isinstance(action, ServiceAction) else ServiceAction(action)
-
-    match act:
-        case ServiceAction.START:
+def control_service(name: str, action: str, config_data: dict = None) -> bool:
+    """Zarządza lokalnym stanem podprocesów usługi w systemie (start, stop, restart)."""
+    with _process_lock:
+        act = action.lower()
+        if act == "start":
             return _start_service(name, config_data)
-        case ServiceAction.STOP:
+        elif act == "stop":
             return _stop_service(name)
-        case ServiceAction.RESTART:
+        elif act == "restart":
             _stop_service(name)
             return _start_service(name, config_data)
-        case _:
-            return False
-
-import time
-import threading
+        return False
 
 DISPLAY_NAMES = {
     "satellite": "Satelita",
     "audio": "Audio (STT+TTS)",
     "llm": "LLM (Agent)",
 }
-
-from datetime import datetime
-
-def _get_timestamp() -> str:
-    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 def _stream_service_logs(name: str, proc: subprocess.Popen, log_path: str):
     tag = DISPLAY_NAMES.get(name, name.capitalize())
@@ -46,8 +41,7 @@ def _stream_service_logs(name: str, proc: subprocess.Popen, log_path: str):
             if text:
                 f.write(text + '\n')
                 f.flush()
-                ts = _get_timestamp()
-                print(f"[{ts}] [{tag}] {text}", flush=True)
+                logger.info(f"[{tag}] {text}")
 
 def _start_service(name: str, config_data: dict = None) -> bool:
     tag = DISPLAY_NAMES.get(name, name.capitalize())
@@ -91,12 +85,10 @@ def _start_service(name: str, config_data: dict = None) -> bool:
         t = threading.Thread(target=_stream_service_logs, args=(name, proc, log_path), daemon=True)
         t.start()
 
-        ts = _get_timestamp()
-        print(f"[{ts}] [{tag}] Usługa została włączona.", flush=True)
+        logger.info(f"[{tag}] Usługa została włączona.")
         return True
     except Exception as e:
-        ts = _get_timestamp()
-        print(f"[{ts}] [{tag}] Błąd uruchamiania usługi: {e}", flush=True)
+        logger.error(f"[{tag}] Błąd uruchamiania usługi: {e}")
         return False
 
 def _stop_service(name: str) -> bool:
@@ -111,8 +103,8 @@ def _stop_service(name: str) -> bool:
             
         del _active_processes[name]
         _service_configs.pop(name, None)
-        ts = _get_timestamp()
-        print(f"[{ts}] [{tag}] Usługa została wyłączona.", flush=True)
+        logger.info(f"[{tag}] Usługa została wyłączona.")
+    return True
     return True
 
 def stop_all_services() -> None:

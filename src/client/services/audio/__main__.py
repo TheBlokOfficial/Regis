@@ -15,10 +15,8 @@ import httpx
 from client import config
 from client.engines.stt_engine import STTEngine
 from client.engines.tts_engine import TTSEngine
-from client.logger import setup_logging
 from protocol.schemas import AudioConfig
-
-setup_logging("service_audio")
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 class AudioService:

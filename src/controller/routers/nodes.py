@@ -187,6 +187,13 @@ async def websocket_node_endpoint(websocket: WebSocket, node_id: str):
                         "event_type": event.event_type,
                         "data": event.data,
                     })
+
+                    # Jeśli Satelita wchodzi w stan WAITING, sprawdzamy czy sieć jest gotowa do jej wybudzenia
+                    if event.event_type == "state" and event.data.get("state") == "WAITING":
+                        audio_nodes = registry.get_audio_nodes()
+                        llm_nodes = registry.get_llm_nodes()
+                        if audio_nodes and (llm_nodes or providers.has_llm_provider()):
+                            await registry.node_manager.send_command(node_id, "service_control", {"action": "resume"})
                 except Exception as e:
                     logging.error(f"Błąd parsowania WSSatelliteEvent: {e}")
             elif msg_type == "command_result":
@@ -213,7 +220,7 @@ async def websocket_node_endpoint(websocket: WebSocket, node_id: str):
                     await websocket.send_json({"type": "wake_check_result", "permitted": True})
             elif msg_type == "audio_complete":
                 # Satelita zakończyła odtwarzanie audio – Kontroler decyduje o powrocie do nasłuchu
-                await registry.node_manager.send_command(node_id, "start_listening", {})
+                await registry.node_manager.send_command(node_id, "service_control", {"action": "resume"})
     except WebSocketDisconnect:
         registry.node_manager.disconnect(node_id)
         logging.info(f"Węzeł {node_id} rozłączył się (WebSocket).")

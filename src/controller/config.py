@@ -6,17 +6,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-WORK_DIR = os.getcwd()
+from pathlib import Path
 
-DATA_DIR = os.getenv("REGIS_DATA_DIR", os.path.join(WORK_DIR, "data"))
-CONFIG_DIR = os.getenv("REGIS_CONFIG_DIR", os.path.join(WORK_DIR, "config"))
+CONTROLLER_DIR = Path(__file__).resolve().parent
+
+DATA_DIR = Path(os.getenv("REGIS_DATA_DIR", CONTROLLER_DIR / "data"))
+CONFIG_DIR = Path(os.getenv("REGIS_CONFIG_DIR", CONTROLLER_DIR / "config"))
 PROFILE = os.getenv("ACTIVE_PROFILE", "default")
 
 if PROFILE == "default":
-    SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+    SETTINGS_FILE = DATA_DIR / "settings.json"
 else:
-    SETTINGS_FILE = os.path.join(DATA_DIR, f"settings.{PROFILE}.json")
-ALIASES_FILE = os.path.join(CONFIG_DIR, "aliases.json")
+    SETTINGS_FILE = DATA_DIR / f"settings.{PROFILE}.json"
+
+ALIASES_FILE = CONFIG_DIR / "aliases.json"
 def load_settings() -> dict[str, Any]:
     """Ładuje główne ustawienia programu z fallbackiem na wartości domyślne.
     

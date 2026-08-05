@@ -4,6 +4,7 @@ import wave
 import io
 import base64
 import requests
+from client.config import DATA_DIR
 
 try:
     from piper.voice import PiperVoice
@@ -14,7 +15,7 @@ except ImportError:
 class TTSEngine:
     def __init__(self, model_name="pl_PL-darkman-medium"):
         self.model_name = model_name
-        self.model_dir = os.path.join("data", "models")
+        self.model_dir = os.path.join(DATA_DIR, "models")
         self.onnx_path = os.path.join(self.model_dir, f"{model_name}.onnx")
         self.json_path = os.path.join(self.model_dir, f"{model_name}.onnx.json")
         self.voice = None

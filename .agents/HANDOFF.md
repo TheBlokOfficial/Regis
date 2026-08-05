@@ -1,52 +1,41 @@
 # HANDOFF: Stan Projektu Regis
 
-## 1. Wykonane Prace w Ostatniej Sesji
+## 1. Wykonane Prace w Ostatniej Sesji (2026-08-05)
 
-- **Architektura Kanonicznych Mikrousług (`satellite`, `audio`, `llm`)**:
-  - Przeprowadzono kompletną dekompozycję monolitycznego Workera (`src/client/services/worker.py` - usunięty).
-  - Utworzono 3 czyste, wyspecjalizowane mikrousługi pod `src/client/services/`:
-    - [`src/client/services/satellite/`](file:///d:/Projekty/Regis/src/client/services/satellite/): Obsługa mikrofonu, VAD, Wake Word.
-    - [`src/client/services/audio/`](file:///d:/Projekty/Regis/src/client/services/audio/): Silnik konwersji głosowej (**STT** Whisper + **TTS** Piper).
-    - [`src/client/services/llm/`](file:///d:/Projekty/Regis/src/client/services/llm/): Silnik wnioskowania tekstowego (**LLM** Qwen ReAct + narzędzia HA).
+- **Uporządkowanie i Spłaszczenie Architektury Satelity (`satellite/`)**:
+  - Usunięto przestarzały katalog `core/`, scalając logikę orkiestratora bezpośrednio w pliku [`src/client/services/satellite/__main__.py`](file:///d:/Projekty/Regis/src/client/services/satellite/__main__.py) (klasa `SatelliteService`).
+  - Usunięto pętlę pollingu `while True` na rzecz modelu reaktywnego, gdzie pętla nasłuchu `_listening_loop()` jest wywoływana jako jednorazowe zadanie (`asyncio.Task`).
 
-- **Czysty Podział Modułowy (Single Responsibility Principle - SRP)**:
-  - Rozbito ciężkie pliki w usługach na wyspecjalizowane moduły:
-    - `service.py`: Zarządzanie silnikami w VRAM.
-    - `registration.py`: Komunikacja i heartbeat z Kontrolerem.
-    - `streaming.py`: Asynchroniczne generowanie ramek SSE.
-    - `routes.py`: Deklaratywny router HTTP (FastAPI).
-    - `app.py`: Instancja aplikacji FastAPI i powiązanie `lifespan`.
-    - `__main__.py`: Punkt wejścia procesowego.
-  - Usunięto przestarzałe parsowanie CLI `get_args` / `argparse` – konfiguracja pobierana jest z obiektów `LLMConfig`, `AudioConfig`, `SatelliteConfig` lub zmiennej `SERVICE_CONFIG`.
-  - Ujednolicono struktury klasowe w `__main__.py` (`SatelliteService`, `AudioService`, `LLMService` z konstruktorem `__init__`).
+- **Rozbudowa i Unifikacja Maszyny Stanów Satelity (`SatelliteState`)**:
+  - Zdefiniowano 6 precyzyjnych stanów w [`states.py`](file:///d:/Projekty/Regis/src/client/services/satellite/states.py): `INITIALIZING`, `WAITING`, `WAKEWORD`, `LISTENING`, `PROCESSING`, `SPEAKING`.
+  - Zunifikowano logikę przechodzenia stanów: każde wykonanie fazy (np. klatka WAKEWORD, nagranie zdania LISTENING, wysyłka WAV w PROCESSING, odtwarzanie mowy SPEAKING) stanowi niepodzielny krok. Sprawdzenie flagi pauzy odbywa się symetrycznie na naturalnych granicach etapów, bez żadnych kodowanych na sztywno wyjątków.
 
-- **Bezportowa Architektura Sidecar Worker Pattern**:
-  - Usunięto stawianie surowych serwerów HTTP (Uvicorn) na portach 8001/8002 przez podprocesy.
-  - Usługi podrzędne (`satellite`, `audio`, `llm`) **nie otwierają żadnego portu HTTP**.
-  - Jedynym otwartym punktem sieciowym w komputerze jest Aplikacja Kliencka (`src/client/internal_proxy.py` na porcie `47831`).
-  - Usługi po uruchomieniu subskrybują strumień komend z `/internal/service_commands` i odsyłają wyniki na `/internal/task_event`.
+- **Uniwersalny Pakiet Sterowania Usługami (`service_control`)**:
+  - Skonsolidowano komendy w `ServiceCommand` na rzecz jednego, uniwersalnego interfejsu `SERVICE_CONTROL = "service_control"`.
+  - Usunięto z interfejsu sieciowego Kontrolera niskopoziomowe komendy systemowe (`START`, `STOP`, `RESTART`) na rzecz ochrony autonomii i bezpieczeństwa Węzła Klienta. Kontroler steruje wyłącznie stanami aktywności operacyjnej (`RESUME` / `PAUSE`).
 
-- **Orkiestracja w Kontrolerze**:
-  - `src/controller/registry.py` zaktualizowano o pomocniki `get_audio_nodes()`, `get_llm_nodes()`, `get_satellite_nodes()`.
-  - Potok czatu w `chat_service.py` realizuje kaskadowe przetwarzanie głosu (`Satelita (WAV) -> STT -> LLM -> TTS -> WS play_audio`).
+- **Silnie Typowane Kontrakty Konfiguracji Usług (`NodeServicesConfig`)**:
+  - W pliku [`src/protocol/schemas.py`](file:///d:/Projekty/Regis/src/protocol/schemas.py) zastąpiono nietypowane słowniki `dict[str, dict]` silnie typowanymi modelami Pydantic: `SatelliteConfig`, `AudioConfig`, `LLMConfig` oraz zbiorczym `NodeServicesConfig`.
+
+- **Naprawa Auto-Discovery i Stabilizacja Usług**:
+  - Dodano funkcję `reset_discovered_controller_url()` w [`controller_api.py`](file:///d:/Projekty/Regis/src/client/controller_api.py), unieważniającą bufor adresu Kontrolera po nieudanej próbie połączenia.
+  - Usunięto usterki importów i składni w `controller_api.py`, `satellite/__main__.py`, `llm/__main__.py` i `audio/__main__.py`.
 
 ---
 
 ## 2. Aktualny Stan Kodu
 
-- **Struktura Katalogów Usług (`src/client/services/`)**:
-  - `src/client/services/satellite/`
-  - `src/client/services/audio/`
-  - `src/client/services/llm/`
-- **Główna Bramka Klienta**:
-  - `src/client/internal_proxy.py` (Bramka Gateway HTTP/SSE na porcie `47831`).
-  - `src/client/service_bus.py` (Magistrala komend).
-  - `src/client/controller_api.py` (Klient WebSocket z Kontrolerem).
+- **Rejestr Usług (`src/client/services/`)**:
+  - `satellite/`: Pełna, nowoczesna architektura (spłaszczona, zunifikowana, z typowanymi stanami i dyspozytorem).
+  - `audio/`: Działa stabilnie w trybie Sidecar, przygotowana do kolejnej unifikacji.
+  - `llm/`: Działa stabilnie w trybie Sidecar, przygotowana do kolejnej unifikacji.
+- **Protokoły i Schematy**:
+  - `src/protocol/schemas.py`: Zawiera silnie typowane modele Pydantic dla konfiguracji usług oraz uniwersalne komendy `SERVICE_CONTROL`.
 
 ---
 
 ## 3. Kroki Startowe dla Następnego Agenta
 
-1. Zapoznaj się z plikiem [`docs/MANIFEST.md`](file:///d:/Projekty/Regis/docs/MANIFEST.md) oraz wytycznymi w [`docs/AGENT_GUIDE.md`](file:///d:/Projekty/Regis/docs/AGENT_GUIDE.md).
-2. Sprawdź status aktywnych zadań w [`.agents/TASKS.md`](file:///d:/Projekty/Regis/.agents/TASKS.md).
-3. Przed dokonaniem jakichkolwiek zmian w kodzie, zawsze skonsultuj plan z użytkownikiem zgodnie z regułami w `AGENTS.md`.
+1. Obowiązkowo zapoznaj się z [`docs/MANIFEST.md`](file:///d:/Projekty/Regis/docs/MANIFEST.md) oraz [`docs/AGENT_GUIDE.md`](file:///d:/Projekty/Regis/docs/AGENT_GUIDE.md).
+2. Sprawdź zadania w [`.agents/TASKS.md`](file:///d:/Projekty/Regis/.agents/TASKS.md).
+3. Następnym krokiem w refaktoryzacji może być przeprowadzenie unifikacji i spłaszczenia usług `audio` oraz `llm` na wzór zrobionego już modułu `satellite`.

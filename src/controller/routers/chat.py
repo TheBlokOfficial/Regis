@@ -88,12 +88,14 @@ async def chat_audio_stream(
     thread = threading.Thread(target=proxy_sse_to_queue, args=(payload, q, loop, True, audio_bytes))
     thread.start()
 
+    has_tts = False
+
     async def event_generator():
+        nonlocal has_tts
         while True:
             item = await q.get()
             if item["type"] == "tts_audio":
-                # Przechwycenie TTS: zamiast przez SSE, wysyłamy komendę WS bezpośrednio do Satelity.
-                # Kontroler decyduje kiedy i gdzie audio ma być odtworzone.
+                has_tts = True
                 if client_id:
                     await registry.node_manager.send_command(
                         client_id, "play_audio", {"audio_b64": item.get("content", "")}
@@ -101,6 +103,8 @@ async def chat_audio_stream(
                 continue  # Nie przepuszczaj tts_audio przez SSE
             yield f"data: {json.dumps(item)}\n\n"
             if item["type"] in ("done", "error"):
+                if not has_tts and client_id:
+                    await registry.node_manager.send_command(client_id, "service_control", {"action": "resume"})
                 break
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

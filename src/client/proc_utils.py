@@ -1,7 +1,10 @@
 import sys
 import os
 import subprocess
+import logging
 import psutil
+
+logger = logging.getLogger(__name__)
 
 def get_executable_command(module_name: str) -> list[str]:
     """Buduje polecenie uruchomienia podmodułu w środowisku venv Pythona (Windows / Linux / macOS)."""
@@ -79,7 +82,7 @@ def assign_to_job_object(proc: subprocess.Popen) -> None:
             ctypes.windll.kernel32.CloseHandle(hProcess)
             proc._win_job_handle = job
     except Exception as e:
-        print(f"Błąd przypisywania procesu do Job Object: {e}")
+        logger.error(f"Błąd przypisywania procesu do Job Object: {e}")
 
 def cleanup_orphaned_processes() -> None:
     """Czyści porzucone podprocesy z poprzednich awarii."""
@@ -92,7 +95,7 @@ def cleanup_orphaned_processes() -> None:
             cmd_str = " ".join(cmdline).lower()
             if "python" in (proc.info.get('name') or "").lower() or "python" in cmd_str:
                 if "client.services.satellite" in cmd_str or "client.services.worker" in cmd_str or "client.satellite" in cmd_str or "client.client" in cmd_str:
-                    print(f"[Cleanup] Uśmiercanie starego procesu-sieroty: PID {proc.info['pid']} ({cmd_str})")
+                    logger.info(f"[Cleanup] Uśmiercanie starego procesu-sieroty: PID {proc.info['pid']} ({cmd_str})")
                     kill_process_tree(proc.info['pid'])
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
