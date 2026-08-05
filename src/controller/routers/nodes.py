@@ -202,6 +202,18 @@ async def websocket_node_endpoint(websocket: WebSocket, node_id: str):
                     })
                 except Exception as e:
                     logging.error(f"Błąd parsowania WSCommandResult: {e}")
+            elif msg_type == "wake_check":
+                audio_nodes = registry.get_audio_nodes()
+                llm_nodes = registry.get_llm_nodes()
+                if not audio_nodes:
+                    await websocket.send_json({"type": "wake_check_result", "permitted": False, "reason": "Brak dostępnej usługi Audio (STT/TTS)"})
+                elif not llm_nodes and not providers.has_llm_provider():
+                    await websocket.send_json({"type": "wake_check_result", "permitted": False, "reason": "Brak dostępnych usług LLM"})
+                else:
+                    await websocket.send_json({"type": "wake_check_result", "permitted": True})
+            elif msg_type == "audio_complete":
+                # Satelita zakończyła odtwarzanie audio – Kontroler decyduje o powrocie do nasłuchu
+                await registry.node_manager.send_command(node_id, "start_listening", {})
     except WebSocketDisconnect:
         registry.node_manager.disconnect(node_id)
         logging.info(f"Węzeł {node_id} rozłączył się (WebSocket).")

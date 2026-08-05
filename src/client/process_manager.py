@@ -24,7 +24,33 @@ def control_service(name: str, action: ServiceAction | str, config_data: dict = 
         case _:
             return False
 
+import time
+import threading
+
+DISPLAY_NAMES = {
+    "satellite": "Satelita",
+    "audio": "Audio (STT+TTS)",
+    "llm": "LLM (Agent)",
+}
+
+from datetime import datetime
+
+def _get_timestamp() -> str:
+    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+def _stream_service_logs(name: str, proc: subprocess.Popen, log_path: str):
+    tag = DISPLAY_NAMES.get(name, name.capitalize())
+    with open(log_path, "a", encoding="utf-8") as f:
+        for line in iter(proc.stdout.readline, b''):
+            text = line.decode('utf-8', errors='replace').rstrip()
+            if text:
+                f.write(text + '\n')
+                f.flush()
+                ts = _get_timestamp()
+                print(f"[{ts}] [{tag}] {text}", flush=True)
+
 def _start_service(name: str, config_data: dict = None) -> bool:
+    tag = DISPLAY_NAMES.get(name, name.capitalize())
     if name in _active_processes and _active_processes[name].poll() is None:
         return True
 
@@ -40,30 +66,41 @@ def _start_service(name: str, config_data: dict = None) -> bool:
             cli_flag = f"--{key.replace('_', '-')}"
             cmd.extend([cli_flag, str(value)])
 
-    kwargs = {}
     os.makedirs(os.path.join(DATA_DIR, "logs"), exist_ok=True)
     log_path = os.path.join(DATA_DIR, "logs", f"{name}.log")
-    f = open(log_path, "a", encoding="utf-8")
-    kwargs["stdout"] = f
-    kwargs["stderr"] = subprocess.STDOUT
+
+    kwargs = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+    }
 
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
     env["SERVICE_CONFIG"] = json.dumps(config_data)
 
     try:
         proc = subprocess.Popen(cmd, env=env, **kwargs)
         assign_to_job_object(proc)
         _active_processes[name] = proc
+
+        t = threading.Thread(target=_stream_service_logs, args=(name, proc, log_path), daemon=True)
+        t.start()
+
+        ts = _get_timestamp()
+        print(f"[{ts}] [{tag}] Usługa została włączona.", flush=True)
         return True
     except Exception as e:
-        print(f"Błąd uruchamiania usługi {name}: {e}")
+        ts = _get_timestamp()
+        print(f"[{ts}] [{tag}] Błąd uruchamiania usługi: {e}", flush=True)
         return False
 
 def _stop_service(name: str) -> bool:
+    tag = DISPLAY_NAMES.get(name, name.capitalize())
     if name in _active_processes:
         proc = _active_processes[name]
         try:
@@ -74,6 +111,8 @@ def _stop_service(name: str) -> bool:
             
         del _active_processes[name]
         _service_configs.pop(name, None)
+        ts = _get_timestamp()
+        print(f"[{ts}] [{tag}] Usługa została wyłączona.", flush=True)
     return True
 
 def stop_all_services() -> None:

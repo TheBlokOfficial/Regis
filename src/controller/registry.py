@@ -45,32 +45,50 @@ session_last_interaction_times: dict[str, float] = {}
 controller_start_time: float = time.time()
 
 
-def get_worker_nodes() -> list[dict]:
-    """Zwraca listę zarejestrowanych Węzłów oferujących usługę 'worker' (LLM)."""
-    workers = list(worker_registry.values())
+def get_llm_nodes() -> list[dict]:
+    """Zwraca listę zarejestrowanych Węzłów oferujących usługę 'llm' (lub dawne 'worker')."""
+    nodes = list(worker_registry.values())
     for node in node_registry.values():
         services = node.get("services", {})
-        if isinstance(services, dict) and "worker" in services:
-            w_cfg = services["worker"]
-            port = w_cfg.get("port", node.get("worker_port", 8001))
-            workers.append({
+        s_keys = services.keys() if isinstance(services, dict) else services
+        if "llm" in s_keys or "worker" in s_keys:
+            cfg = services.get("llm") or services.get("worker", {}) if isinstance(services, dict) else {}
+            port = cfg.get("port", node.get("worker_port", 8001))
+            nodes.append({
                 "id": node["id"],
                 "host": node["host"],
                 "port": port,
                 "base_url": f"http://{node['host']}:{port}",
-                "model_name": w_cfg.get("model_name", node.get("model_name", "qwen3.5:9b")),
-                "priority": w_cfg.get("priority", node.get("priority", 100)),
+                "model_name": cfg.get("model_name", node.get("model_name", "qwen3.5:9b")),
+                "priority": cfg.get("priority", node.get("priority", 100)),
             })
-        elif isinstance(services, list) and "worker" in services:
-            workers.append({
+    return nodes
+
+# Alias wstecznej kompatybilności
+get_worker_nodes = get_llm_nodes
+
+
+def get_audio_nodes() -> list[dict]:
+    """Zwraca listę zarejestrowanych Węzłów oferujących usługę 'audio' (STT+TTS)."""
+    nodes = []
+    for node in node_registry.values():
+        services = node.get("services", {})
+        s_keys = services.keys() if isinstance(services, dict) else services
+        if "audio" in s_keys or "stt" in s_keys or "tts" in s_keys or "worker" in s_keys:
+            cfg = services.get("audio") or services.get("stt") or services.get("tts") or services.get("worker", {}) if isinstance(services, dict) else {}
+            port = cfg.get("port", 8002)
+            nodes.append({
                 "id": node["id"],
                 "host": node["host"],
-                "port": node.get("worker_port", 8001),
-                "base_url": f"http://{node['host']}:{node.get('worker_port', 8001)}",
-                "model_name": node.get("model_name", "qwen3.5:9b"),
-                "priority": node.get("priority", 100),
+                "port": port,
+                "base_url": f"http://{node['host']}:{port}",
+                "stt_model_size": cfg.get("stt_model_size", cfg.get("model_size", "small")),
+                "tts_model_name": cfg.get("tts_model_name", cfg.get("model_name", "pl_PL-darkman-medium")),
             })
-    return workers
+    return nodes
+
+get_stt_nodes = get_audio_nodes
+get_tts_nodes = get_audio_nodes
 
 
 def get_satellite_nodes() -> list[dict]:

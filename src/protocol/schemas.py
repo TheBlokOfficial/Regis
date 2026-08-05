@@ -18,22 +18,36 @@ class CloudProviderConfig(BaseModel):
 
 class SatelliteConfig(BaseModel):
     """Oficjalny schemat kontraktu konfiguracyjnego Satelity (Audio/VAD/Wakeword)."""
-    room: str = "salon"
-    satellite_id: str | None = None
-    controller_url: str | None = None
-    node_type: str = "desktop"
+    internal_proxy_url: str = "http://127.0.0.1:47831"
     capabilities: list[str] = ["audio_input", "tts_output", "wakeword"]
     wakeword_local: bool = True
     wakeword_threshold: float = 0.65
     silence_timeout_ms: int = 1500
 
-class WorkerConfig(BaseModel):
-    """Oficjalny schemat kontraktu konfiguracyjnego Workera (LLM Engine)."""
+class LLMConfig(BaseModel):
+    """Schemat kontraktu konfiguracyjnego usługi LLM."""
     model_name: str = "qwen3.5:9b"
     port: int = 8001
     priority: int = 100
     controller_url: str | None = None
     mode: Literal["basic", "extended"] = "extended"
+
+class AudioConfig(BaseModel):
+    """Schemat kontraktu konfiguracyjnego usługi Audio (STT + TTS)."""
+    stt_model_size: str = "small"
+    stt_language: str = "pl"
+    tts_model_name: str = "pl_PL-darkman-medium"
+    port: int = 8002
+
+class STTConfig(AudioConfig):
+    pass
+
+class TTSConfig(AudioConfig):
+    pass
+
+# Alias wstecznej kompatybilności dla starego Workera
+WorkerConfig = LLMConfig
+
 
 class WorkerRegistrationRequest(BaseModel):
     """Payload wysyłany przez Węzeł Roboczy podczas rejestracji w Kontrolerze."""
@@ -41,7 +55,7 @@ class WorkerRegistrationRequest(BaseModel):
     host: str
     port: int
     model_name: str
-    priority: int = 100  # Wyższa wartość = wyższa ważność (100 = GPU PC, 50 = OpenRouter cloud, 10 = RPi fallback)
+    priority: int = 100
     mode: Literal["basic", "extended"] = "extended"
 
 
@@ -49,15 +63,15 @@ class ToolExecutionRequest(BaseModel):
     """Payload wysyłany przez Węzeł Roboczy do proxy narzędzi w Kontrolerze."""
     tool_name: str
     arguments: dict
-    room: str | None = None  # kontekst pokoju Satelity — propagowany przez cały stos
+    room: str | None = None
 
 
 class SatelliteRegistrationRequest(BaseModel):
     """Payload wysyłany przez Satelitę podczas rejestracji w Kontrolerze."""
     id: str
-    room: str | None = None      # np. "salon", "sypialnia" lub None (bez filtrowania)
-    type: str                     # "terminal" | "desktop" | "esp32"
-    capabilities: list[str]      # np. ["text"] lub ["audio_in", "audio_out"]
+    room: str | None = None
+    type: str
+    capabilities: list[str]
     wakeword_local: bool = False
 
 
@@ -68,7 +82,7 @@ class ClientRegistrationRequest(BaseModel):
     name: str | None = None
     host: str
     port: int | None = None
-    # Słownik usług
+    # Słownik usług: np. {"llm": {...}, "audio": {...}, "satellite": {...}}
     services: dict[str, dict] | list[str] = {}
 
     # Opcjonalne pola spłaszczone (dla kompatybilności ze starymi żądaniami)
@@ -85,12 +99,20 @@ class ClientRegistrationRequest(BaseModel):
             return self.services
 
         normalized = {}
-        service_list = self.services if isinstance(self.services, list) else ["worker", "satellite"]
-        if "worker" in service_list:
-            normalized["worker"] = {
-                "model_name": self.model_name,
+        service_list = self.services if isinstance(self.services, list) else ["llm", "audio", "satellite"]
+        if "llm" in service_list or "worker" in service_list:
+            normalized["llm"] = {
+                "model_name": self.model_name or "qwen3.5:9b",
                 "priority": self.priority,
-                "mode": "extended"
+                "mode": "extended",
+                "port": 8001
+            }
+        if "audio" in service_list or "stt" in service_list or "tts" in service_list or "worker" in service_list:
+            normalized["audio"] = {
+                "stt_model_size": "small",
+                "stt_language": "pl",
+                "tts_model_name": "pl_PL-darkman-medium",
+                "port": 8002
             }
         if "satellite" in service_list:
             normalized["satellite"] = {

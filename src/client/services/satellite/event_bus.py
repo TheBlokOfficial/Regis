@@ -34,4 +34,5 @@ class EventBus:
             
     def log(self, message: str):
         """Pomocnik rzucający logi w Monitor Audio, wyłapywane jako info."""
+        print(message, flush=True)
         self.emit({"type": "info", "message": message})

@@ -97,7 +97,7 @@ def proxy_sse_to_queue(
                 "profiler": profiler_data
             })
 
-            now = datetime.datetime.now().strftime("%H:%M:%S")
+            now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
             turn = {
                 "user": base_payload.get("message", ""),
                 "assistant": final_content,
@@ -148,45 +148,6 @@ def proxy_sse_to_queue(
             force_worker = True
 
     if is_audio or isinstance(backend, OllamaBackend) or force_worker:
-        workers = registry.get_worker_nodes()
-        if not workers:
-            loop.call_soon_threadsafe(
-                q.put_nowait,
-                {"type": "error", "content": "Brak dostępnego providera LLM (wymagany worker dla zapytania audio/lokalnego)."}
-            )
-            return
-
-        # Priorytetyzacja: sortowanie malejąco po priority (100 wyżej niż 10)
-        sorted_workers = sorted(workers, key=lambda w: w.get("priority", 10), reverse=True)
-        worker = sorted_workers[0]
-        worker_id = worker["id"]
-        prio = worker.get("priority", 10)
-
-        mode = worker.get("mode", "extended")
-        system_prompt = build_system_prompt(room=room, mode=mode)
-
-        if not is_audio:
-            worker_url = f"{worker['base_url']}/v1/chat/stream"
-            payload = dict(base_payload)
-            payload["system_prompt"] = system_prompt
-            payload["history"] = session_history
-        else:
-            worker_url = f"{worker['base_url']}/v1/chat/audio_stream"
-
-        logging.info(f"Routowanie żądania do węzła: {worker_id} (priority={prio})")
-        logger.debug(
-            f"Router wybrany węzeł: id={worker_id} | priority={prio} "
-            f"| model={worker.get('model_name', 'nieznany')} | url={worker_url}"
-        )
-
-        routing_event = {
-            "type": "routing_info",
-            "worker_id": worker_id,
-            "model": worker.get("model_name", "nieznany"),
-            "priority": prio,
-        }
-        loop.call_soon_threadsafe(q.put_nowait, routing_event)
-
         t_worker_start = time.time()
         final_content = ""
         stt_content = ""
@@ -194,17 +155,81 @@ def proxy_sse_to_queue(
         worker_profiler_data = {}
         worker_elapsed_ms = None
 
-        try:
-            if not is_audio:
-                resp = requests.post(worker_url, json=payload, stream=True, timeout=(1.0, 300.0))
-            else:
-                files = {"file": ("audio.wav", audio_bytes, "audio/wav")}
-                data = dict(base_payload)
-                data["system_prompt"] = system_prompt
-                data["history"] = json.dumps(session_history)
-                resp = requests.post(worker_url, files=files, data=data, stream=True, timeout=(1.0, 300.0))
+        # ─── KROK 1: TRANSKRYPCJA AUDIO (STT) ───────────────────────────────
+        if is_audio:
+            stt_nodes = registry.get_stt_nodes()
+            if not stt_nodes:
+                loop.call_soon_threadsafe(
+                    q.put_nowait,
+                    {"type": "error", "content": "Brak dostępnej usługi STT (Whisper)."}
+                )
+                return
+            stt_node = stt_nodes[0]
+            stt_url = f"{stt_node['base_url']}/v1/stt/transcribe"
 
+            t_stt_start = time.time()
+            try:
+                files = {"file": ("audio.wav", audio_bytes, "audio/wav")}
+                stt_resp = requests.post(stt_url, files=files, timeout=(1.0, 30.0))
+                stt_resp.raise_for_status()
+                stt_json = stt_resp.json()
+                stt_content = stt_json.get("text", "")
+                stt_ms = stt_json.get("elapsed_ms") or int((time.time() - t_stt_start) * 1000)
+                worker_profiler_data["stt"] = stt_ms
+
+                if not stt_content:
+                    loop.call_soon_threadsafe(
+                        q.put_nowait,
+                        {"type": "error", "content": "Nie rozpoznano żadnego tekstu ze strumienia audio."}
+                    )
+                    return
+
+                loop.call_soon_threadsafe(q.put_nowait, {"type": "stt_result", "content": stt_content})
+            except Exception as e:
+                logging.exception("Błąd usługi STT")
+                loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": f"Błąd usugi STT: {e}"})
+                return
+
+        # ─── KROK 2: WNIOSKOWANIE I GENERACJA (LLM) ──────────────────────────
+        llm_nodes = registry.get_llm_nodes()
+        if not llm_nodes:
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                {"type": "error", "content": "Brak dostępnej usługi LLM."}
+            )
+            return
+
+        sorted_llm_nodes = sorted(llm_nodes, key=lambda w: w.get("priority", 10), reverse=True)
+        llm_node = sorted_llm_nodes[0]
+        node_id = llm_node["id"]
+        prio = llm_node.get("priority", 10)
+
+        mode = llm_node.get("mode", "extended")
+        system_prompt = build_system_prompt(room=room, mode=mode)
+
+        llm_url = f"{llm_node['base_url']}/v1/chat/stream"
+        user_message = stt_content if is_audio else base_payload.get("message", "")
+
+        payload = {
+            "message": user_message,
+            "system_prompt": system_prompt,
+            "history": session_history,
+            "controller_url": base_payload.get("controller_url"),
+            "room": room,
+        }
+
+        routing_event = {
+            "type": "routing_info",
+            "worker_id": node_id,
+            "model": llm_node.get("model_name", "nieznany"),
+            "priority": prio,
+        }
+        loop.call_soon_threadsafe(q.put_nowait, routing_event)
+
+        try:
+            resp = requests.post(llm_url, json=payload, stream=True, timeout=(1.0, 300.0))
             resp.raise_for_status()
+
             for line in resp.iter_lines():
                 if not line:
                     continue
@@ -212,9 +237,7 @@ def proxy_sse_to_queue(
                 if line.startswith("data: "):
                     try:
                         event = json.loads(line[6:])
-                        if event.get("type") == "stt_result":
-                            stt_content = event.get("content", "")
-                        elif event.get("type") == "tool_dict":
+                        if event.get("type") == "tool_dict":
                             used_tools_dicts.append(event.get("content"))
                         elif event.get("type") == "profiler":
                             m = event.get("content")
@@ -224,19 +247,44 @@ def proxy_sse_to_queue(
                             final_content = event.get("content", "")
                             worker_elapsed_ms = event.get("elapsed_ms") or int((time.time() - t_worker_start) * 1000.0)
 
-                        loop.call_soon_threadsafe(q.put_nowait, event)
-                        if event.get("type") in ("done", "error"):
-                            break
+                        if event.get("type") not in ("done", "tts_audio"):
+                            loop.call_soon_threadsafe(q.put_nowait, event)
                     except json.JSONDecodeError:
                         pass
+
+            # ─── KROK 3: SYNTEZA MOWY (TTS) ──────────────────────────────────
+            if is_audio and final_content:
+                tts_nodes = registry.get_tts_nodes()
+                if tts_nodes:
+                    tts_node = tts_nodes[0]
+                    tts_url = f"{tts_node['base_url']}/v1/tts/synthesize"
+                    try:
+                        t_tts_start = time.time()
+                        tts_resp = requests.post(tts_url, json={"text": final_content}, timeout=(1.0, 30.0))
+                        if tts_resp.ok:
+                            tts_json = tts_resp.json()
+                            b64_audio = tts_json.get("audio_b64")
+                            tts_ms = tts_json.get("elapsed_ms") or int((time.time() - t_tts_start) * 1000)
+                            worker_profiler_data["tts"] = tts_ms
+                            if b64_audio:
+                                loop.call_soon_threadsafe(q.put_nowait, {"type": "tts_audio", "content": b64_audio})
+                    except Exception as e:
+                        logging.warning(f"Błąd usługi TTS: {e}")
 
             if not worker_elapsed_ms:
                 worker_elapsed_ms = int((time.time() - t_worker_start) * 1000.0)
 
+            loop.call_soon_threadsafe(q.put_nowait, {
+                "type": "done",
+                "content": final_content,
+                "elapsed_ms": worker_elapsed_ms,
+                "profiler": worker_profiler_data
+            })
+
             if final_content:
                 user_msg = stt_content if is_audio else base_payload.get("message", "")
                 if user_msg:
-                    now = datetime.datetime.now().strftime("%H:%M:%S")
+                    now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
                     turn = {
                         "user": user_msg,
                         "assistant": final_content,

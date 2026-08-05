@@ -2,7 +2,7 @@ import asyncio
 import json
 import threading
 
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -56,9 +56,8 @@ async def chat_stream(request: ChatRequest):
 
 @router_chat.post("/v1/chat/audio_stream")
 async def chat_audio_stream(
-    file: UploadFile = File(...),
-    room: str | None = Form(default=None),
-    satellite_id: str | None = Form(default=None)
+    request: Request,
+    file: UploadFile = File(...)
 ):
     if not providers.has_llm_provider():
         return JSONResponse(
@@ -66,14 +65,18 @@ async def chat_audio_stream(
             status_code=503
         )
 
+    client_id = request.headers.get("X-Client-ID")
+    room = None
+    if client_id and client_id in registry.node_registry:
+        services = registry.node_registry[client_id].get("services", {})
+        if "satellite" in services:
+            room = services["satellite"].get("room")
+
     audio_bytes = await file.read()
     controller_url = registry._settings_cache.get("controller_url", "auto")
     if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
         from protocol.discovery import get_local_ip
         controller_url = f"http://{get_local_ip()}:8000"
-
-    if not room and satellite_id and satellite_id in registry.satellite_registry:
-        room = registry.satellite_registry[satellite_id].get("room")
 
     payload = {"controller_url": controller_url}
     if room:
@@ -88,6 +91,14 @@ async def chat_audio_stream(
     async def event_generator():
         while True:
             item = await q.get()
+            if item["type"] == "tts_audio":
+                # Przechwycenie TTS: zamiast przez SSE, wysyłamy komendę WS bezpośrednio do Satelity.
+                # Kontroler decyduje kiedy i gdzie audio ma być odtworzone.
+                if client_id:
+                    await registry.node_manager.send_command(
+                        client_id, "play_audio", {"audio_b64": item.get("content", "")}
+                    )
+                continue  # Nie przepuszczaj tts_audio przez SSE
             yield f"data: {json.dumps(item)}\n\n"
             if item["type"] in ("done", "error"):
                 break

@@ -7,6 +7,13 @@ import sys
 import threading
 import pystray
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from client import controller_api
 from client.logger import setup_logging
 from client.process_manager import cleanup_orphaned_processes, stop_all_services
@@ -88,7 +95,11 @@ def main() -> None:
     cleanup_orphaned_processes()
     setup_signal_handlers()
 
-    # 4. Rejestracja Klienta i start komunikacji WebSocket w tle
+    # 4. Uruchomienie wewnętrznego proxy
+    from client.internal_proxy import start_internal_proxy_thread
+    start_internal_proxy_thread()
+
+    # 5. Rejestracja Klienta i start komunikacji WebSocket w tle
     controller_api.register()
     ws_thread = threading.Thread(target=controller_api.start_ws_client, daemon=True)
     ws_thread.start()
