@@ -73,6 +73,15 @@ def setup_signal_handlers() -> None:
         pass  # Ignoruj jeśli nie jesteśmy w głównym wątku
 
 
+def parse_cli_args() -> argparse.Namespace:
+    """Parsuje argumenty wiersza poleceń dla aplikacji klienckiej."""
+    parser = argparse.ArgumentParser(description="Regis Client Application")
+    parser.add_argument(
+        "--console", action="store_true", help="Pokaż okno konsoli i wyjście logów (tryb debugowania)"
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
     """Główny punkt wejścia (Entry Point) aplikacji klienckiej Regis."""
     global app_tray
@@ -80,14 +89,11 @@ def main() -> None:
     # 0. Zabezpieczenie przed podwójnym uruchomieniem
     ensure_single_instance()
 
-    parser = argparse.ArgumentParser(description="Regis Client Application")
-    parser.add_argument("--console", action="store_true", help="Pokaż okno konsoli i wyjście logów (tryb debugowania)")
-    args = parser.parse_args()
+    # 1. Parsowanie argumentów CLI
+    args = parse_cli_args()
 
-    # 1. Konfiguracja logowania
+    # 2. Konfiguracja logowania i widoczności konsoli
     setup_logging("client", console_output=args.console)
-
-    # 2. Ukrycie konsoli na Windowsie (jeśli brak flagi --console)
     if not args.console:
         hide_console_window()
 
@@ -104,7 +110,7 @@ def main() -> None:
     ws_thread = threading.Thread(target=controller_api.start_ws_client, daemon=True)
     ws_thread.start()
 
-    # 5. Uruchomienie interfejsu w zasobniku systemowym (pętla główna)
+    # 6. Uruchomienie interfejsu w zasobniku systemowym (pętla główna)
     app_tray = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
     app_tray.run()
 
