@@ -7,31 +7,23 @@ Usługa nie otwiera własnych portów HTTP. Podłącza się do magistrali Aplika
 import os
 import sys
 import asyncio
-import json
 import logging
 from client import config
 from client.engines.llm_engine import LLMEngine
 from client.services.remote_tools_registry import RemoteToolsRegistry
 from protocol.schemas import LLMConfig
+from client.services.base import BaseService
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
-class LLMService:
+class LLMService(BaseService):
     """Bezportowa usługa LLM wykonywana jako podproces Sidecar."""
 
     def __init__(self, config_obj: LLMConfig | None = None):
-        if config_obj is None:
-            raw_config = os.environ.get("SERVICE_CONFIG")
-            if raw_config:
-                config_obj = LLMConfig.model_validate_json(raw_config)
-            else:
-                config_obj = LLMConfig()
-
-        self.config = config_obj
+        super().__init__(service_name="llm", config_class=LLMConfig, config_obj=config_obj)
         settings = config.load_settings()
 
-        self.selected_model = config_obj.model_name or settings.get("selected_model", "qwen3.5:9b")
-        self.internal_proxy_url = getattr(config_obj, "internal_proxy_url", "http://127.0.0.1:47831")
+        self.selected_model = self.config.model_name or settings.get("selected_model", "qwen3.5:9b")
         self.llm_engine: LLMEngine | None = None
 
     async def start(self):
@@ -43,38 +35,11 @@ class LLMService:
             logging.error(f"Błąd ładowania modelu LLM: {e}")
             sys.exit(1)
 
-        await self._listen_for_commands()
+        await super().start()
 
     async def stop(self):
         if self.llm_engine:
             await self.llm_engine.unload_model()
-
-    async def _listen_for_commands(self):
-        url = f"{self.internal_proxy_url}/internal/service_commands"
-        while True:
-            try:
-                async with httpx.AsyncClient(timeout=None) as client:
-                    async with client.stream("GET", url) as response:
-                        async for line in response.aiter_lines():
-                            if not line or not line.startswith("data: "):
-                                continue
-                            data_str = line[6:].strip()
-                            if not data_str:
-                                continue
-                            try:
-                                cmd_event = json.loads(data_str)
-                                target_service = cmd_event.get("service")
-                                if target_service != "llm":
-                                    continue
-                                command_type = cmd_event.get("command")
-                                payload = cmd_event.get("payload", {})
-                                task_id = cmd_event.get("task_id")
-                                asyncio.create_task(self.handle_command(command_type, payload, task_id))
-                            except Exception as e:
-                                logging.error(f"Błąd dekodowania komendy LLM: {e}")
-            except Exception as e:
-                logging.warning(f"Utracono połączenie z magistralą Klienta. Ponawiam za 3s... ({e})")
-                await asyncio.sleep(3)
 
     async def handle_command(self, command_type: str, payload: dict, task_id: str | None):
         if command_type == "chat_stream":
@@ -103,22 +68,12 @@ class LLMService:
                     response_text = event["content"]
 
                 # Odsyłanie zdarzenia przez internal_proxy do Kontrolera
-                await self._send_task_event(task_id, event)
+                await self.send_task_event(task_id, event)
 
-            await self._send_task_event(task_id, {"type": "done", "content": response_text})
+            await self.send_task_event(task_id, {"type": "done", "content": response_text})
         except Exception as e:
             logging.exception("Błąd generacji odpowiedzi LLM w podprocesie")
-            await self._send_task_event(task_id, {"type": "error", "content": str(e)})
-
-    async def _send_task_event(self, task_id: str | None, event: dict):
-        if not task_id:
-            return
-        url = f"{self.internal_proxy_url}/internal/task_event"
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(url, json={"task_id": task_id, "event": event})
-        except Exception as e:
-            logging.warning(f"Błąd wysyłania ramek LLM do proxy: {e}")
+            await self.send_task_event(task_id, {"type": "error", "content": str(e)})
 
 
 def main():

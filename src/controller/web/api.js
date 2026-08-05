@@ -145,7 +145,7 @@ export async function sendNodeCommand(nodeId, command, payload = {}) {
 
 export async function fetchSupportedModels() {
     try {
-        const resp = await fetch("/v1/nodes/supported_models");
+        const resp = await fetch("/v1/clients/supported_models");
         if (!resp.ok) return [];
         const data = await resp.json();
         return data.models || [];
@@ -157,7 +157,7 @@ export async function fetchSupportedModels() {
 
 export async function fetchNodeConfig(nodeId) {
     try {
-        const resp = await fetch(`/v1/nodes/${encodeURIComponent(nodeId)}/config`);
+        const resp = await fetch(`/v1/clients/${encodeURIComponent(nodeId)}/config`);
         if (!resp.ok) return null;
         return await resp.json();
     } catch (e) {
@@ -168,7 +168,7 @@ export async function fetchNodeConfig(nodeId) {
 
 export async function saveNodeConfig(nodeId, configData) {
     try {
-        const resp = await fetch(`/v1/nodes/${encodeURIComponent(nodeId)}/config`, {
+        const resp = await fetch(`/v1/clients/${encodeURIComponent(nodeId)}/config`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(configData),

@@ -47,32 +47,7 @@ class RegistrationManager:
 
     async def start_registration(self):
         self.resolve_controller()
-        payload = self.get_registration_payload()
-
-        try:
-            resp = requests.post(f"{llm_service.controller_url}/v1/nodes/register", json=payload, timeout=5)
-            if resp.ok:
-                logging.info(f"Usługa LLM '{llm_service.node_id}' zarejestrowana w Kontrolerze ({llm_service.controller_url}).")
-        except requests.RequestException as e:
-            logging.warning(f"Brak pierwszej rejestracji w Kontrolerze: {e}.")
-
-        async def _loop():
-            failures = 0
-            while True:
-                await asyncio.sleep(15)
-                try:
-                    resp = await asyncio.to_thread(requests.post, f"{llm_service.controller_url}/v1/nodes/register", json=payload, timeout=5)
-                    if resp.ok:
-                        failures = 0
-                    else:
-                        failures += 1
-                except Exception:
-                    failures += 1
-
-                if failures >= 2 and llm_service.controller_url_setting == "auto":
-                    await asyncio.to_thread(self.resolve_controller)
-
-        self.reg_task = asyncio.create_task(_loop())
+        logging.info(f"Usługa LLM '{llm_service.node_id}' zainicjalizowana lokalnie (rejestracja sieciowa obsługiwana przez Klienta).")
 
     def stop_registration(self):
         if self.reg_task:

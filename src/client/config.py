@@ -6,11 +6,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
+from protocol.discovery import discover_controller
 
 # --- 1. Inicjalizacja Środowiska i Główny Katalog Klienta ---
 load_dotenv()
-
-# Główny katalog domeny klienta (src/client)
 CLIENT_DIR = Path(__file__).resolve().parent
 
 DATA_DIR = Path(os.getenv("REGIS_DATA_DIR", CLIENT_DIR / "data"))
@@ -51,8 +50,12 @@ def load_settings() -> dict[str, Any]:
 
     merged = {**DEFAULT_SETTINGS, **settings}
 
-    if not merged.get("node_id"):
-        merged["node_id"] = f"node-{uuid.uuid4().hex[:8]}"
+    if not merged.get("client_id") and not merged.get("node_id"):
+        merged["client_id"] = f"client-{uuid.uuid4().hex[:8]}"
+        save_settings(merged)
+    elif merged.get("node_id") and not merged.get("client_id"):
+        merged["client_id"] = merged["node_id"]
+        del merged["node_id"]
         save_settings(merged)
 
     return merged
@@ -67,3 +70,55 @@ def save_settings(settings: dict[str, Any]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=4)
+
+
+# --- 4. Cache i API Konfiguracyjne (Runtime) ---
+_settings_cache: dict | None = None
+_discovered_controller_url: str | None = None
+
+
+def _get_settings() -> dict:
+    """Zwraca podręczną pamięć ustawień z RAM. Wczytuje z dysku tylko za pierwszym razem."""
+    global _settings_cache
+    if _settings_cache is None:
+        _settings_cache = load_settings()
+    return _settings_cache
+
+
+def reload_settings() -> None:
+    """Wymusza odświeżenie pamięci podręcznej z dysku."""
+    global _settings_cache
+    _settings_cache = load_settings()
+
+
+def reset_discovered_controller_url() -> None:
+    """Czyści zapamiętany adres Kontrolera, wymuszając ponowne Auto-Discovery przy błędzie połączenia."""
+    global _discovered_controller_url
+    _discovered_controller_url = None
+
+
+def get_controller_url(allow_fallback: bool = False) -> str:
+    """Zwraca adres URL Kontrolera z konfiguracji lub z Discovery."""
+    global _discovered_controller_url
+    settings = _get_settings()
+    url = settings.get("controller_url", "auto")
+    
+    if url == "auto":
+        if _discovered_controller_url:
+            return _discovered_controller_url
+        try:
+            _discovered_controller_url = discover_controller()
+            return _discovered_controller_url
+        except Exception:
+            if allow_fallback:
+                return "http://127.0.0.1:8000"
+            raise RuntimeError("Nie odnaleziono Kontrolera w sieci (Auto-Discovery).")
+    return url
+
+
+def _get_client_id() -> str:
+    """Zwraca gwarantowane, tekstowe ID klienta."""
+    settings = _get_settings()
+    # Wsparcie zarówno dla client_id jak i starszego node_id
+    return str(settings.get("client_id") or settings.get("node_id") or settings.get("instance_name") or "client-default")
+

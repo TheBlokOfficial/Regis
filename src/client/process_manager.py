@@ -8,21 +8,34 @@ import threading
 from client.proc_utils import cleanup_orphaned_processes, get_executable_command, kill_process_tree, assign_to_job_object
 from client.config import DATA_DIR
 
+from enum import Enum
+
 logger = logging.getLogger(__name__)
+
+class ProcessAction(str, Enum):
+    """Oficjalny spis dopuszczalnych akcji na podprocesach usług."""
+    START = "start"
+    STOP = "stop"
+    RESTART = "restart"
+
+class ProcessStatus(str, Enum):
+    """Oficjalny spis stanów wykonawczych podprocesów usług."""
+    RUNNING = "running"
+    STOPPED = "stopped"
 
 _active_processes: dict[str, subprocess.Popen] = {}
 _service_configs: dict[str, dict] = {}
 _process_lock = threading.Lock()
 
-def control_service(name: str, action: str, config_data: dict = None) -> bool:
+def control_service(name: str, action: str | ProcessAction, config_data: dict = None) -> bool:
     """Zarządza lokalnym stanem podprocesów usługi w systemie (start, stop, restart)."""
     with _process_lock:
-        act = action.lower()
-        if act == "start":
+        act = action.value.lower() if isinstance(action, ProcessAction) else str(action).lower()
+        if act == ProcessAction.START:
             return _start_service(name, config_data)
-        elif act == "stop":
+        elif act == ProcessAction.STOP:
             return _stop_service(name)
-        elif act == "restart":
+        elif act == ProcessAction.RESTART:
             _stop_service(name)
             return _start_service(name, config_data)
         return False
@@ -111,10 +124,10 @@ def stop_all_services() -> None:
     for name in list(_active_processes.keys()):
         _stop_service(name)
 
-def get_all_services_status() -> dict:
+def get_all_services_status() -> dict[str, ProcessStatus]:
     status = {}
     for name, proc in list(_active_processes.items()):
-        status[name] = "running" if proc.poll() is None else "stopped"
+        status[name] = ProcessStatus.RUNNING if proc.poll() is None else ProcessStatus.STOPPED
     return status
     
 def get_active_services_registration() -> dict:

@@ -172,22 +172,33 @@ from typing import Any
 
 from enum import Enum
 
-class ServiceAction(str, Enum):
-    """Oficjalny spis dopuszczalnych akcji na usługach Węzła."""
+class ServiceName(str, Enum):
+    """Oficjalny wykaz nazw usług w systemie Regis."""
+    SATELLITE = "satellite"
+    AUDIO = "audio"
+    LLM = "llm"
+
+
+class SatelliteAction(str, Enum):
+    """Oficjalny spis dopuszczalnych akcji dla Satelity."""
     RESUME = "resume"
     PAUSE = "pause"
 
 
+# Alias wstecznej kompatybilności
+ServiceAction = SatelliteAction
+
+
 class ServiceCommand(str, Enum):
-    """Oficjalny spis dopuszczalnych komend sieciowych (SSE) dla usług."""
+    """Oficjalny spis dopuszczalnych komend sieciowych dla usług."""
     PLAY_AUDIO = "play_audio"
-    SERVICE_CONTROL = "service_control"
+    SATELLITE_CONTROL = "satellite_control"
 
 
-class ServiceControlPayload(BaseModel):
-    """Payload dla komendy 'service_control'."""
-    service: str
-    action: ServiceAction
+class SatelliteControlPayload(BaseModel):
+    """Payload dla komendy 'satellite_control'."""
+    service: ServiceName = ServiceName.SATELLITE
+    action: SatelliteAction
 
 
 class WSCommand(BaseModel):

@@ -2,8 +2,9 @@ import os
 import asyncio
 import logging
 
-from protocol.schemas import SatelliteConfig
+from protocol.schemas import SatelliteConfig, SatelliteAction
 from client.config import DATA_DIR
+from client.services.base import BaseService
 
 from .states import SatelliteState
 from .event_bus import EventBus
@@ -16,13 +17,13 @@ from .audio.player import AudioPlayer
 
 SILENCE_THRESHOLD = 150
 
-class SatelliteService:
+class SatelliteService(BaseService):
     """Główny orkiestrator Satelity zarządzający maszyną stanów (INITIALIZING, WAITING, WAKEWORD, LISTENING, STREAMING, PROCESSING, SPEAKING)."""
 
     def __init__(self, config: SatelliteConfig = None):
-        self.config = self._resolve_config(config)
+        super().__init__(service_name="satellite", config_class=SatelliteConfig, config_obj=config)
         self.event_bus = EventBus(satellite_id="satellite_proxy")
-        self.network = SatelliteAPIClient(self.config.internal_proxy_url, self.event_bus)
+        self.network = SatelliteAPIClient(self.internal_proxy_url, self.event_bus)
         
         self.audio_manager = AudioStreamManager()
         self.wakeword = WakeWordEngine(str(DATA_DIR))
@@ -33,14 +34,7 @@ class SatelliteService:
         self._paused: bool = True
         self._listening_task: asyncio.Task | None = None
 
-    @staticmethod
-    def _resolve_config(config: SatelliteConfig = None) -> SatelliteConfig:
-        if config is not None:
-            return config
-        raw_config = os.environ.get("SERVICE_CONFIG")
-        if raw_config:
-            return SatelliteConfig.model_validate_json(raw_config)
-        return SatelliteConfig()
+
 
     @staticmethod
     def _init_vad(config: SatelliteConfig) -> EnergyVAD:
@@ -51,7 +45,7 @@ class SatelliteService:
         )
         return EnergyVAD(threshold=threshold)
 
-    async def run(self):
+    async def start(self):
         loop = asyncio.get_running_loop()
         self.audio_manager.set_loop(loop)
         logging.info("Regis Satellite Service (Self-Healing Audio & Streaming VAD)")
@@ -60,16 +54,9 @@ class SatelliteService:
         await self.readiness.ensure_ready()
         self._set_state(SatelliteState.WAITING)
 
-        from protocol.schemas import ServiceCommand
-        
-        command_handlers = {
-            ServiceCommand.SERVICE_CONTROL: self._handle_service_control,
-            ServiceCommand.PLAY_AUDIO: self._handle_play_audio,
-        }
-
         try:
             # 2. Główny pasywny punkt oczekiwania na komendy SSE
-            await self.network.listen_for_commands(command_handlers)
+            await super().start()
         except asyncio.CancelledError:
             pass
         finally:
@@ -78,25 +65,30 @@ class SatelliteService:
                 self._listening_task.cancel()
             self.audio_manager.stop_stream()
 
-    def _handle_service_control(self, cmd_data: dict):
-        """Uniwersalny handler do sterowania stanem usług."""
-        action = cmd_data.get("action")
-        if action == "resume":
-            self.resume_communication()
-        elif action == "pause":
-            self.pause_communication()
+    async def handle_command(self, command_type: str, payload: dict, task_id: str | None):
+        from protocol.schemas import ServiceCommand
+        
+        try:
+            cmd_type = ServiceCommand(command_type)
+        except ValueError:
+            return
 
-    def resume_communication(self):
-        """Wznawia komunikację (komenda RESUME z Kontrolera) i uaktywnia WAKEWORD z stanu WAITING."""
-        self._paused = False
-        self.event_bus.log("Otrzymano polecenie RESUME: Wznowienie komunikacji.")
-        if self.state == SatelliteState.WAITING:
-            self._start_wakeword_listening()
+        if cmd_type == ServiceCommand.SATELLITE_CONTROL:
+            self._handle_satellite_control(payload)
+        elif cmd_type == ServiceCommand.PLAY_AUDIO:
+            await self._handle_play_audio(payload)
 
-    def pause_communication(self):
-        """Wstrzymuje komunikację (komenda PAUSE z Kontrolera). Ustawia flagę _paused."""
-        self._paused = True
-        self.event_bus.log("Otrzymano polecenie PAUSE: Wstrzymanie komunikacji.")
+    def _handle_satellite_control(self, cmd_data: dict):
+        """Handler do sterowania stanem wybudzania Satelity (RESUME / PAUSE)."""
+        match cmd_data.get("action"):
+            case SatelliteAction.RESUME:
+                self._paused = False
+                self.event_bus.log("Otrzymano polecenie RESUME: Wznowienie komunikacji.")
+                if self.state == SatelliteState.WAITING:
+                    self._start_wakeword_listening()
+            case SatelliteAction.PAUSE:
+                self._paused = True
+                self.event_bus.log("Otrzymano polecenie PAUSE: Wstrzymanie komunikacji.")
 
     def _start_wakeword_listening(self):
         if self._listening_task and not self._listening_task.done():
@@ -197,12 +189,8 @@ class SatelliteService:
         wav_bytes = self.audio_manager.create_wav_payload(collected_chunks)
         self.event_bus.log(f"Przygotowano paczkę audio ({len(wav_bytes)} bajtów). Wysyłam do Kontrolera (PROCESSING)...")
 
-        loop = asyncio.get_running_loop()
         try:
-            await asyncio.to_thread(
-                self.network.post_audio_and_process_sse,
-                wav_bytes, loop
-            )
+            await self.network.send_audio_payload(wav_bytes)
         finally:
             self._set_state(SatelliteState.WAITING)
             self.event_bus.emit({"type": "state", "state": SatelliteState.WAITING})
@@ -234,7 +222,7 @@ def _setup_logging():
 async def main():
     _setup_logging()
     service = SatelliteService()
-    await service.run()
+    await service.start()
 
 if __name__ == "__main__":
     try:

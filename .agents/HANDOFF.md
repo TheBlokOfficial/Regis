@@ -2,40 +2,36 @@
 
 ## 1. Wykonane Prace w Ostatniej Sesji (2026-08-05)
 
-- **Uporządkowanie i Spłaszczenie Architektury Satelity (`satellite/`)**:
-  - Usunięto przestarzały katalog `core/`, scalając logikę orkiestratora bezpośrednio w pliku [`src/client/services/satellite/__main__.py`](file:///d:/Projekty/Regis/src/client/services/satellite/__main__.py) (klasa `SatelliteService`).
-  - Usunięto pętlę pollingu `while True` na rzecz modelu reaktywnego, gdzie pętla nasłuchu `_listening_loop()` jest wywoływana jako jednorazowe zadanie (`asyncio.Task`).
+- **Zmiana Nomenklatury z `nodes` na `clients`**:
+  - Całkowicie wyeliminowano starą nomenklaturę `nodes` / `node_id` we wszystkich ścieżkach HTTP i połączeniach WebSocket na rzecz `clients` / `client_id` (np. `/v1/clients/`, `/v1/ws/clients/{client_id}`).
+  - Zaktualizowano endpointy routera po stronie Kontrolera (`src/controller/routers/clients.py`) oraz klienta REST we frontendzie (`src/controller/web/api.js`).
 
-- **Rozbudowa i Unifikacja Maszyny Stanów Satelity (`SatelliteState`)**:
-  - Zdefiniowano 6 precyzyjnych stanów w [`states.py`](file:///d:/Projekty/Regis/src/client/services/satellite/states.py): `INITIALIZING`, `WAITING`, `WAKEWORD`, `LISTENING`, `PROCESSING`, `SPEAKING`.
-  - Zunifikowano logikę przechodzenia stanów: każde wykonanie fazy (np. klatka WAKEWORD, nagranie zdania LISTENING, wysyłka WAV w PROCESSING, odtwarzanie mowy SPEAKING) stanowi niepodzielny krok. Sprawdzenie flagi pauzy odbywa się symetrycznie na naturalnych granicach etapów, bez żadnych kodowanych na sztywno wyjątków.
+- **Zintegrowana Rejestracja w Jednym Kroku (Single-Step WS Registration)**:
+  - Usunięto zbędny endpoint rejestracji HTTP REST.
+  - Rejestracja klienta odbywa się automatycznie w pierwszej ramce rejestracyjnej wysyłanej przez gniazdo WebSocket tuż po połączeniu. Wyrejestrowanie następuje automatycznie przy `WebSocketDisconnect`.
+  - Usunięto przestarzałe wywołanie `fetch_config_and_register()` z punktu wejścia klienta [`src/client/main.py`](file:///d:/Projekty/Regis/src/client/main.py).
 
-- **Uniwersalny Pakiet Sterowania Usługami (`service_control`)**:
-  - Skonsolidowano komendy w `ServiceCommand` na rzecz jednego, uniwersalnego interfejsu `SERVICE_CONTROL = "service_control"`.
-  - Usunięto z interfejsu sieciowego Kontrolera niskopoziomowe komendy systemowe (`START`, `STOP`, `RESTART`) na rzecz ochrony autonomii i bezpieczeństwa Węzła Klienta. Kontroler steruje wyłącznie stanami aktywności operacyjnej (`RESUME` / `PAUSE`).
-
-- **Silnie Typowane Kontrakty Konfiguracji Usług (`NodeServicesConfig`)**:
-  - W pliku [`src/protocol/schemas.py`](file:///d:/Projekty/Regis/src/protocol/schemas.py) zastąpiono nietypowane słowniki `dict[str, dict]` silnie typowanymi modelami Pydantic: `SatelliteConfig`, `AudioConfig`, `LLMConfig` oraz zbiorczym `NodeServicesConfig`.
-
-- **Naprawa Auto-Discovery i Stabilizacja Usług**:
-  - Dodano funkcję `reset_discovered_controller_url()` w [`controller_api.py`](file:///d:/Projekty/Regis/src/client/controller_api.py), unieważniającą bufor adresu Kontrolera po nieudanej próbie połączenia.
-  - Usunięto usterki importów i składni w `controller_api.py`, `satellite/__main__.py`, `llm/__main__.py` i `audio/__main__.py`.
+- **Wprowadzenie Klasy Bazowej Usług (`BaseService`)**:
+  - Utworzono moduł [`src/client/services/base.py`](file:///d:/Projekty/Regis/src/client/services/base.py) udostępniający zunifikowany interfejs dla mikrousług sidecar (`llm`, `audio`, `satellite`).
+  - `BaseService` automatyzuje: parsowanie `SERVICE_CONFIG`, utrzymywanie strumienia SSE z magistralą (`/internal/service_commands`), filtrowanie komend po nazwie usługi (`service_name`) oraz przesyłanie wyników zadań (`send_task_event`).
+  - Przeprowadzono refaktoryzację orkiestratorów usług: `llm/__main__.py`, `audio/__main__.py` oraz `satellite/__main__.py`, wspinając je na wspólny pniok `BaseService`.
+  - Usunięto powielaną logikę odbioru SSE z `src/client/services/satellite/network.py`.
 
 ---
 
 ## 2. Aktualny Stan Kodu
 
-- **Rejestr Usług (`src/client/services/`)**:
-  - `satellite/`: Pełna, nowoczesna architektura (spłaszczona, zunifikowana, z typowanymi stanami i dyspozytorem).
-  - `audio/`: Działa stabilnie w trybie Sidecar, przygotowana do kolejnej unifikacji.
-  - `llm/`: Działa stabilnie w trybie Sidecar, przygotowana do kolejnej unifikacji.
-- **Protokoły i Schematy**:
-  - `src/protocol/schemas.py`: Zawiera silnie typowane modele Pydantic dla konfiguracji usług oraz uniwersalne komendy `SERVICE_CONTROL`.
+- **Zarządzanie Usługami (`src/client/services/`)**:
+  - `base.py`: Klasa bazowa `BaseService` definiująca cykl życia i komunikację wszystkich bezportowych mikrousług.
+  - `llm/`, `audio/`, `satellite/`: Refaktoryzowane, spłaszczone i zunifikowane orkiestratory dziedziczące po `BaseService`.
+- **Sieć i Protokół**:
+  - WebSocket używa wyłącznie ścieżek `/v1/ws/clients/{client_id}`.
+  - `src/client/main.py` inicjalizuje połączenie i rejestrację reaktywnie przez WebSocket.
 
 ---
 
 ## 3. Kroki Startowe dla Następnego Agenta
 
 1. Obowiązkowo zapoznaj się z [`docs/MANIFEST.md`](file:///d:/Projekty/Regis/docs/MANIFEST.md) oraz [`docs/AGENT_GUIDE.md`](file:///d:/Projekty/Regis/docs/AGENT_GUIDE.md).
-2. Sprawdź zadania w [`.agents/TASKS.md`](file:///d:/Projekty/Regis/.agents/TASKS.md).
-3. Następnym krokiem w refaktoryzacji może być przeprowadzenie unifikacji i spłaszczenia usług `audio` oraz `llm` na wzór zrobionego już modułu `satellite`.
+2. Sprawdź status aktywnych zadań w [`.agents/TASKS.md`](file:///d:/Projekty/Regis/.agents/TASKS.md).
+3. Następnym krokiem w rozwoju projektu mogą być testy integracyjne end-to-end (potok mowy STT -> LLM -> TTS między Satelitą a Kontrolerem).

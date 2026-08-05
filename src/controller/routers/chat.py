@@ -104,7 +104,7 @@ async def chat_audio_stream(
             yield f"data: {json.dumps(item)}\n\n"
             if item["type"] in ("done", "error"):
                 if not has_tts and client_id:
-                    await registry.node_manager.send_command(client_id, "service_control", {"action": "resume"})
+                    await registry.node_manager.send_command(client_id, "satellite_control", {"action": "resume"})
                 break
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

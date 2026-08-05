@@ -1,6 +1,0 @@
-{
-    "controller_url": "auto",
-    "ollama_url": "http://127.0.0.1:11434",
-    "worker_port": 8001,
-    "node_id": "node-cd7bd599"
-}

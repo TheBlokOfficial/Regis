@@ -75,20 +75,13 @@ def main() -> None:
     from client.internal_proxy import start_internal_proxy_thread
     start_internal_proxy_thread()
 
-    # 2. Łączność i Rejestracja w Kontrolerze (HTTP) -> Pobranie konfiguracji
-    initial_config = controller_api.fetch_config_and_register()
-
-    # 3. Uruchomienie stałego połączenia WebSocket dla zdarzeń czasu rzeczywistego
+    # 2. Uruchomienie stałego połączenia WebSocket dla zdarzeń czasu rzeczywistego i auto-rejestracji
     ws_thread = threading.Thread(target=controller_api.start_ws_client, daemon=True)
     ws_thread.start()
     controller_api.wait_for_ws_connection(timeout=3.0)
 
-    # 4. Uruchomienie mikrousług na podstawie konfiguracji z Kontrolera
-    if initial_config:
-        controller_api.apply_node_config(initial_config, from_registration=True)
-
     # 5. Uruchomienie zasobnika systemowego (pętla główna)
-    app_tray = pystray.Icon("regis_client", create_default_icon(), "Regis Client", menu=get_menu(quit_all))
+    app_tray = pystray.Icon("regis_client", create_default_icon(), "Regis", menu=get_menu(quit_all))
     app_tray.run()
 
 
