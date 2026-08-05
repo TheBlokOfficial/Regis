@@ -45,6 +45,11 @@ class SatelliteService(BaseService):
         )
         return EnergyVAD(threshold=threshold)
 
+    async def stop(self):
+        if self._listening_task and not self._listening_task.done():
+            self._listening_task.cancel()
+        self.audio_manager.stop_stream()
+
     async def start(self):
         loop = asyncio.get_running_loop()
         self.audio_manager.set_loop(loop)
@@ -61,9 +66,7 @@ class SatelliteService(BaseService):
             pass
         finally:
             # 3. Sprzątanie przy wyłączaniu
-            if self._listening_task and not self._listening_task.done():
-                self._listening_task.cancel()
-            self.audio_manager.stop_stream()
+            await self.stop()
 
     async def handle_command(self, command_type: str, payload: dict, task_id: str | None):
         from protocol.schemas import ServiceCommand

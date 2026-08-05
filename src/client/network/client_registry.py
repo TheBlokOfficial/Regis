@@ -46,7 +46,7 @@ def apply_service_config(config_data: dict, from_registration: bool = False) -> 
 
     # Pętla synchronizacji podprocesów mikrousług z wykorzystaniem silnych typów
     active_statuses = get_all_services_status()
-    target_services = [ServiceName.LLM.value, ServiceName.AUDIO.value, ServiceName.SATELLITE.value]
+    target_services = [ServiceName.OLLAMA_WORKER.value, ServiceName.LLM.value, ServiceName.AUDIO.value, ServiceName.SATELLITE.value]
 
     for s_name in target_services:
         display_label = DISPLAY_NAMES.get(s_name, s_name.capitalize())

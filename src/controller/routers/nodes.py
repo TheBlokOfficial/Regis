@@ -200,6 +200,16 @@ async def websocket_client_endpoint(websocket: WebSocket, client_id: str):
                     })
                 except Exception as e:
                     logging.error(f"Błąd parsowania WSCommandResult: {e}")
+            elif msg_type == "task_event":
+                try:
+                    await event_bus.publish({
+                        "type": "task_event",
+                        "node_id": node_id,
+                        "task_id": data.get("task_id"),
+                        "event": data.get("event")
+                    })
+                except Exception as e:
+                    logging.error(f"Błąd publikacji task_event: {e}")
             elif msg_type == "wake_check":
                 audio_nodes = registry.get_audio_nodes()
                 llm_nodes = registry.get_llm_nodes()

@@ -27,10 +27,8 @@ class SatelliteConfig(BaseModel):
 class LLMConfig(BaseModel):
     """Schemat kontraktu konfiguracyjnego usługi LLM."""
     model_name: str = "qwen3.5:9b"
-    port: int = 8001
     priority: int = 100
-    controller_url: str | None = None
-    mode: Literal["basic", "extended"] = "extended"
+
 
 class AudioConfig(BaseModel):
     """Schemat kontraktu konfiguracyjnego usługi Audio (STT + TTS)."""
@@ -107,8 +105,8 @@ class ClientRegistrationRequest(BaseModel):
 
         normalized = {}
         service_list = self.services if isinstance(self.services, list) else ["llm", "audio", "satellite"]
-        if "llm" in service_list or "worker" in service_list:
-            normalized["llm"] = {
+        if "ollama_worker" in service_list or "llm" in service_list or "worker" in service_list:
+            normalized["ollama_worker"] = {
                 "model_name": self.model_name or "qwen3.5:9b",
                 "priority": self.priority,
                 "mode": "extended",
@@ -176,6 +174,7 @@ class ServiceName(str, Enum):
     """Oficjalny wykaz nazw usług w systemie Regis."""
     SATELLITE = "satellite"
     AUDIO = "audio"
+    OLLAMA_WORKER = "ollama_worker"
     LLM = "llm"
 
 
@@ -190,9 +189,10 @@ ServiceAction = SatelliteAction
 
 
 class ServiceCommand(str, Enum):
-    """Oficjalny spis dopuszczalnych komend sieciowych dla usług."""
+    """Oficjalny spis komend domenowych przesyłanych z Kontrolera do usług."""
     PLAY_AUDIO = "play_audio"
     SATELLITE_CONTROL = "satellite_control"
+    CHAT_STREAM = "chat_stream"
 
 
 class SatelliteControlPayload(BaseModel):

@@ -51,8 +51,8 @@ def get_llm_nodes() -> list[dict]:
     for node in node_registry.values():
         services = node.get("services", {})
         s_keys = services.keys() if isinstance(services, dict) else services
-        if "llm" in s_keys or "worker" in s_keys:
-            cfg = services.get("llm") or services.get("worker", {}) if isinstance(services, dict) else {}
+        if "ollama_worker" in s_keys or "llm" in s_keys or "worker" in s_keys:
+            cfg = services.get("ollama_worker") or services.get("llm") or services.get("worker", {}) if isinstance(services, dict) else {}
             port = cfg.get("port", node.get("worker_port", 8001))
             nodes.append({
                 "id": node["id"],

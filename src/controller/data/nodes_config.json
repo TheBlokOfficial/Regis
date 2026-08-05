@@ -11,6 +11,10 @@
           "wakeword"
         ],
         "wakeword_local": true
+      },
+      "ollama_worker": {
+        "model_name": "qwen3.5:9b",
+        "priority": 100
       }
     }
   }

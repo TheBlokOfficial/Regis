@@ -43,6 +43,7 @@ def control_service(name: str, action: str | ProcessAction, config_data: dict = 
 DISPLAY_NAMES = {
     "satellite": "Satelita",
     "audio": "Audio (STT+TTS)",
+    "ollama_worker": "Ollama Worker",
     "llm": "LLM (Agent)",
 }
 
@@ -109,15 +110,26 @@ def _stop_service(name: str) -> bool:
     if name in _active_processes:
         proc = _active_processes[name]
         try:
-            proc.terminate()
-            proc.wait(timeout=3)
-        except Exception:
+            from client import service_bus
+            from client.ipc_schemas import SystemCommand
+            service_bus.push_command({"service": name, "command": SystemCommand.STOP.value})
+            
+            start_wait = time.time()
+            while time.time() - start_wait < 3.0:
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.1)
+
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=1.0)
+        except Exception as e:
+            logger.warning(f"[{tag}] Błąd łagodnego zatrzymywania: {e}")
             kill_process_tree(proc.pid)
             
         del _active_processes[name]
         _service_configs.pop(name, None)
         logger.info(f"[{tag}] Usługa została wyłączona.")
-    return True
     return True
 
 def stop_all_services() -> None:

@@ -50,14 +50,32 @@ def quit_all(icon=None) -> None:
     os._exit(0)
 
 
+_win_ctrl_handler = None
+
 def setup_signal_handlers() -> None:
     """Podłącza sygnały wyjścia z systemu operacyjnego do funkcji wyjścia."""
+    global _win_ctrl_handler
     atexit.register(quit_all)
     try:
         signal.signal(signal.SIGTERM, lambda signum, frame: quit_all())
         signal.signal(signal.SIGINT, lambda signum, frame: quit_all())
     except ValueError:
         pass  # Ignoruj jeśli nie jesteśmy w głównym wątku
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            PHANDLER_ROUTINE = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+            
+            def _win_handler(ctrl_type):
+                quit_all()
+                return True
+
+            _win_ctrl_handler = PHANDLER_ROUTINE(_win_handler)
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(_win_ctrl_handler, True)
+        except Exception:
+            pass
 
 
 def main() -> None:

@@ -2,7 +2,7 @@ import asyncio
 import json
 import httpx
 from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import threading
@@ -75,6 +75,23 @@ async def task_event(request: Request):
     if task_id and event:
         controller_api.send_task_result(task_id, event)
     return {"ok": True}
+
+
+@app.post("/internal/tool_execute")
+async def proxy_tool_execute(request: Request):
+    """
+    Przekazuje wywołanie narzędzia z podprocesu do Kontrolera.
+    """
+    data = await request.json()
+    controller_url = controller_api.get_controller_url()
+    target_url = f"{controller_url}/v1/tools/execute"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.post(target_url, json=data)
+            return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": f"Błąd proxy narzędzia: {e}"})
 
 
 @app.post("/internal/audio")

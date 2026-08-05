@@ -22,6 +22,10 @@ class BaseService:
         self.config = config_obj
         self.internal_proxy_url = getattr(self.config, "internal_proxy_url", "http://127.0.0.1:47831")
 
+    async def stop(self):
+        """Metoda czyszcząca wywoływana przy zamykaniu usługi. Do nadpisania w klasach potomnych."""
+        pass
+
     async def start(self):
         """Metoda inicjalizująca usługę. Do opcjonalnego nadpisania, z wywołaniem super().start() lub listen_for_commands()."""
         await self.listen_for_commands()
@@ -45,6 +49,17 @@ class BaseService:
                                 if target_service != self.service_name:
                                     continue
                                 command_type = cmd_event.get("command")
+                                
+                                # Graceful shutdown na polecenie magistrali
+                                from client.ipc_schemas import SystemCommand
+                                if command_type in (SystemCommand.STOP, SystemCommand.SHUTDOWN, SystemCommand.STOP.value, SystemCommand.SHUTDOWN.value):
+                                    logging.info(f"[{self.service_name}] Otrzymano sygnał zamknięcia ({command_type}). Rozpoczynam wyczyszczenie zasobów...")
+                                    try:
+                                        await self.stop()
+                                    except Exception as e:
+                                        logging.error(f"[{self.service_name}] Błąd podczas zatrzymywania: {e}")
+                                    sys.exit(0)
+                                    
                                 payload = cmd_event.get("payload", {})
                                 task_id = cmd_event.get("task_id")
                                 asyncio.create_task(self.handle_command(command_type, payload, task_id))

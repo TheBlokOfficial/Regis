@@ -38,11 +38,9 @@ async def chat_stream(request: ChatRequest):
 
     payload = {"message": request.message, "controller_url": controller_url, "room": room}
 
-    loop = asyncio.get_event_loop()
     q: asyncio.Queue = asyncio.Queue()
 
-    thread = threading.Thread(target=proxy_sse_to_queue, args=(payload, q, loop, False, None))
-    thread.start()
+    asyncio.create_task(proxy_sse_to_queue(payload, q, is_audio=False, audio_bytes=None))
 
     async def event_generator():
         while True:
@@ -82,11 +80,9 @@ async def chat_audio_stream(
     if room:
         payload["room"] = room
 
-    loop = asyncio.get_event_loop()
     q: asyncio.Queue = asyncio.Queue()
 
-    thread = threading.Thread(target=proxy_sse_to_queue, args=(payload, q, loop, True, audio_bytes))
-    thread.start()
+    asyncio.create_task(proxy_sse_to_queue(payload, q, is_audio=True, audio_bytes=audio_bytes))
 
     has_tts = False
 
