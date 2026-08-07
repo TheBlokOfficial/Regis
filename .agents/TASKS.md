@@ -61,3 +61,33 @@
   - `app_state.py` jako moduł z globalnymi zmiennymi jest krokiem przejściowym. Docelowo `AppState` przez `Depends()` w routerach.
 - [ ] **Wdrożenie Dwuwarstwowych Sub-Agentów**:
   - Implementacja wzorca Mixture of Specialist Sub-Agents opisanego w `docs/hierarchical_subagents_rfc.md`.
+- [ ] **Pamięć Długoterminowa** `[ARCH]`:
+  - Kluczowy brakujący feature odróżniający Regisa od HA AI. Stary system Notatnika wycięty. Nowe rozwiązanie (wektorowe lub inne) wymaga osobnej sesji architektonicznej.
+- [ ] **Scheduler Zadań Agenta** `[ARCH]`:
+  - Mechanizm odroczonych "szturchnięć" agenta (np. "sprawdź za godzinę czy nikogo nie ma w domu"). Niezaprojektowany, wymaga sesji architektonicznej.
+- [ ] **Docker Deployment** `[DIST]`:
+  - Cel dystrybucyjny: Regis jako obraz Docker na mini PC, analogia do instalacji HA. Ustalony jako docelowy model dystrybucji w sesji 2026-08-07. Niezaimplementowany.
+- [ ] **Formalne Interfejsy Warstwy 2** `[ARCH]`:
+  - `ILLMProvider`, `ISTTProvider`, `ITTSProvider`, `ISatellite` istnieją jako koncepcja w MANIFEST §3.1 — nie są jeszcze sformalizowane jako klasy bazowe w kodzie.
+
+---
+
+## Rejestr Zrealizowanych Zadań (Sesja 2026-08-07 - Filozofia i Dokumentacja)
+
+- [x] **Trójwarstwowy Model Architektury** — `docs/MANIFEST.md`:
+  - Nowa sekcja §3 z modelem Core / Providers & Channels / Integrations.
+  - Diagram ASCII, tabela interfejsów, opis Regis Desktop jako bundle warstwy 2.
+- [x] **Redefinicja Tożsamości Projektu** — `docs/MANIFEST.md §1`:
+  - Regis jako produkt (nie framework), z panelem webowym, analogia do HA.
+  - Dodany akapit "Istota projektu": agent interaktuje z oprogramowaniami jak człowiek.
+  - Explicite odróżnienie od LangChaina. Zakres osobisty/domowy, nie enterprise.
+- [x] **Przepisanie Persony Agenta** — `docs/MANIFEST.md §6`:
+  - Persona jest user-defined — system dostarcza mechanizm, nie treść.
+  - Usunięto prywatną preferencję ("charakterny, rzeczowy i bezpośredni") jako hardkodowany standard.
+  - Cele projektowe systemu jako intencje, nie twierdzenia.
+- [x] **Ujednolicenie Nazewnictwa**:
+  - "Kontroler" → "Regis" / "system Regis". "Windows Node" → "Regis Desktop". Instalator: `RegisDesktopSetup.exe`.
+- [x] **Aktualizacja AGENT_GUIDE.md**:
+  - Tabela decyzji: dodano trójwarstwowy model.
+  - Lista błędów: dodano punkt o mieszaniu warstw między Core/Providers/Integrations.
+

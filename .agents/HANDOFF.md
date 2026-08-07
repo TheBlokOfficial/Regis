@@ -1,81 +1,73 @@
-# HANDOFF — Stan Projektu Regis po Sesji 2026-08-07
+# HANDOFF — Stan Projektu Regis po Sesji 2026-08-07 (Filozofia)
 
 ## Co zostało zrobione w tej sesji
 
-### Pełna refaktoryzacja rdzenia kontrolera (`src/controller/`)
+Sesja była w całości filozoficzna i dokumentacyjna — zero zmian w kodzie. Przeprowadzono fundamentalne przeformułowanie filozofii projektu i zaktualizowano dokumenty `docs/MANIFEST.md` i `docs/AGENT_GUIDE.md`.
 
-Przeprowadzono kompleksową refaktoryzację modułu `controller` w dwóch głównych obszarach:
+### 1. Trójwarstwowy model architektury (nowy rdzeń MANIFEST §3)
 
-#### 1. Rozbicie `core/client_registry.py` (globalny worek → 4 dedykowane moduły)
+Ustalono i udokumentowano trójwarstwowy podział systemu:
 
-Stary plik `client_registry.py` miał 7 odpowiedzialności i był importowany przez 9 plików jako globalny singleton. Zastąpiono go przez:
+- **Warstwa 1 — Core (Układ Nerwowy):** pętla ReAct, session manager, tool registry (mechanizm), abstrakcyjne interfejsy (`ILLMProvider`, `ISTTProvider`, `ITTSProvider`, `ISatellite`). Core nie zawiera referencji do konkretnych providerów ani narzędzi.
+- **Warstwa 2 — Providers & Channels (Zmysły i Ręce):** wymienna cybernetyka. OpenRouter/Ollama, Whisper/Cloud STT, Piper/Cloud TTS, ESP32/Desktop/Terminal. **Regis Desktop** jest szczególnym przypadkiem — bundluje wiele implementacji warstwy 2 jako menedżer usług (satelita + lokalny LLM + STT + TTS).
+- **Warstwa 3 — Integrations (Narzędzia):** Home Assistant, web, pliki, kamery, własne skrypty. W pełni opcjonalne, rejestrują się w Tool Registry przy starcie.
 
-- **`core/app_state.py`** — centralny rejestr zmiennych stanu runtime (`ha_client`, `tools_registry`, `integration_registry`, `_settings_cache`, `controller_start_time`)
-- **`core/connection_manager.py`** — klasa `ClientConnectionManager` + instancja `client_manager` (WebSocket transport)
-- **`core/client_store.py`** — rejestr aktywnych klientów, persystencja (`clients.json`), kwerendy po typie usługi (`get_llm_clients`, `get_audio_clients`, `get_satellite_clients`)
-- **`core/session_store.py`** — historia konwersacji per sesja/satelita (`conversation_sessions`, `session_last_interaction_times`, `get/append/clear_session_history`)
-- **`core/heartbeat.py`** — wydzielona pętla heartbeat czyszcząca nieaktywne sesje i martwe połączenia
+### 2. Redefinicja tożsamości projektu (MANIFEST §1)
 
-Stary `client_registry.py` usunięty. Clean break — wszystkich 9 importerów zaktualizowanych.
+Stara definicja ("lekka warstwa abstrakcji między domownikami a urządzeniami") zastąpiona przez:
+- Regis jako **autonomiczne oprogramowanie agenta** z panelem webowym — produkt, nie framework
+- **Istota projektu:** Regis interaktuje z oprogramowaniami tak jak człowiek — widzi "włączona/wyłączona", nie MQTT/Zigbee. HA z setkami integracji jest dla Regisa jedną pozycją w `integrations/`.
+- Regis jest projektem **osobistym** — nie enterprise, nie scraping, nie korporacja.
+- Explicite odróżnienie od LangChaina: LangChain = biblioteka dla programistów, Regis = produkt który instalujesz i konfigurujesz.
 
-#### 2. Rozbicie `llm/orchestrator.py` (442 linie → ~70 linii fasady)
+### 3. Persona agenta przepisana (MANIFEST §6)
 
-Monolityczna `proxy_sse_to_queue()` zastąpiona przez warstwową architekturę pipeline:
+Stary opis ("Regis jest charakterny, rzeczowy i bezpośredni") był prywatną preferencją wpisaną jako standard produktu. Zastąpiony przez:
+- **Persona jest user-defined** — system dostarcza mechanizm, nie treść
+- **Zasada spójności:** cokolwiek użytkownik skonfiguruje, musi być spójne we wszystkich trybach
+- **Cele projektowe systemu** (nie persony): szybkość, bezpośredniość, niezawodność — jako *intencje*, nie twierdzenia
 
-- **`llm/pipeline/session_manager.py`** — `save_and_publish(satellite_id, turn)` eliminuje duplikację logiki zapisu historii i EventBus (była powtórzona dwa razy)
-- **`llm/pipeline/cloud.py`** — ścieżka OpenRouter (bezpośrednie wywołanie backendu na Kontrolerze)
-- **`llm/pipeline/worker.py`** — ścieżka STT→LLM→TTS z mechanizmem `_pending_tasks` (słownik `task_id → asyncio.Queue`), który zastąpił broken `event_bus.subscribe(callback)` — ścieżka worker była całkowicie niefunkcjonalna
-- **`llm/orchestrator.py`** — cienka fasada (~70 linii): wybiera cloud vs. worker i deleguje
+### 4. Nazewnictwo ujednolicone
 
-#### 3. Granica `tools/` ↔ `llm/prompt/`
+- Dawny "Kontroler" → **"Regis"** lub "system Regis" (to jest cały system, nie jeden komponent)
+- Dawny "Windows Node" → **"Regis Desktop"** (menedżer usług warstwy 2)
+- Dawna "Satelita" → pojęcie zachowane wewnętrznie; użytkownikowi: "Regis Desktop" lub "Regis ESP32"
+- Instalator: `RegisDesktopSetup.exe` (nie `RegisNodeSetup.exe`)
 
-- Utworzono **`tools/schemas.py`** jako single point of definition dla `BASE_TOOLS_SCHEMA`
-- `llm/prompt/tools_schema.py` stał się re-eksportem z `tools/schemas.py`
-- Odwrócona zależność (tools → llm) została naprawiona
+### 5. AGENT_GUIDE.md zaktualizowany
 
-#### 4. Poprawki 4 błędów krytycznych
-
-- `save_cloud_providers()` — cache nie był odświeżany po zapisie (naprawiono bezwarunkowym `reload_cloud_providers()`)
-- `OllamaBackend(model_name="worker")` — hardkodowana nazwa zamiast `worker.get("model_name")`
-- `/v1/rooms` — `config.load_rooms()` nie istniało (naprawiono na `config.load(RoomsConfig).root`)
-- `task_event` w `api/clients.py` — ślepa publikacja do EventBus zastąpiona `worker.route_task_event(task_id, event)`
-
-### Wynik weryfikacji
-
-```
-python -c "import controller.app; print('OK')"
-→ OK (exit code 0)
-```
-
-Brak referencji do `core.client_registry` w żadnym pliku kontrolera.
+- Tabela "Decyzje Już Podjęte" — dodano trójwarstwowy model jako rozstrzygniętą decyzję
+- Lista "Typowe Błędy" — dodano punkt #8 o mieszaniu warstw (np. konkretny provider w Core)
 
 ---
 
 ## Aktualny stan kodu
 
-Architektura `src/controller/core/` jest teraz spójna ze strukturą modułu `src/client/` (czytelne warstwy, jedno zadanie per plik). Orkiestrator jest cienką fasadą. Zależności między modułami są jednokierunkowe.
+**Kod nie był ruszany w tej sesji.** Wszystkie zmiany dotyczą wyłącznie dokumentacji:
+- `docs/MANIFEST.md` — całkowicie przepisany (sekcje 1 i 3 nowe, sekcja 6 przepisana)
+- `docs/AGENT_GUIDE.md` — dwa dodatki (tabela decyzji + lista błędów)
 
-### Pliki które NIE były ruszane w tej sesji
+Ostatni smoke test kodu był z poprzedniej sesji:
+```
+python -c "import controller.app; print('OK')"
+→ OK (exit code 0)
+```
 
-- `llm/backends/` — `ollama.py`, `openrouter.py` (zawierają własne pętle ReAct — dalszy potencjalny refaktoring)
-- `integrations/` — bez zmian
-- `config/` — bez zmian
-- `llm/session/history.py`, `llm/models.py` — bez zmian
-- Moduły `src/client/`, `src/protocol/` — bez zmian
+---
+
+## Otwarte kwestie do przyszłych sesji
+
+1. **Pamięć długoterminowa** — wskazana jako kluczowy brakujący feature odróżniający Regisa od HA AI. Stary system Notatnika wycięty, nowe rozwiązanie niezaprojektowane. To jest realny priorytet architektoniczny.
+2. **Scheduler zadań agenta** — "zgaś światło za godzinę jeżeli..." wymaga mechanizmu odroczonych "szturchnięć" agenta. Niezaprojektowane.
+3. **Docker deployment** — cel dystrybucyjny ustalony w dyskusji. Regis jako obraz Docker na mini PC (analogia do HA). Nie jest jeszcze udokumentowany ani zaimplementowany.
+4. **Formalne interfejsy warstwy 2** — `ILLMProvider`, `ISTTProvider` etc. istnieją jako koncepcja, nie jako klasy bazowe w kodzie.
 
 ---
 
 ## Precyzyjne kroki startowe dla następnego agenta
 
-1. Wczytaj `docs/MANIFEST.md` i `docs/AGENT_GUIDE.md` zgodnie z procedurą startową.
-2. Uruchom smoke test: `cd src && python -c "import controller.app; print('OK')"` — powinien przejść.
-3. Jeśli użytkownik chce kontynuować refaktoryzację, kolejne obszary to:
-   - **`llm/backends/`** — `ollama.py` i `openrouter.py` mają własne pętle ReAct (140-200 linii każdy). Po refaktoryzacji `worker.py` przejął logikę pętli, więc backendy mogą zostać uproszczone do czystych wrapperów HTTP.
-   - **FastAPI Dependency Injection** — `app_state.py` jako moduł z zmiennymi globalnymi jest krokiem przejściowym. Docelowo DI przez `Depends()` w routerach.
-4. Stary plik `core/client_registry.py` nie istnieje — nie próbuj go przywrócić.
-
----
-
-## Zadania TASKS.md
-
-Zadanie "Optymalizacja i Dekompozycja Orkiestratora" zostało zrealizowane w tej sesji (oznaczone jako [x]).
+1. Wczytaj `docs/MANIFEST.md` — jest teraz znacząco inny od wersji z poprzednich sesji. Sekcja 1 i 3 są nowe, §6 przepisana.
+2. Wczytaj `docs/AGENT_GUIDE.md` — zaktualizowana tabela decyzji i lista błędów.
+3. Uruchom smoke test: `cd src ; python -c "import controller.app; print('OK')"`.
+4. Jeśli użytkownik chce kontynuować refaktoryzację kodu, patrz poprzedni HANDOFF — kolejne obszary to `llm/backends/` i FastAPI DI.
+5. Jeśli użytkownik chce projektować pamięć długoterminową lub scheduler — to są nowe, niezaprojektowane obszary wymagające sesji architektonicznej.

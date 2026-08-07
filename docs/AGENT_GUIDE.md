@@ -106,6 +106,7 @@ Poniższe decyzje były świadomie przemyślane i rozstrzygnięte. Propozycja ic
 | Historia konwersacji przechowuje tylko pełne tury (user+assistant), nie ślad ReAct | Ślad ReAct (myśli + wywołania) zaśmieca kontekst i powoduje amnezję przy długich sesjach |
 | Dystrybucja Windows = Inno Setup Installer + Python systemowy (nie PyInstaller) | PyInstaller odrzucony: black box, podejrzany wygląd, opóźnienia startu. Szczegóły: `docs/distribution_rfc.md` |
 | `worker` na RPi5 hostuje Parser offline i awaryjny STT — nie jest production LLM workerem | RPi5 pełni rolę centrum bezpieczeństwa (last resort). Produkcyjny LLM pochodzi od providera (cloud lub Windows Node). |
+| **Trójwarstwowy model architektury: Core / Providers & Channels / Integrations** | Rozstrzygnięta decyzja filozoficzna (sesja 2026-08-07). Core = pętla ReAct + abstrakcyjne interfejsy. Warstwa 2 = wymienna cybernetyka (LLM, STT, TTS, satelity). Warstwa 3 = narzędzia (HA, web, itp.). Granice warstw są twarde — nie mieszaj implementacji między warstwami. |
 
 ---
 
@@ -163,7 +164,8 @@ Lista błędów, które agenty popełniają regularnie w tym projekcie:
 5. **Tight-coupling do konkretnego providera LLM/STT/TTS** — system jest agnostyczny wobec backendu. Wywołania bezpośrednio do OpenRouter lub Ollamy poza warstwą abstrakcji są błędem. Każdy provider musi implementować wspólny interfejs.
 6. **Refaktoryzacja bez zgody** — zmiana struktury kodu wymaga planu i akceptacji, nie jest "przy okazji".
 7. **Ignorowanie hardcode'owanych adresów IP** — są świadomie tymczasowe. Nie "naprawiaj" ich bez polecenia.
-8. **Brak izolacji przy tworzeniu konfiguracji** — architektura znajduje się obecnie w trakcie ewolucji z powodu długu dystrybucyjnego. Scentralizowane pliki z `data/` (jak `settings.json`) powodują konflikty podczas deploymentu i są wycofywane na rzecz specyficznych profili (`settings.<PROFILE>.json`) lub lokalnych zmiennych `.env`. Zapoznaj się z raportem `docs/architectural_debt_report.md` zanim zaczniesz rzeźbić w ogólnej konfiguracji.
+8. **Mieszanie warstw architektury** — implementowanie konkretnego providera (np. Whisper, OpenRouter) bezpośrednio w Core zamiast przez interfejs (`ISTTProvider`, `ILLMProvider`) jest błędem architektonicznym. Analogicznie: narzędzie integracyjne (np. wywołanie HA API) nie może siedzieć w Core — należy do `integrations/`. Każda warstwa zna tylko interfejsy warstwy wyżej, nigdy konkretne implementacje.
+9. **Brak izolacji przy tworzeniu konfiguracji** — architektura znajduje się obecnie w trakcie ewolucji z powodu długu dystrybucyjnego. Scentralizowane pliki z `data/` (jak `settings.json`) powodują konflikty podczas deploymentu i są wycofywane na rzecz specyficznych profili (`settings.<PROFILE>.json`) lub lokalnych zmiennych `.env`. Zapoznaj się z raportem `docs/architectural_debt_report.md` zanim zaczniesz rzeźbić w ogólnej konfiguracji.
 
 ---
 

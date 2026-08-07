@@ -6,8 +6,15 @@ Ten dokument definiuje duszę projektu Regis. Służy jako najwyższy kompas dla
 
 ## 1. Czym jest Regis?
 
-Projekt to **lekka i błyskawiczna warstwa abstrakcji** pomiędzy domownikami a urządzeniami Smart Home.
-Jego siłą napędową nie jest paląca potrzeba, lecz czysta, technologiczna pasja (hobby). Celem samym w sobie jest zbudowanie **autonomicznej, modularnej i perfekcyjnie zorganizowanej architektury** zarządzania domem. Z tego powodu jakość, spójność i czystość kodu są tu ważniejsze niż szybkie dostarczanie funkcji (tzw. "dowożenie").
+Regis to **autonomiczne oprogramowanie agenta** — instalujesz je na dedykowanym sprzęcie (np. RPi5, mini PC) i od razu otrzymujesz działający system z własnym panelem webowym. Otwierasz przeglądarkę, widzisz dashboard: status węzłów, satelit, aktywnych sesji i integracji. Integracje dodajesz **do Regisa** — nie na odwrót.
+
+Regis nie jest frameworkiem ani biblioteką. Jest produktem — tak jak Home Assistant jest produktem do smart home, Regis jest produktem do prowadzenia agenta w złożonym środowisku osobistym i domowym. Jego rdzeń to pełnoprawny agent (pętla ReAct, zarządzanie sesjami, rejestr narzędzi) z pluginowalną warstwą zmysłów (LLM, STT, TTS, kanały komunikacji) i opcjonalnymi integracjami narzędziowymi (HA, web, kamery). Możesz go rozszerzyć — ale działa i bez żadnych rozszerzeń.
+
+**Istota projektu:** Regis to oprogramowanie które interaktuje z innymi oprogramowaniami w dokładnie taki sam sposób jak człowiek. Nie interesuje go low-level — protokoły, sterowniki, sposób w jaki żarówka Zigbee negocjuje połączenie z koncentratorem. Regis widzi to co widzi człowiek patrzący na dashboard: włączona lub wyłączona. Dlatego Home Assistant — platforma z setkami integracji i całym ekosystemem community — jest z perspektywy Regisa po prostu jedną integracją w katalogu `integrations/`. Regis nie zarządza urządzeniami. Pyta systemy które to robią. To jest właściwy poziom abstrakcji, nie ograniczenie.
+
+Regis jest projektem osobistym — zaprojektowanym do poruszania się w złożonym środowisku domowym i osobistej przestrzeni użytkownika. Nie jest narzędziem enterprise. Nie służy do scrapowania internetu, przetwarzania tysięcy dokumentów ani obsługi korporacyjnych procesów — choć agent ReAct technicznie byłby do tego zdolny. Fakt że coś jest możliwe, nie znaczy że powinno tu trafić. Regis to asystent z osobowością, nie platforma do automatyzacji.
+
+Projekt jest hobby — jakość, spójność i czystość architektury są ważniejsze niż szybkie dostarczanie funkcji.
 
 ---
 
@@ -19,17 +26,93 @@ Największym grzechem w tym projekcie jest implementacja funkcji "na siłę", ty
 
 ---
 
-## 3. Architektura (Stan Obecny)
+## 3. Model Architektury — Trójwarstwowy
 
-Poniższy opis odnosi się do **aktualnej konfiguracji** systemu. Architektura docelowa opisana jest w §3.6 — jest zbliżona do obecnej, z tym że Windows Node pełni rolę opcjonalnego, lokalnego providera zamiast wymaganego węzła produkcyjnego.
+Architektura Regisa dzieli się na trzy warstwy o ściśle zdefiniowanych rolach i granicach. Każda warstwa komunikuje się z warstwą wyżej wyłącznie przez abstrakcyjne interfejsy — nigdy bezpośrednio przez konkretne implementacje.
 
-### 3.1 Kontroler (`controller`)
+### 3.1 Warstwa 1 — Core (Układ Nerwowy)
+
+Core to wszystko, co stanowi samego agenta. Instalując Regisa, dostajesz kompletny mózg i układ nerwowy — gotowy do działania po podłączeniu zmysłów. Core nie wymaga konfiguracji, żeby *istnieć* — wymaga podłączonych providerów, żeby *działać*.
+
+**Zawartość:**
+- **Pętla ReAct** — wewnętrzny monolog `<thought>`, routing narzędzi, obsługa tury konwersacji
+- **Session Manager** — historia konwersacji per sesja, przechowywanie i odtwarzanie kontekstu
+- **Tool Registry** — mechanizm rejestracji i wywoływania narzędzi (nie konkretne narzędzia — tylko mechanizm)
+- **Abstrakcyjne interfejsy dla zmysłów:**
+  - `ILLMProvider` — gniazdo na model językowy
+  - `ISTTProvider` — gniazdo na transkrypcję mowy
+  - `ITTSProvider` — gniazdo na syntezę mowy
+  - `ISatellite` — gniazdo na kanał komunikacji z użytkownikiem
+- **Protokół wewnętrzny** — schematy i kontrakty komunikacyjne między komponentami
+
+**Zasada:** Core nie zawiera żadnych referencji do konkretnych providerów, satelit ani narzędzi. Wie tylko, że *coś* implementuje dany interfejs.
+
+**Walidacja przy starcie:** Przynajmniej jedno `ILLMProvider` musi być podłączone. Bez LLM agent nie funkcjonuje — to fundamentalne wymaganie, inaczej niż brak narzędzi (bez integracji HA agent po prostu nic nie może *zrobić* w smart home, ale nadal istnieje).
+
+### 3.2 Warstwa 2 — Providers & Channels (Zmysły i Ręce)
+
+Wymienna cybernetyka agenta. Konkretne implementacje podłączane do interfejsów Core przy starcie. Bez warstwy 2 Core istnieje, ale nie funkcjonuje. Zmiana providera STT nie wymaga dotknięcia Core — wymaga jedynie zamiany implementacji w tej warstwie.
+
+| Interfejs | Przykładowe implementacje |
+|---|---|
+| `ILLMProvider` | OpenRouter, Ollama, Anthropic API |
+| `ISTTProvider` | Faster-Whisper (lokalny), Cloud STT API |
+| `ITTSProvider` | Piper (lokalny), Cloud TTS API |
+| `ISatellite` | ESP32, terminal, HTTP API |
+
+**Regis Desktop** jest szczególnym przypadkiem warstwy 2 — to **menedżer usług** który bundluje wiele implementacji warstwy 2 w jednej aplikacji: satelitę (`ISatellite`), lokalny LLM (`ILLMProvider`), lokalne STT (`ISTTProvider`) i lokalne TTS (`ITTSProvider`). Każda z tych usług rejestruje się w Regisie niezależnie. Użytkownik może włączyć lub wyłączyć konkretne usługi — np. uruchomić tylko STT i TTS lokalnie, a LLM pozostawić w chmurze.
+
+**Kluczowa właściwość:** Warstwa 2 jest wymienialna bez zmian w Core i bez zmian w warstwie 3. Możesz dołożyć nową satelitę (np. aplikację mobilną) i żaden istniejący kod poza warstwą 2 nie wymaga modyfikacji.
+
+### 3.3 Warstwa 3 — Integrations (Narzędzia)
+
+Konkretne zdolności agenta do działania w świecie zewnętrznym. W pełni opcjonalne — agent funkcjonuje bez żadnej integracji, po prostu nie może nic *zrobić* poza rozmową.
+
+**Mechanizm:** Każda integracja rejestruje swoje narzędzia w `ToolRegistry` przy starcie. Core nie wie skąd narzędzia pochodzą — widzi tylko ich sygnatury i wywołuje je przez abstrakcję.
+
+**Przykłady:** Home Assistant (smart home), przeglądarka internetowa, kamery IP, MQTT, własne skrypty, dowolny endpoint z sensownym zastosowaniem.
+
+**Dodanie nowej integracji:** nowy katalog w `integrations/`, rejestracja narzędzi w `ToolRegistry`. Żadne inne warstwy nie wymagają zmian.
+
+### 3.4 Diagram
+
+```
+┌───────────────────────────────────────────────────────┐
+│  WARSTWA 1 — CORE (Układ Nerwowy)                     │
+│                                                       │
+│  [ReAct Loop]    [Session Manager]    [Tool Registry] │
+│       │                                    │          │
+│  [ILLMProvider] [ISTTProvider] [ITTSProvider] [ISatellite]
+└───────────────────────┬───────────────────────────────┘
+                        │ abstrakcyjne interfejsy
+         ┌──────────────┴──────────────────┐
+         ▼                                 ▼
+┌──────────────────────┐   ┌───────────────────────────┐
+│  WARSTWA 2           │   │  WARSTWA 3                │
+│  Providers &         │   │  Integrations (Narzędzia) │
+│  Channels            │   │                           │
+│                      │   │  Home Assistant           │
+│  OpenRouter / Ollama │   │  Web / Pliki / Kamery     │
+│  Whisper / Cloud STT │   │  MQTT / własne API        │
+│  Piper / Cloud TTS   │   │  ...                      │
+│  ESP32 / Desktop     │   │                           │
+│  Terminal / HTTP API │   │                           │
+└──────────────────────┘   └───────────────────────────┘
+```
+
+---
+
+## 3.5 Referencyjna Implementacja (Przykładowy Deployment)
+
+> Poniższe sekcje opisują **konkretną implementację referencyjną** — nie definicję systemu. RPi5, Windows Node i ESP32 to implementacje warstwy 2. Architektura Regisa jest od nich niezależna i może być wdrożona na innym sprzęcie lub z innymi kanałami komunikacji.
+
+### Kontroler (`controller`)
 - **Rola:** Mózg systemu i jedyne źródło prawdy. Zarządza rejestrem aktywnych węzłów roboczych, routingiem sesji oraz wykonywaniem narzędzi Home Assistant.
 - **Deployment:** Zawsze i tylko Raspberry Pi 5 (Linux). Singleton — może istnieć dokładnie jedna instancja. Dystrybuowany jako pakiet `.whl`.
 - **Kluczowa zasada:** Kontroler to lekki daemon — nigdy nie hostuje modelu LLM. Jest jedynym punktem komunikacji z Home Assistant; węzły robocze nigdy nie mają dostępu do HA bezpośrednio.
 - **Routing:** Kontroler wybiera najlepszy dostępny węzeł (preferuje wyższy tier) dla każdej nowej sesji. Graceful migration między aktywnymi sesjami nie jest zaimplementowana — system działa na zasadzie best-effort.
 
-### 3.2 Węzeł roboczy (`worker`) — Linux / RPi5
+### Węzeł roboczy (`worker`) — Linux / RPi5
 - **Rola:** Zawsze uruchomiony na RPi5 komponent bezpieczeństwa systemu. Hostuje dwa serwisy offline:
   1. **Parser offline** — lekki model zdolny do pracy na RPi5, z Structured Outputs. Obsługuje proste komendy urządzeń gdy żaden pełny provider LLM nie jest dostępny.
   2. **Awaryjny STT** — lekki model Whisper do transkrypcji audio w trybie offline.
@@ -37,20 +120,20 @@ Poniższy opis odnosi się do **aktualnej konfiguracji** systemu. Architektura d
 - **Uwaga:** RPi5 nie ma podłączonego mikrofonu — **nie nagrywa dźwięku samodzielnie**. STT działa wyłącznie na danych strumieniowanych przez Satelity.
 - **Status:** Parser i awaryjny STT są ostatnią linią obrony — aktywowane gdy system przechodzi w tryb fallback (brak przynajmniej jednego providera spośród STT, LLM, TTS). Nie są częścią normalnej ścieżki produkcyjnej.
 
-### 3.3 Węzeł (`node`) — Windows PC
-- **Rola:** Pełnoprawna **aplikacja Windows** z interfejsem terminalowym. Łączy trzy warstwy w jedną całość: UI (dashboard, monitor konwersacji), Worker LLM (inferencja lokalna) i Satellite (przechwytywanie audio). Nie jest to wyłącznie "usługa w tle" — terminal UI jest pierwszorzędnym elementem. Ikona w pasku zadań to jedynie mechanizm życia procesu.
-- **Deployment:** Dystrybuowany jako **Windows Installer** (`RegisNodeSetup.exe`, Inno Setup) — wymaga Python zainstalowanego w systemie.
-- **Rola producencyjna:** Opcjonalna. W typowej produkcji Windows Node nie jest uruchomiony — system korzysta z providerów chmurowych. Gdy jest aktywny, automatycznie rejestruje się jako lokalny provider STT, LLM i TTS.
+### Regis Desktop (Menedżer Usług Warstwy 2) — Windows PC
+- **Rola:** Pełnoprawna **aplikacja Windows** z interfejsem terminalowym. Jest menedżerem usług bundlującym wiele implementacji warstwy 2 w jednej aplikacji: satelitę (VAD, WakeWord, audio I/O), lokalny worker LLM (Ollama), lokalne STT (Faster-Whisper) i lokalne TTS (Piper). Każda z tych usług rejestruje się w Regisie niezależnie — użytkownik może włączać i wyłączać konkretne usługi wedle potrzeb.
+- **Deployment:** Dystrybuowany jako **Windows Installer** (`RegisDesktopSetup.exe`, Inno Setup) — wymaga Python zainstalowanego w systemie.
+- **Rola producencyjna:** Opcjonalna. W typowej produkcji Regis Desktop nie jest uruchomiony — system korzysta z providerów chmurowych. Gdy jest aktywny, automatycznie rejestruje się jako lokalny provider STT, LLM i TTS.
 - **Główne zastosowania:** Środowisko deweloperskie (lokalny LLM, tańszy STT/TTS), awaryjny fallback gdy chmura jest niedostępna.
-- **Koegzystencja:** Worker (inferencja LLM) i Satellite (przechwytywanie audio) mogą działać jednocześnie — nie wykluczają się.
+- **Koegzystencja:** Worker LLM i Satellite mogą działać jednocześnie — nie wykluczają się.
 
-### 3.4 Satelita — typy interfejsów
+### Satelita — typy interfejsów
 Każdy interfejs użytkownika jest architektonicznie Satelitą — różnią się medium:
   - **ESP32** — miniaturowy, dedykowany sprzęt w domu; robi VAD i strumieniowanie audio. Tani, niskoprądowy, idealny do stałego montażu.
   - **Windows PC** (`node`) — aplikacja z UI terminalowym; robi VAD + WakeWord lokalnie, resztę deleguje do centrum.
   - **Linux** — wariant headless lub terminalowy.
 
-### 3.4 Pipeline Przetwarzania Audio (Rozstrzygnięte)
+### Pipeline Przetwarzania Audio (Rozstrzygnięte)
 
 Każde żądanie głosowe przechodzi przez następujące etapy — podział pracy między Satelitą a Węzłem Roboczym zależy od możliwości sprzętu:
 
@@ -75,9 +158,9 @@ Cisza
  → VAD wykrywa mowę
  → WakeWord detection (lokalnie)
  → przesyła audio ──────────────────→ STT (Whisper) — standaryzacja jakości
-                                       → LLM (pętla ReAct + narzędzia)
-                                       → TTS
-                   ←───────────────── odpowiedź audio
+                                        → LLM (pętla ReAct + narzędzia)
+                                        → TTS
+                    ←───────────────── odpowiedź audio
  → odgrywa odpowiedź
 ```
 
@@ -88,7 +171,7 @@ Cisza
 
 ---
 
-## 3.5 Warstwa Integracji (Rozstrzygnięta Zasada Architektoniczna)
+## 3.6 Warstwa Integracji (Rozstrzygnięta Zasada Architektoniczna)
 
 **Home Assistant jest jedną z możliwych integracji — nie jedyną.**
 
@@ -104,7 +187,7 @@ Przyszłe integracje mogą obejmować m.in.:
 
 ---
 
-## 3.6 Wizja Docelowa
+## 3.7 Wizja Docelowa
 
 Cel projektu: **RPi5 jako lekkie, stałe centrum** z chmurą jako domyślnym dostawcą mocy obliczeniowej. Zakup dedykowanego sprzętu (mini PC) nie jest wymagany — architektura skaluje się przez wymianę providerów, nie przez kupowanie sprzętu.
 
@@ -206,17 +289,26 @@ Przejście na fallback jest atomowe — system nie operuje w stanach częściowy
 
 ---
 
-## 6. Persona Regisa
+## 6. Persona Agenta
 
-**Zasada: Dla użytkownika zawsze istnieje jeden Regis.** Niezależnie od tego, który model pracuje pod spodem, persona i zachowanie muszą być spójne.
+### Persona jest user-defined
 
-### Charakter
-Regis jest **charakterny, rzeczowy i bezpośredni.** Nie owija w bawełnę. Priorytetem jest szybkość, niezawodność i precyzja. Nie jest chatbotem — jest narzędziem z osobowością. Mówi do rzeczy, nie dopełnia odpowiedzi niepotrzebnymi wstępami ani podziękowaniami.
+System Regis nie narzuca konkretnego charakteru, tonu ani stylu agenta — to jest konfiguracja użytkownika. Użytkownik definiuje personę w pliku konfiguracyjnym (imię, charakter, instrukcje behawioralne). Regis dostarcza mechanizm — nie treść.
 
-### Implementacja spójności między trybami
-- **Wspólny rdzeń persony:** W każdym prompcie, niezależnie od trybu i tieru, osadzony jest nienaruszalny opis tożsamości Regisa. Jego ton i styl nie zmieniają się — Baseline brzmi tak samo jak Agent.
-- **Graceful Degradation (Elegancki Upadek):** Baseline nigdy nie udaje, że potrafi coś, czego nie potrafi. Odpowiada zwięźle i bez przepraszania. Brak tłumaczeń technicznych.
-- **Capability Layer (Warstwa Możliwości):** Prompty pisane są warstwowo. Rdzeń persony jest stały. Zestaw narzędzi i tryb pracy (NLU vs ReAct) zmienia się w zależności od tieru aktywnego węzła.
+**Zasada spójności:** Cokolwiek użytkownik skonfiguruje jako personę, system musi ją utrzymywać konsekwentnie we wszystkich trybach pracy i na wszystkich węzłach. Persona zdefiniowana przez użytkownika nie może się zmieniać w zależności od tego, który model LLM aktualnie pracuje pod spodem.
+
+### Cele projektowe systemu (nie persony)
+
+Regis jako oprogramowanie ma następujące **cele projektowe** — nie są to twierdzenia o aktualnym stanie, lecz intencje które powinny kierować każdą decyzją architektoniczną i UX:
+
+- **Szybkość** — minimalne opóźnienia między wejściem użytkownika a odpowiedzią systemu
+- **Bezpośredniość** — brak zbędnych kroków pośrednich, warstw abstrakcji które nie wnoszą wartości
+- **Niezawodność** — system działa albo jawnie informuje o problemie; stany częściowe i ciche błędy są niedopuszczalne
+
+### Implementacja spójności persony między trybami
+- **Konfigurowalny rdzeń persony:** W każdym prompcie, niezależnie od trybu i tieru, osadzony jest opis persony zdefiniowanej przez użytkownika. Tryb pracy (NLU vs ReAct) zmienia się — persona nie.
+- **Graceful Degradation:** Agent nigdy nie udaje, że potrafi czegoś, czego nie potrafi. Odpowiada zwięźle i bez przepraszania. Brak tłumaczeń technicznych.
+- **Capability Layer (Warstwa Możliwości):** Prompty pisane są warstwowo. Rdzeń persony jest stały. Zestaw narzędzi i tryb pracy zmienia się w zależności od dostępnych providerów.
 
 ---
 
@@ -234,3 +326,4 @@ Regis jest **charakterny, rzeczowy i bezpośredni.** Nie owija w bawełnę. Prio
 - **Dystrybucja Windows:** Inno Setup (`RegisNodeSetup.exe`) jest zaprojektowany (`docs/distribution_rfc.md`) ale instalator nie jest jeszcze zbudowany produkcyjnie — patrz `TASKS.md`.
 - **Pamięć Długoterminowa:** Stary system Notatnika wycięty. Nowe rozwiązanie (np. wektorowe) nie zostało jeszcze zaprojektowane — patrz `TASKS.md`.
 - **System Providerów (STT/TTS):** Warstwa abstrakcji dla STT i TTS nie jest jeszcze zaimplementowana. Aktualny kod wymaga Windows Node do lokalnej obsługi audio. Implementacja cloud STT/TTS bez Windows Node wymaga osobnej sesji — patrz `TASKS.md` (`[ARCH — Phase 2]`).
+- **Formalne interfejsy warstwy 2:** Abstrakcyjne interfejsy `ILLMProvider`, `ISTTProvider`, `ITTSProvider`, `ISatellite` istnieją jako koncepcja architektoniczna (§3.1) — nie są jeszcze sformalizowane jako klasy bazowe w kodzie. Implementacja jest częścią `[ARCH — Phase 2]`.
