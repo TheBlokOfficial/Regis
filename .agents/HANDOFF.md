@@ -2,36 +2,48 @@
 
 ## 1. Wykonane Prace w Ostatniej Sesji (2026-08-07)
 
-- **Uproszczenie Maszyny Stanów Satelity i Eliminacja Podwójnej Warstwy Stanów**:
-  - Usunięto całkowicie podwójną maszynę stanów (`SatelliteInteractionState` i plik `src/client/services/satellite/states.py`).
-  - Stany domenowe (`WAKEWORD`, `LISTENING`, `STREAMING`, `SPEAKING`, `PROCESSING`) zostały zastąpione zwykłymi zdarzeniami emitowanymi na magistrali zdarzeń (`EventBus`).
-  - Satelita komunikuje do Kontrolera wyłącznie jednolity stan infrastrukturalny `ServiceState` (`READY` / `BUSY`), eliminując race conditions oraz konieczność istnienia wyjątków dla Satelity.
+- **Centralizacja Persystencji i Bezpieczeństwo Wątkowe (`JSONStorage`)**:
+  - Stworzono uniwersalny, wątkowo bezpieczny helper `JSONStorage` z per-plikowymi blokadami wątkowymi oraz atomowym zapisem plików tymczasowych (`os.replace`).
+  - Wyeliminowano bezpośrednie operacje I/O z `config.py`, `client_registry.py`, `providers.py`, `cloud_providers.py` i `ha_mock.py`.
 
-- **Refaktoryzacja i Czyszczenie Protokołu Sieciowego (`src/protocol/schemas.py`)**:
-  - Przeniesiono klasę `CloudProviderConfig` z protokołu sieciowego do modułu Kontrolera ([`src/controller/routers/cloud_providers.py`](file:///d:/Projekty/Regis/src/controller/routers/cloud_providers.py)), zamykając wyciek wewnętrznej konfiguracji Kontrolera do Klientów.
-  - Zmieniono nazwę `WSSatelliteEvent` na uniwersalne `WSClientEvent` z zachowaniem aliasu wstecznej kompatybilności.
-  - Usunięto nieużywane już schematy rejestracyjne i metody przeliczające.
+- **Restrukturyzacja Kontrolera do Architektury 6 Domen (`src/controller`)**:
+  - Reorganizacja modułu Kontrolera na 6 czytelnych i hermetycznych domen:
+    - `src/controller/config/`: loader, storage, schemas (`BaseConfigModel`, `SystemSettings`, `RoomsConfig`, `AliasesConfig`, `VirtualGroupsConfig`).
+    - `src/controller/core/`: `client_registry.py` (połączenia WS i satelity), `event_bus.py` (magistrala zdarzeń).
+    - `src/controller/llm/`: silniki AI (`backends/`), orkiestrator konwersacji (`orchestrator.py`), selekcja dostawców (`providers.py`), historia sesji (`session/`) oraz prompt engineering (`prompt/`).
+    - `src/controller/integrations/`: sterowniki zewnętrznych urządzeń i automatyki domowej (`ha_integration.py`, `ha_client.py`, `ha_mock.py`, `loader.py`).
+    - `src/controller/tools/`: `tools_registry.py` (rejestr narzędzi i akcji Agenta LLM).
+    - `src/controller/api/`: routery HTTP/WS (`chat.py`, `clients.py`, `cloud_providers.py`, `tools.py`, `ui.py`).
 
-- **Eliminacja Długu Ewolucyjnego i Czyszczenie Aplikacji Klienckiej (`src/client`)**:
-  - Usunięto całkowicie nieużywany, martwy folder [`src/client/legacy/`](file:///d:/Projekty/Regis/src/client/legacy/) zawierający stare interfejsy TUI (wizard, monitor).
-  - Ujednolicono terminologię z czasów "Węzłów" (`Node`) na `Client` / `client_id` w plikach [`config.py`](file:///d:/Projekty/Regis/src/client/config.py), [`tray.py`](file:///d:/Projekty/Regis/src/client/tray.py), [`controller_api.py`](file:///d:/Projekty/Regis/src/client/controller_api.py), [`internal_proxy.py`](file:///d:/Projekty/Regis/src/client/internal_proxy.py) oraz [`client_registry.py`](file:///d:/Projekty/Regis/src/client/network/client_registry.py).
-  - Zapewniono automatyczną migrację starych kluczy konfiguracyjnych (`node_id`, `instance_name`) do uniwersalnego `client_id`.
+- **Silne Typowanie Konfiguracji (Pydantic + `BaseConfigModel`)**:
+  - Wdrożono klasę bazową `BaseConfigModel` z wbudowanym sprawdzaniem `__init_subclass__`, wymuszającym zdefiniowanie wewnętrznej klasy `Meta` z polem `file_name`.
+  - Wprowadzono silnie typowane schematy dla ustawień systemowych i topologii: `SystemSettings`, `RoomsConfig`, `AliasesConfig`, `VirtualGroupsConfig`.
+  - Udostępniono czyste API: `settings = config.load(SystemSettings)` oraz `config.save(settings)`.
 
-- **Notatka Projektowa (RFC)**:
-  - Spisano koncepcję inwalidacji kontekstu LLM podczas napływu nowych zdarzeń w trakcie przetwarzania w pliku [`docs/context_invalidation_rfc.md`](file:///d:/Projekty/Regis/docs/context_invalidation_rfc.md).
+- **Hermetyzacja i Czyszczenie Cyklu Życia (`app.py`)**:
+  - Zredukowano funkcję `lifespan` w `app.py` do czytelnych 3 kroków (wczytanie ustawień, ładowanie integracji, inicjalizacja rejestru narzędzi).
+  - Wyeliminowano sztuczny import `tools_config` oraz ręczną 4-linijkową wyliczankę zmiennych konfiguracyjnych.
+
+- **Ujednoznacznienie Nazw Rejestrów i Usunięcie Długu Kodowego**:
+  - Zmieniono nazwę `core/registry.py` $\rightarrow$ `client_registry.py`.
+  - Zmieniono nazwę `tools/registry.py` $\rightarrow$ `tools_registry.py`.
+  - Całkowicie skasowano przestarzały plik pomocniczy `src/controller/tools/config.py`.
+
+- **Dokumentacja Architektoniczna (RFC)**:
+  - Spisano RFC dla dwuwarstwowej architektury sub-agentów i MOE w pliku [`docs/hierarchical_subagents_rfc.md`](file:///d:/Projekty/Regis/docs/hierarchical_subagents_rfc.md).
 
 ---
 
 ## 2. Aktualny Stan Kodu
 
-- **Klient (`src/client/`)**: W 100% zrefaktoryzowany, wyczyszczony z martwego kodu i przetestowany pod kątem kompilacji.
-- **Protokół (`src/protocol/schemas.py`)**: Czysty, 100% hermetyczny kontrakt sieciowy pomiędzy Klientem a Kontrolerem.
-- **Satelita (`src/client/services/satellite/`)**: Działa w oparciu o architekturę jednolicie pasywną (READY/BUSY) ze zdarzeniami emisyjnymi dla UI.
+- **Kontroler (`src/controller/`)**: Przekształcony w czystą, 6-domienową strukturę. Czysty cykl życia `app.py`, 100% wsparcia typowania w Pydantic. Weryfikacja uruchamiania modułu (`python -c "import controller.app"`) zwraca kod 0.
+- **Klient (`src/client/`)**: W pełni spójny po poprzednich refaktoryzacjach.
+- **Protokół (`src/protocol/`)**: Spójne schematy komunikacji i discovery.
 
 ---
 
 ## 3. Kroki Startowe dla Następnego Agenta
 
 1. Obowiązkowo zapoznaj się z [`docs/MANIFEST.md`](file:///d:/Projekty/Regis/docs/MANIFEST.md) oraz [`docs/AGENT_GUIDE.md`](file:///d:/Projekty/Regis/docs/AGENT_GUIDE.md).
-2. Sprawdź status zadań w [`.agents/TASKS.md`](file:///d:/Projekty/Regis/.agents/TASKS.md).
-3. Rozpocznij refaktoryzację **Kontrolera** (`src/controller`), skupiając się na oczyszczeniu routerów, rejestru oraz optymalizacji logiki orkiestracji.
+2. Przejrzyj status w [`.agents/TASKS.md`](file:///d:/Projekty/Regis/.agents/TASKS.md).
+3. Ewentualne dalsze kroki mogą obejmować dekompozycję orkiestratora konwersacji (`src/controller/llm/orchestrator.py`) lub implementację dwuwarstwowych sub-agentów z `docs/hierarchical_subagents_rfc.md`.

@@ -1,11 +1,9 @@
-import json
 import logging
-from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from typing import List, Literal
 from pydantic import BaseModel
 
-from controller import config
+from controller.llm.providers import get_cloud_providers, save_cloud_providers
 
 class CloudProviderConfig(BaseModel):
     """Konfiguracja providera chmurowego (np. OpenRouter, Groq)."""
@@ -20,29 +18,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/cloud-providers", tags=["cloud-providers"])
 
-PROVIDERS_FILE = Path(config.DATA_DIR) / "cloud_providers.json"
-
-def _load_providers() -> list[dict]:
-    if not PROVIDERS_FILE.exists():
-        return []
-    try:
-        data = json.loads(PROVIDERS_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except Exception as e:
-        logger.error(f"Błąd ładowania pliku cloud_providers.json: {e}")
-        return []
-
-def _save_providers(providers: list[dict]):
-    try:
-        PROVIDERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PROVIDERS_FILE.write_text(json.dumps(providers, indent=2, ensure_ascii=False), encoding="utf-8")
-    except Exception as e:
-        logger.error(f"Błąd zapisu pliku cloud_providers.json: {e}")
-        raise HTTPException(status_code=500, detail="Błąd zapisu konfiguracji dostawców chmurowych")
-
 @router.get("", response_model=List[CloudProviderConfig])
 def get_providers():
-    providers = _load_providers()
+    providers = get_cloud_providers()
     # Mask api keys before returning to UI
     masked = []
     for p in providers:
@@ -55,57 +33,62 @@ def get_providers():
 
 @router.post("", response_model=CloudProviderConfig)
 def add_provider(provider: CloudProviderConfig):
-    providers = _load_providers()
-    if any(p.get("id") == provider.id for p in providers):
+    providers = get_cloud_providers()
+    # Create a new copy of the list to avoid mutating cache directly before saving
+    new_providers = list(providers)
+    
+    if any(p.get("id") == provider.id for p in new_providers):
         raise HTTPException(status_code=400, detail=f"Provider z id '{provider.id}' już istnieje.")
     
-    providers.append(provider.model_dump())
-    _save_providers(providers)
+    new_providers.append(provider.model_dump())
     
-    # Przeładowanie globalnego rejestru
-    from controller.providers import reload_cloud_providers
-    reload_cloud_providers()
+    success = save_cloud_providers(new_providers)
+    if not success:
+         raise HTTPException(status_code=500, detail="Błąd zapisu konfiguracji dostawców chmurowych")
     
     return provider
 
 @router.patch("/{provider_id}", response_model=CloudProviderConfig)
 def update_provider(provider_id: str, updates: dict):
-    providers = _load_providers()
-    for idx, p in enumerate(providers):
+    providers = get_cloud_providers()
+    new_providers = list(providers)
+    
+    for idx, p in enumerate(new_providers):
         if p.get("id") == provider_id:
+            # Create a copy of the dictionary to avoid mutating cache directly
+            p_copy = dict(p)
+            
             # Aktualizacja pól (ignoruj zamaskowany klucz API z UI)
             if "api_key" in updates and "..." in updates["api_key"]:
                 del updates["api_key"]
                 
-            p.update(updates)
+            p_copy.update(updates)
             
             try:
-                validated = CloudProviderConfig(**p)
+                validated = CloudProviderConfig(**p_copy)
             except Exception as e:
                 raise HTTPException(status_code=422, detail=str(e))
                 
-            providers[idx] = validated.model_dump()
-            _save_providers(providers)
+            new_providers[idx] = validated.model_dump()
+            success = save_cloud_providers(new_providers)
             
-            # Przeładowanie
-            from controller.providers import reload_cloud_providers
-            reload_cloud_providers()
-            
+            if not success:
+                raise HTTPException(status_code=500, detail="Błąd zapisu konfiguracji dostawców chmurowych")
+                
             return validated
             
     raise HTTPException(status_code=404, detail="Provider nie znaleziony")
 
 @router.delete("/{provider_id}")
 def delete_provider(provider_id: str):
-    providers = _load_providers()
+    providers = get_cloud_providers()
     new_providers = [p for p in providers if p.get("id") != provider_id]
     
     if len(new_providers) == len(providers):
         raise HTTPException(status_code=404, detail="Provider nie znaleziony")
         
-    _save_providers(new_providers)
-    
-    from controller.providers import reload_cloud_providers
-    reload_cloud_providers()
+    success = save_cloud_providers(new_providers)
+    if not success:
+         raise HTTPException(status_code=500, detail="Błąd zapisu konfiguracji dostawców chmurowych")
     
     return {"status": "ok"}

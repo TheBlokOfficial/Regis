@@ -1,8 +1,8 @@
 import logging
 from pathlib import Path
 
-import controller.registry as registry
-from controller import config
+import controller.core.client_registry as registry
+from controller.config import loader as config
 
 logger = logging.getLogger(__name__)
 

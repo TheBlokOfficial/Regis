@@ -63,10 +63,11 @@ all = [
 ]
 
 [project.scripts]
-regis-controller = "controller.main:start"
-regis-worker     = "worker.node:start"
-regis            = "node.main:main"
+regis-controller = "controller.main:main"
+regis            = "client.main:main"
+
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["core*", "integrations*", "controller*", "node*"]
+include = ["core*", "integrations*", "controller*", "node*", "client*", "protocol*", "common*"]
+

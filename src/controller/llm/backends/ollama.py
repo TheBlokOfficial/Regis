@@ -5,9 +5,9 @@ import requests
 from requests.exceptions import RequestException
 from typing import Any
 
-from controller.llm_backends.base import LLMBackend
+from controller.llm.backends.base import LLMBackend
 from controller.exceptions import LLMConnectionError
-from controller import config
+from controller.config import loader as config
 
 class OllamaBackend(LLMBackend):
     def __init__(self, model_name: str, mode: str = "extended", temperature: float = 0.1):
@@ -26,7 +26,7 @@ class OllamaBackend(LLMBackend):
         on_raw_tool_call: Any = None,
         on_profiler: Any = None
     ) -> str:
-        settings = config.load_settings()
+        settings = config.load_config("settings")
         url = f"{settings.get('ollama_url', 'http://127.0.0.1:11434')}/api/chat"
 
         max_iterations = 3 if self.mode == "basic" else 10
@@ -44,7 +44,7 @@ class OllamaBackend(LLMBackend):
             }
 
             if tools_registry:
-                from controller.schemas_tools import get_tools_schema
+                from controller.llm.prompt.tools_schema import get_tools_schema
                 if self.mode == "basic":
                     payload["tools"] = get_tools_schema(names=["execute_action"])
                 else:
@@ -146,7 +146,7 @@ class OllamaBackend(LLMBackend):
         return "Przerwano zapytanie. Przekroczono maksymalną liczbę wywołań narzędzi."
 
     def is_available(self) -> bool:
-        settings = config.load_settings()
+        settings = config.load_config("settings")
         tags_url = f"{settings.get('ollama_url', 'http://127.0.0.1:11434')}/api/tags"
         try:
             response = requests.get(tags_url, timeout=2)
@@ -158,7 +158,7 @@ class OllamaBackend(LLMBackend):
         return "ollama"
 
     def preload_model(self) -> None:
-        settings = config.load_settings()
+        settings = config.load_config("settings")
         url = f"{settings.get('ollama_url', 'http://127.0.0.1:11434')}/api/generate"
         payload = {"model": self.model_name, "keep_alive": -1}
         try:
@@ -170,7 +170,7 @@ class OllamaBackend(LLMBackend):
             raise LLMConnectionError(f"Ollama Preload Error: {e}")
 
     def unload_model(self) -> None:
-        settings = config.load_settings()
+        settings = config.load_config("settings")
         url = f"{settings.get('ollama_url', 'http://127.0.0.1:11434')}/api/generate"
         payload = {"model": self.model_name, "keep_alive": 0}
         try:

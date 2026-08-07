@@ -1,10 +1,10 @@
-import json
 import os
 import logging
 from typing import Any
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE_FILE = os.path.join(BASE_DIR, "data", "ha_state.json")
+from controller.config import DATA_DIR, JSONStorage
+
+STATE_FILE = os.path.join(DATA_DIR, "ha_state.json")
 
 DEFAULT_STATE = {
     "light.salon": "off",
@@ -18,21 +18,21 @@ class HomeAssistantMock:
 
     def __init__(self):
         logging.info("Zainicjalizowano HomeAssistantMock (Środowisko Testowe)")
+        # Inicjalizuj plik jeśli nie istnieje
+        if not os.path.exists(STATE_FILE):
+            self._save_state(DEFAULT_STATE)
 
     def _load_state(self) -> dict[str, Any]:
         """Pobiera lokalny stan mocka z pliku ha_state.json."""
-        if not os.path.exists(STATE_FILE):
+        state = JSONStorage.read_json(STATE_FILE, default=None)
+        if state is None:
             self._save_state(DEFAULT_STATE)
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return DEFAULT_STATE
+        return state
 
     def _save_state(self, state: dict[str, Any]) -> None:
         """Zapisuje aktualny stan mocka do pliku."""
-        data_dir = os.path.dirname(STATE_FILE)
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=4)
+        JSONStorage.write_json(STATE_FILE, state)
 
     def get_all_states(self) -> dict[str, dict[str, Any]]:
         """Mock pobierania stanów z lokalnego pliku JSON."""

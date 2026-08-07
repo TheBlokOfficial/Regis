@@ -6,9 +6,9 @@ from fastapi import APIRouter, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-import controller.providers as providers
-import controller.registry as registry
-from controller.services.chat_service import proxy_sse_to_queue, clear_conversation_history
+import controller.llm.providers as providers
+import controller.core.client_registry as registry
+from controller.llm.orchestrator import proxy_sse_to_queue, clear_conversation_history
 
 router_chat = APIRouter()
 
@@ -136,6 +136,6 @@ async def get_sessions():
 
 @router_chat.get("/v1/rooms")
 async def get_rooms():
-    from controller import config
+    from controller.config import loader as config
     rooms_data = config.load_rooms()
     return {"rooms": list(rooms_data.keys())}

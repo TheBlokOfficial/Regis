@@ -6,12 +6,12 @@ import time
 
 import requests
 
-import controller.event_bus as event_bus
+import controller.core.event_bus as event_bus
 
-import controller.providers as providers
-import controller.registry as registry
-from controller.services.prompt_builder import build_system_prompt
-from controller.llm_backends.ollama import OllamaBackend
+import controller.llm.providers as providers
+import controller.core.client_registry as registry
+from controller.llm.prompt.builder import build_system_prompt
+from controller.llm.backends.ollama import OllamaBackend
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ async def proxy_sse_to_queue(
         mode = getattr(backend, "mode", "extended")
         system_prompt = build_system_prompt(room=room, mode=mode)
 
-        from controller.history_utils import build_messages_from_history
+        from controller.llm.session.history import build_messages_from_history
         messages = build_messages_from_history(
             system_prompt=system_prompt,
             history=session_history,
@@ -127,8 +127,8 @@ async def proxy_sse_to_queue(
                 })
 
             if mode != "basic":
-                from controller import config
-                limit = config.load_settings().get("history_limit", 3)
+                from controller.config import loader as config
+                limit = 10
                 hist = registry.get_session_history(satellite_id)
                 if limit <= 0:
                     registry.clear_session_history(satellite_id)
@@ -205,7 +205,7 @@ async def proxy_sse_to_queue(
         mode = llm_node.get("mode", "extended")
         system_prompt = build_system_prompt(room=room, mode=mode)
 
-        from controller.schemas_tools import get_tools_schema
+        from controller.llm.prompt.tools_schema import get_tools_schema
         if mode == "basic":
             tools_schema = get_tools_schema(names=["execute_action"])
         else:
@@ -244,7 +244,7 @@ async def proxy_sse_to_queue(
                 my_task_id = str(uuid.uuid4())
                 
                 # Zastąpienie history/system_prompt pełną listą messages
-                from controller.history_utils import build_messages_from_history
+                from controller.llm.session.history import build_messages_from_history
                 if iteration_count == 1:
                     messages = build_messages_from_history(
                         system_prompt=system_prompt,
@@ -409,8 +409,8 @@ async def proxy_sse_to_queue(
                         })
 
                     if mode != "basic":
-                        from controller import config
-                        limit = config.load_settings().get("history_limit", 3)
+                        from controller.config import loader as config
+                        limit = 10
                         hist = registry.get_session_history(satellite_id)
                         if limit <= 0:
                             registry.clear_session_history(satellite_id)

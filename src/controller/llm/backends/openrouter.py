@@ -5,7 +5,7 @@ from requests.exceptions import RequestException
 from typing import Any
 import os
 
-from controller.llm_backends.base import LLMBackend
+from controller.llm.backends.base import LLMBackend
 from controller.exceptions import LLMConnectionError
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -78,7 +78,7 @@ class OpenRouterBackend(LLMBackend):
             }
             
             if tools_registry:
-                from controller.schemas_tools import get_tools_schema
+                from controller.llm.prompt.tools_schema import get_tools_schema
                 if self.mode == "basic":
                     payload["tools"] = get_tools_schema(names=["execute_action"])
                 else:

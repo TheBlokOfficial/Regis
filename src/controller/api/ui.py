@@ -16,8 +16,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
-import controller.event_bus as event_bus
-import controller.registry as registry
+import controller.core.event_bus as event_bus
+import controller.core.client_registry as registry
 
 router_ui = APIRouter()
 

@@ -1,23 +1,31 @@
 import logging
 import os
-import json
 from pathlib import Path
 
-from controller.llm_backends.base import LLMBackend
-from controller.openrouter_backend import OpenRouterBackend
-from controller.llm_backends.ollama import OllamaBackend
-import controller.registry as registry
-from controller import config
+from controller.llm.backends.base import LLMBackend
+from controller.llm.backends.openrouter import OpenRouterBackend
+from controller.llm.backends.ollama import OllamaBackend
+
+import controller.core.client_registry as registry
+from controller.config import loader as config, JSONStorage
+
+PROVIDERS_FILE = Path(config.DATA_DIR) / "cloud_providers.json"
 
 _cloud_providers_cache: list[dict] = []
 _providers_loaded = False
 
+def get_cloud_providers() -> list[dict]:
+    """Zwraca listę dostawców chmurowych z pamięci podręcznej (ładuje ją przy pierwszym wywołaniu)."""
+    global _providers_loaded
+    if not _providers_loaded:
+        reload_cloud_providers()
+    return _cloud_providers_cache
+
 def reload_cloud_providers():
     global _cloud_providers_cache, _providers_loaded
-    providers_file = Path(config.DATA_DIR) / "cloud_providers.json"
     
     # Auto-migracja z .env przy pierwszym uruchomieniu
-    if not providers_file.exists():
+    if not PROVIDERS_FILE.exists():
         migrated = []
         api_key = os.environ.get("OPENROUTER_API_KEY", "")
         model = os.environ.get("OPENROUTER_MODEL", "qwen/qwen-2.5-72b-instruct")
@@ -30,24 +38,19 @@ def reload_cloud_providers():
                 "mode": "extended",
                 "priority": 50
             })
-            try:
-                providers_file.parent.mkdir(parents=True, exist_ok=True)
-                providers_file.write_text(json.dumps(migrated, indent=2, ensure_ascii=False), encoding="utf-8")
-                logging.info("Zmigrowano klucz OpenRouter z .env do cloud_providers.json.")
-            except Exception as e:
-                logging.error(f"Błąd zapisu migracji: {e}")
+            JSONStorage.write_json(PROVIDERS_FILE, migrated)
+            logging.info("Zmigrowano klucz OpenRouter z .env do cloud_providers.json.")
         
-    if providers_file.exists():
-        try:
-            data = json.loads(providers_file.read_text(encoding="utf-8"))
-            _cloud_providers_cache = data if isinstance(data, list) else []
-        except Exception as e:
-            logging.error(f"Błąd odczytu cloud_providers.json: {e}")
-            _cloud_providers_cache = []
-    else:
-        _cloud_providers_cache = []
-        
+    data = JSONStorage.read_json(PROVIDERS_FILE, default=[])
+    _cloud_providers_cache = data if isinstance(data, list) else []
     _providers_loaded = True
+
+def save_cloud_providers(data: list[dict]) -> bool:
+    """Zapisuje listę dostawców chmurowych do pliku i odświeża pamięć podręczną."""
+    success = JSONStorage.write_json(PROVIDERS_FILE, data)
+    if success:
+        reload_cloud_providers()
+    return success
 
 def get_llm_backend() -> LLMBackend | None:
     """Zwraca najlepszy dostępny backend LLM według priorytetu."""
@@ -83,8 +86,6 @@ def get_llm_backend() -> LLMBackend | None:
     candidates.sort(key=lambda item: item[0], reverse=True)
     selected_prio, selected_backend, meta = candidates[0]
     
-    # Tymczasowo zapisujemy mode w wybranym backendzie, żeby router wiedział jak się zachować, jeśli by potrzebował.
-    # Właściwie backendy same to będą już mieć w swojej hermetycznej konfiguracji.
     logging.debug(f"Wybrano LLM Backend: {selected_backend.get_provider_name()} z priorytetem {selected_prio}")
     return selected_backend
 

@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from protocol.schemas import ToolExecutionRequest
-import controller.registry as registry
+import controller.core.client_registry as registry
 
 router_tools = APIRouter()
 

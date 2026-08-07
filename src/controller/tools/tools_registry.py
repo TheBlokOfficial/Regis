@@ -6,7 +6,7 @@ import uuid
 import requests
 from typing import Any
 
-from controller.schemas_tools import BASE_TOOLS_SCHEMA
+from controller.llm.prompt.tools_schema import BASE_TOOLS_SCHEMA
 
 
 class ToolsRegistry:
@@ -15,14 +15,18 @@ class ToolsRegistry:
     def __init__(self, ha_client=None, rooms: dict = None, integration_registry: dict = None):
         self._direct_ha_client = ha_client
         self.integration_registry = integration_registry
-        self.rooms = rooms or {}
+        if rooms is None:
+            from controller.config import load, RoomsConfig
+            self.rooms = load(RoomsConfig).root
+        else:
+            self.rooms = rooms
 
     @property
     def ha_client(self):
         """Zwraca obiekt integracji/klienta HA dla operacji na urządzeniach."""
         if self._direct_ha_client is not None:
             return self._direct_ha_client
-        from controller import registry
+        import controller.core.client_registry as registry
         ints = self.integration_registry or registry.integration_registry
         if "home_assistant" in ints:
             return ints["home_assistant"]

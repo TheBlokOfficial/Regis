@@ -1,5 +1,8 @@
 """
-Regis Controller — Serce i punkt wejścia serwera FastAPI na Raspberry Pi 5.
+Regis Controller — Serwer FastAPI i Fabryka Aplikacji ASGI.
+
+Plik definiuje fabrykę aplikacji FastAPI (`create_app`), cykl życia usług (`lifespan`)
+oraz montuje wszystkie routery API HTTP/WebSocket oraz zasoby interfejsu Web UI.
 """
 import asyncio
 import logging
@@ -9,73 +12,105 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from controller import config
-from protocol.discovery import get_local_ip, start_discovery_server
-from controller.logger import setup_logging
-from controller import registry
+# --- Wewnętrzne moduły Regis ---
+import controller.core.client_registry as registry
+from controller.config import loader as config, SystemSettings
 from controller.integrations.loader import load_integrations
-from controller.tools_registry import ToolsRegistry
-from controller.routers.chat import router_chat
-from controller.routers.nodes import router_nodes
-from controller.routers.tools import router_tools
-from controller.routers.ui import router_ui
-from controller.routers.cloud_providers import router as router_cloud_providers
+from controller.tools.tools_registry import ToolsRegistry
+from protocol.discovery import get_local_ip, start_discovery_server
 
-# ─── 1. Inicjalizacja Logowania i Stałych ──────────────────────────────────
-setup_logging("controller")
+# --- Routery API HTTP/WS ---
+from controller.api.chat import router_chat
+from controller.api.clients import router_clients
+from controller.api.cloud_providers import router as router_cloud_providers
+from controller.api.tools import router_tools
+from controller.api.ui import router_ui
 
+# Port domyślny Kontrolera
 DEFAULT_CONTROLLER_PORT = 8000
 
 
-# ─── 2. Cykl Życia Aplikacji (Lifespan) ────────────────────────────────────
+# =============================================================================
+# 1. Zarządzanie Cyklem Życia Aplikacji (Lifespan Context Manager)
+# =============================================================================
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Uruchamia i zatrzymuje kluczowe usługi Kontrolera."""
-    # Ładowanie konfiguracji systemowej
-    settings = config.load_settings()
-    aliases = config.load_aliases()
-    virtual_groups = config.load_virtual_groups()
-    rooms = config.load_rooms()
+    """Zarządza cyklem życia (start i stop) kluczowych usług Kontrolera.
+    
+    Faza 1 (Startup):
+    - Wczytuje pliki konfiguracyjne.
+    - Inicjalizuje i rejestruje wtyczki integracji zewnętrznych (np. Home Assistant).
+    - Buduje rejestr narzędzi dla Agenta LLM (ToolsRegistry).
+    - Uruchamia pętlę sprawdzania obecności połączeń (Heartbeat) oraz usługę Auto-Discovery (UDP).
+    
+    Faza 2 (Shutdown):
+    - Zamyka zadania w tle i czyści zasoby przy wyłączaniu serwera.
+    """
+    logging.info("Rozpoczynanie inicjalizacji usług Kontrolera Regis...")
 
-    # Dynamiczna inicjalizacja i rejestracja integracji zewnętrznych
-    for integration in load_integrations(settings, aliases, virtual_groups):
+    # 1. Wczytanie głównych ustawień systemowych (silnie typowanych)
+    settings = config.load(SystemSettings)
+
+    # 2. Dynamiczne ładowanie i rejestracja integracji zewnętrznych
+    for integration in load_integrations(settings):
         registry.register_integration(integration)
 
-    # Inicjalizacja rejestru narzędzi AI i bufora ustawień
-    registry.tools_registry = ToolsRegistry(rooms=rooms)
-    registry._settings_cache.update(settings)
+    # 3. Inicjalizacja rejestru narzędzi Agenta oraz bufora ustawień
+    registry.tools_registry = ToolsRegistry()
+    registry._settings_cache.update(settings.model_dump())
 
-    # Uruchomienie pętli w tle (Heartbeat + Auto-Discovery)
+    # 4. Uruchomienie zadania sprawdzania obecności połączeń w tle (Heartbeat)
     heartbeat_task = asyncio.create_task(registry._heartbeat_loop())
 
+    # 5. Uruchomienie serwera Auto-Discovery (rozgłaszanie adresu Kontrolera w sieci lokalnej UDP)
     local_ip = get_local_ip()
     discovery_url = f"http://{local_ip}:{DEFAULT_CONTROLLER_PORT}"
     start_discovery_server(discovery_url)
 
-    logging.info("Regis Controller uruchomiony.")
+    logging.info(f"Usługi Kontrolera zainicjalizowane pomyślnie. Serwer Auto-Discovery nadaje na {discovery_url}.")
 
-    yield  # Serwer aktywny i gotowy na zapytania
+    yield  # Aplikacja działa i obsługuje ruch
 
-    # Zamknięcie usług przy zatrzymywaniu serwera
+    # --- Zatrzymywanie usług ---
+    logging.info("Zamykanie usług Kontrolera Regis...")
     heartbeat_task.cancel()
-    logging.info("Regis Controller zatrzymany.")
+    logging.info("Usługi Kontrolera zostały bezpiecznie zatrzymane.")
 
 
-# ─── 3. Tworzenie Aplikacji FastAPI i Montowanie Routerów ─────────────────
-app = FastAPI(title="Regis Controller", lifespan=lifespan)
+# =============================================================================
+# 2. Fabryka Aplikacji FastAPI (Application Factory Pattern)
+# =============================================================================
 
-# Rejestracja routerów API
-routers = [
-    router_nodes,
-    router_tools,
-    router_chat,
-    router_cloud_providers,
-    router_ui,  # router_ui musi być zarejestrowany przed app.mount StaticFiles
-]
+def create_app() -> FastAPI:
+    """Tworzy i konfiguruje nową instancję aplikacji FastAPI."""
+    app_instance = FastAPI(
+        title="Regis Controller",
+        description="Główny Serwer i Orkiestrator Agenta AI dla Inteligentnego Domu",
+        version="2.0.0",
+        lifespan=lifespan
+    )
 
-for router in routers:
-    app.include_router(router)
+    # Rejestracja routerów API HTTP oraz WebSocket
+    api_routers = [
+        router_clients,
+        router_tools,
+        router_chat,
+        router_cloud_providers,
+        router_ui,
+    ]
 
-# ─── 4. Serwowanie Zasobów Statycznych Web UI ─────────────────────────────
-_web_dir = Path(__file__).parent / "web"
-app.mount("/", StaticFiles(directory=_web_dir, html=True), name="web")
+    for router in api_routers:
+        app_instance.include_router(router)
+
+    # Montowanie interfejsu przeglądarkowego Web UI (jeśli katalog istnieje)
+    web_dir = Path(__file__).parent / "web"
+    if web_dir.exists():
+        app_instance.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
+        logging.info(f"Zmontowano zasoby statyczne Web UI z katalogu: {web_dir}")
+
+    return app_instance
+
+
+# Główna instancja aplikacji serwerowej
+app = create_app()
