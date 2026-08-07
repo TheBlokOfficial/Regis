@@ -33,7 +33,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 def load_settings() -> dict[str, Any]:
     """Ładuje lokalną konfigurację Klienta z pliku JSON.
 
-    Jeśli plik nie istnieje lub nie zawiera 'node_id', generuje nowy
+    Jeśli plik nie istnieje lub nie zawiera 'client_id', generuje nowy
     unikalny identyfikator i uwiecznia go na dysku.
 
     Returns:
@@ -50,12 +50,24 @@ def load_settings() -> dict[str, Any]:
 
     merged = {**DEFAULT_SETTINGS, **settings}
 
-    if not merged.get("client_id") and not merged.get("node_id"):
-        merged["client_id"] = f"client-{uuid.uuid4().hex[:8]}"
-        save_settings(merged)
-    elif merged.get("node_id") and not merged.get("client_id"):
-        merged["client_id"] = merged["node_id"]
+    migrated = False
+    
+    # Migracja ze starych kluczy z czasów węzłów
+    if "node_id" in merged:
+        if "client_id" not in merged:
+            merged["client_id"] = merged["node_id"]
         del merged["node_id"]
+        migrated = True
+        
+    if "instance_name" in merged:
+        del merged["instance_name"] # ignorujemy starą nazwę instancji na rzecz client_id
+        migrated = True
+
+    if not merged.get("client_id"):
+        merged["client_id"] = f"client-{uuid.uuid4().hex[:8]}"
+        migrated = True
+
+    if migrated:
         save_settings(merged)
 
     return merged
@@ -118,7 +130,5 @@ def get_controller_url(allow_fallback: bool = False) -> str:
 
 def _get_client_id() -> str:
     """Zwraca gwarantowane, tekstowe ID klienta."""
-    settings = _get_settings()
-    # Wsparcie zarówno dla client_id jak i starszego node_id
-    return str(settings.get("client_id") or settings.get("node_id") or settings.get("instance_name") or "client-default")
+    return str(settings.get("client_id", "client-default"))
 

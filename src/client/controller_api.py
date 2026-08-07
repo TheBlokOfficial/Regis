@@ -3,14 +3,14 @@ import logging
 import asyncio
 from datetime import datetime
 
-from protocol.schemas import WSSatelliteEvent
+from protocol.schemas import WSClientEvent
 
 from client.config import (
-    _get_settings, reload_settings, _get_client_id, _get_client_id as _get_node_id,
+    _get_settings, reload_settings, _get_client_id,
     get_controller_url, reset_discovered_controller_url
 )
 from client.network.client_registry import (
-    register, unregister, apply_service_config, apply_node_config
+    register, unregister, apply_service_config
 )
 from client.network.ws_transport import (
     start_ws_client, wait_for_ws_connection, get_ws_client, get_ws_loop, set_message_handler
@@ -36,7 +36,7 @@ def bus_publish(event: dict) -> None:
     ws_client = get_ws_client()
     
     if ws_loop and ws_client:
-        ws_event = WSSatelliteEvent(
+        ws_event = WSClientEvent(
             event_type=event.get("type", "unknown"),
             data=event
         )

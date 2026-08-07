@@ -29,9 +29,9 @@ def open_dashboard() -> None:
 def get_menu(on_quit_callback) -> pystray.Menu:
     """Zwraca menu kontekstowe paska zadań."""
     settings = load_settings()
-    name = settings.get("instance_name", "Regis Node")
+    name = settings.get("client_id", "Regis Client")
     return pystray.Menu(
-        item(lambda text: f"Regis Node — {name}", lambda: None, enabled=False),
+        item(lambda text: f"Regis Client — {name}", lambda: None, enabled=False),
         pystray.Menu.SEPARATOR,
         item("Otwórz panel kontrolny", lambda: open_dashboard()),
         pystray.Menu.SEPARATOR,

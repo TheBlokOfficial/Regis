@@ -17,10 +17,8 @@ from controller.integrations.loader import load_integrations
 from controller.tools_registry import ToolsRegistry
 from controller.routers.chat import router_chat
 from controller.routers.nodes import router_nodes
-from controller.routers.satellites import router_satellites
 from controller.routers.tools import router_tools
 from controller.routers.ui import router_ui
-from controller.routers.workers import router_workers
 from controller.routers.cloud_providers import router as router_cloud_providers
 
 # ─── 1. Inicjalizacja Logowania i Stałych ──────────────────────────────────
@@ -69,8 +67,6 @@ app = FastAPI(title="Regis Controller", lifespan=lifespan)
 # Rejestracja routerów API
 routers = [
     router_nodes,
-    router_workers,
-    router_satellites,
     router_tools,
     router_chat,
     router_cloud_providers,

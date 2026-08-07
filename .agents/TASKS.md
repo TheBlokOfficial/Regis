@@ -1,31 +1,36 @@
 # Lista Zadań Projektu Regis (TASKS)
 
-## Rejestr Zrealizowanych Zadań (Sesja 2026-08-05)
+## Rejestr Zrealizowanych Zadań (Sesja 2026-08-07)
 
-- [x] **Dekompozycja i Przemianowanie Nomenklatury `nodes` -> `clients`**:
-  - Rozbito `controller_api.py` na podmoduły.
-  - Zmieniono wszystkie ścieżki i nazwy zmiennych na `clients` / `client_id`.
-  - Wdrożono Single-Step WebSocket registration po nawiązaniu połączenia.
-- [x] **Wprowadzenie Klasy Bazowej Usług (`BaseService`)**:
-  - Utworzono `src/client/services/base.py` dla mikrousług sidecar.
-  - Zaimplementowano ujednoliconą obsługę pętli SSE i filtrowania komend.
-  - Przeprowadzono refaktoryzację `ollama_worker/__main__.py`, `audio/__main__.py` oraz `satellite/__main__.py` w oparciu o `BaseService`.
-- [x] **Przemianowanie Usługi `llm` na `ollama_worker` oraz Refaktoryzacja `engine.py`**:
-  - Wypłaszczono strukturę pętli generującej strumień w `engine.py`.
-  - Zaktualizowano nazwy we wszystkich rejestrach, menadżerach i schematach.
-- [x] **Inicjalizacja Self-Healing i Maszyna Stanów w `ollama_worker`**:
-  - Utworzono 3-stanową maszynę stanów (`INITIALIZING`, `READY`, `BUSY`).
-  - Wdrożono pętlę wyczekiwania na Ollamę bez wyłączania procesu przy starcie.
-  - Dodano obsługę błędów komunikacji (zrzucanie do `INITIALIZING`) oraz Dynamic Model Swapping.
-- [x] **Protokół Graceful Shutdown i Rozdzielenie Schematów IPC**:
-  - Utworzono `src/client/ipc_schemas.py` z `SystemCommand` (`STOP`, `SHUTDOWN`).
-  - Wdrożono obsługę `stop()` w `BaseService` i automatyczne uwalnianie pamięci VRAM przez `ollama_worker`.
-  - Wdrożono wyczekiwanie i bezpieczne zatrzymywanie w `ProcessManager._stop_service()`.
-  - Dodano `SetConsoleCtrlHandler` w `src/client/main.py` dla przycisku `[X]` okna konsoli w Windowsie.
+- [x] **Refaktoryzacja Protokołu i Uporządkowanie Schematów (`src/protocol/schemas.py`)**:
+  - Usunięto nieużywane schematy rejestracji i pomocnicze metody.
+  - Wyodrębniono `CloudProviderConfig` z protokołu sieciowego do modułu Kontrolera.
+  - Zmieniono nazwę `WSSatelliteEvent` na `WSClientEvent`.
+- [x] **Usunięcie Dwuwarstwowej Maszyny Stanów w Satelicie**:
+  - Skasowano `SatelliteInteractionState` i plik `states.py`.
+  - Przestawiono Satelitę na operowanie wyłącznie w stanach `READY` / `BUSY` ze zdarzeniami emisyjnymi do EventBusa.
+- [x] **Audyt i Eliminacja Długu Ewolucyjnego Aplikacji Klienckiej (`src/client`)**:
+  - Usunięto przestarzały folder `src/client/legacy/`.
+  - Ujednolicono terminologię z `Node` na `Client` w całej konfiguracji i komunikacji z serwerem.
+  - Zapewniono płynną migrację kluczy konfiguracyjnych `node_id` -> `client_id`.
+- [x] **Spisanie Notatki Projektowej RFC**:
+  - Utworzono dokument `docs/context_invalidation_rfc.md` opisujący inwalidację bufora LLM podczas napływu nowych zdarzeń.
 
 ---
 
-## Zadania Przyszłe / Propozycje
+## Rejestr Zrealizowanych Zadań (Sesja 2026-08-05)
 
-- [ ] **Dalsze Testy Integracyjne End-to-End**:
-  - Przetestowanie pełnego potoku mowy (STT -> LLM -> TTS) w środowisku z działającym Kontrolerem i Home Assistant.
+- [x] **Dekompozycja i Przemianowanie Nomenklatury `nodes` -> `clients`**
+- [x] **Wprowadzenie Klasy Bazowej Usług (`BaseService`)**
+- [x] **Przemianowanie Usługi `llm` na `ollama_worker` oraz Refaktoryzacja `engine.py`**
+- [x] **Inicjalizacja Self-Healing i Maszyna Stanów w `ollama_worker`**
+- [x] **Protokół Graceful Shutdown i Rozdzielenie Schematów IPC**
+
+---
+
+## Zadania Przyszłe (Nastepny Krok: Refaktoryzacja Kontrolera)
+
+- [ ] **Refaktoryzacja i Oczyszczenie Kontrolera (`src/controller`)**:
+  - Przegląd routerów API pod kątem spójności z nowym protokołem WebSocket i rejestrem klientów.
+  - Uporządkowanie modułu orkiestracji konwersacji i zdarzeń.
+  - Rozważenie implementacji logiki inwalidacji kontekstu z `context_invalidation_rfc.md`.

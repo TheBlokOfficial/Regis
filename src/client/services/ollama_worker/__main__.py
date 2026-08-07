@@ -10,9 +10,8 @@ import asyncio
 import logging
 from client import config
 from client.services.ollama_worker.engine import LLMEngine
-from protocol.schemas import LLMConfig
+from protocol.schemas import OllamaWorkerConfig, ServiceState
 from client.services.base import BaseService
-from client.services.ollama_worker.states import OllamaWorkerState
 from client.services.ollama_worker.ollama_client import preload_model, unload_model, is_available
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -21,32 +20,26 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 class OllamaWorkerService(BaseService):
     """Bezportowa usługa Ollama Worker wykonywana jako podproces Sidecar."""
 
-    def __init__(self, config_obj: LLMConfig | None = None):
-        super().__init__(service_name="ollama_worker", config_class=LLMConfig, config_obj=config_obj)
+    def __init__(self, config_obj: OllamaWorkerConfig | None = None):
+        super().__init__(service_name="ollama_worker", config_class=OllamaWorkerConfig, config_obj=config_obj)
         settings = config.load_settings()
 
         self.selected_model = self.config.model_name or settings.get("selected_model", "qwen3.5:9b")
         self.llm_engine: LLMEngine | None = None
-        self.state = OllamaWorkerState.INITIALIZING
         self._ensure_ready_task: asyncio.Task | None = None
-
-    async def _set_state(self, new_state: OllamaWorkerState):
-        if self.state != new_state:
-            logging.info(f"[Ollama Worker] Zmiana stanu: {self.state.value} -> {new_state.value}")
-            self.state = new_state
 
     async def _ensure_ready_loop(self):
         """Pętla samolecząca. Działa cyklicznie w tle, gdy worker jest w stanie INITIALIZING."""
         settings = config.load_settings()
         ollama_url = settings.get('ollama_url', 'http://127.0.0.1:11434')
         
-        while self.state == OllamaWorkerState.INITIALIZING:
+        while self.state == ServiceState.INITIALIZING:
             try:
                 if await is_available(ollama_url):
                     logging.info(f"[Ollama Worker] Ollama dostępna. Próba załadowania modelu {self.selected_model}...")
                     success = await preload_model(ollama_url, self.selected_model)
                     if success:
-                        await self._set_state(OllamaWorkerState.READY)
+                        await self._set_state(ServiceState.READY)
                         logging.info("[Ollama Worker] Model w VRAM. Usługa gotowa (READY).")
                         break
                     else:
@@ -81,7 +74,7 @@ class OllamaWorkerService(BaseService):
     async def handle_command(self, command_type: str, payload: dict, task_id: str | None):
         from protocol.schemas import ServiceCommand
         if command_type in (ServiceCommand.CHAT_STREAM, ServiceCommand.CHAT_STREAM.value):
-            if self.state != OllamaWorkerState.READY:
+            if self.state != ServiceState.READY:
                 logging.warning(f"Odrzucono zadanie - worker jest {self.state.value}")
                 await self.send_task_event(task_id, {"type": "error", "content": f"Ollama worker is currently {self.state.value}"})
                 return
@@ -105,7 +98,7 @@ class OllamaWorkerService(BaseService):
             await self.send_task_event(task_id, {"type": "error", "content": f"Changing model to {requested_model}. Please retry in a few seconds."})
             return
 
-        await self._set_state(OllamaWorkerState.BUSY)
+        await self._set_state(ServiceState.BUSY)
         
         messages = payload.get("messages", [])
         tools = payload.get("tools")
@@ -123,7 +116,7 @@ class OllamaWorkerService(BaseService):
                     
                 await self.send_task_event(task_id, event)
                 
-            await self._set_state(OllamaWorkerState.READY)
+            await self._set_state(ServiceState.READY)
 
         except Exception as e:
             logging.exception("Błąd generacji odpowiedzi Ollama Worker")

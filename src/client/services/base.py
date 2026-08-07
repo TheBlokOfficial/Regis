@@ -3,8 +3,10 @@ import json
 import asyncio
 import logging
 import httpx
+import sys
 from pydantic import BaseModel
 from typing import Type
+from protocol.schemas import ServiceState
 
 class BaseService:
     """Współdzielona klasa bazowa dla bezportowych usług pracujących jako Sidecar."""
@@ -21,6 +23,13 @@ class BaseService:
                 
         self.config = config_obj
         self.internal_proxy_url = getattr(self.config, "internal_proxy_url", "http://127.0.0.1:47831")
+        self.state: ServiceState = ServiceState.INITIALIZING
+
+    async def _set_state(self, new_state: ServiceState):
+        """Zmiana stanu operacyjnego usługi i zaraportowanie w konsoli."""
+        if self.state != new_state:
+            logging.info(f"[{self.service_name}] Zmiana stanu operacyjnego: {self.state.value} -> {new_state.value}")
+            self.state = new_state
 
     async def stop(self):
         """Metoda czyszcząca wywoływana przy zamykaniu usługi. Do nadpisania w klasach potomnych."""

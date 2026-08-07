@@ -2,10 +2,19 @@ import json
 import logging
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Literal
+from pydantic import BaseModel
 
 from controller import config
-from protocol.schemas import CloudProviderConfig
+
+class CloudProviderConfig(BaseModel):
+    """Konfiguracja providera chmurowego (np. OpenRouter, Groq)."""
+    id: str
+    type: str  # np. "openrouter"
+    api_key: str
+    model: str
+    mode: Literal["basic", "extended"] = "extended"
+    priority: int = 50
 
 logger = logging.getLogger(__name__)
 

@@ -67,8 +67,6 @@ def apply_service_config(config_data: dict, from_registration: bool = False) -> 
         register()
 
 
-# Alias wstecznej kompatybilności
-apply_node_config = apply_service_config
 
 
 def register() -> None:

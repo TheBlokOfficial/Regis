@@ -100,7 +100,7 @@ async def proxy_audio(request: Request, file: UploadFile = File(...)):
     Przekazuje plik WAV do Kontrolera z dołączonym X-Client-ID.
     Zwraca strumień SSE z informacyjnymi zdarzeniami (transkrypcja, narzędzia itp.).
     """
-    client_id = controller_api._get_node_id()
+    client_id = controller_api._get_client_id()
     controller_url = controller_api.get_controller_url()
 
     target_url = f"{controller_url}/v1/chat/audio_stream"

@@ -1,67 +1,44 @@
 import json
+from enum import Enum
+from typing import Any, Literal
 from pydantic import BaseModel
-
-# ─── Modele Rejestru Encji ─────────────────────────────────────────────────
-
-from typing import Literal
-
-class CloudProviderConfig(BaseModel):
-    """Konfiguracja providera chmurowego (np. OpenRouter, Groq)."""
-    id: str
-    type: str  # np. "openrouter"
-    api_key: str
-    model: str
-    mode: Literal["basic", "extended"] = "extended"
-    priority: int = 50
 
 # ─── Modele Konfiguracji Usług (Service Config Schemas) ───────────────────
 
 class SatelliteConfig(BaseModel):
-    """Oficjalny schemat kontraktu konfiguracyjnego Satelity (Audio/VAD/Wakeword)."""
-    internal_proxy_url: str = "http://127.0.0.1:47831"
-    capabilities: list[str] = ["audio_input", "tts_output", "wakeword"]
-    wakeword_local: bool = True
+    """Oficjalny schemat kontraktu konfiguracyjnego Satelity."""
     wakeword_threshold: float = 0.65
     silence_timeout_ms: int = 1500
 
-class LLMConfig(BaseModel):
-    """Schemat kontraktu konfiguracyjnego usługi LLM."""
+class OllamaWorkerConfig(BaseModel):
+    """Schemat kontraktu konfiguracyjnego usługi Ollama Worker."""
     model_name: str = "qwen3.5:9b"
-    priority: int = 100
 
-
-class AudioConfig(BaseModel):
-    """Schemat kontraktu konfiguracyjnego usługi Audio (STT + TTS)."""
+class STTConfig(BaseModel):
+    """Schemat kontraktu konfiguracyjnego usługi STT Worker (Whisper)."""
     stt_model_size: str = "small"
     stt_language: str = "pl"
+
+class TTSConfig(BaseModel):
+    """Schemat kontraktu konfiguracyjnego usługi TTS Worker (Piper)."""
     tts_model_name: str = "pl_PL-darkman-medium"
-    port: int = 8002
 
-class STTConfig(AudioConfig):
-    pass
-
-class TTSConfig(AudioConfig):
-    pass
-
-# Alias wstecznej kompatybilności dla starego Workera
-WorkerConfig = LLMConfig
+# Aliasy wstecznej kompatybilności
+LLMConfig = OllamaWorkerConfig
+WorkerConfig = OllamaWorkerConfig
+AudioConfig = STTConfig
+SpeechConfig = STTConfig
 
 
-class NodeServicesConfig(BaseModel):
-    """Oficjalny, silnie typowany zagregowany zestaw konfiguracji usług dla Węzła Klienta."""
+class ClientServicesConfig(BaseModel):
+    """Oficjalny, silnie typowany zagregowany zestaw konfiguracji usług Klienta."""
     satellite: SatelliteConfig | None = None
-    audio: AudioConfig | None = None
-    llm: LLMConfig | None = None
+    stt_worker: STTConfig | None = None
+    tts_worker: TTSConfig | None = None
+    ollama_worker: OllamaWorkerConfig | None = None
 
-
-class WorkerRegistrationRequest(BaseModel):
-    """Payload wysyłany przez Węzeł Roboczy podczas rejestracji w Kontrolerze."""
-    id: str
-    host: str
-    port: int
-    model_name: str
-    priority: int = 100
-    mode: Literal["basic", "extended"] = "extended"
+# Alias wstecznej kompatybilności
+NodeServicesConfig = ClientServicesConfig
 
 
 class ToolExecutionRequest(BaseModel):
@@ -71,111 +48,43 @@ class ToolExecutionRequest(BaseModel):
     room: str | None = None
 
 
-class SatelliteRegistrationRequest(BaseModel):
-    """Payload wysyłany przez Satelitę podczas rejestracji w Kontrolerze."""
-    id: str
-    room: str | None = None
-    type: str
-    capabilities: list[str]
-    wakeword_local: bool = False
-
-
 class ClientRegistrationRequest(BaseModel):
     """Payload wysyłany przez Aplikację Kliencką podczas rejestracji w Kontrolerze."""
-
     id: str
     name: str | None = None
     host: str
-    port: int | None = None
-    # Słownik usług: np. {"llm": {...}, "audio": {...}, "satellite": {...}}
-    services: dict[str, dict] | list[str] = {}
-
-    # Opcjonalne pola spłaszczone (dla kompatybilności ze starymi żądaniami)
-    model_name: str | None = None
-    priority: int = 100
-    room: str | None = None
-    node_type: str = "desktop"
-    capabilities: list[str] = ["audio_input", "tts_output", "wakeword"]
-    wakeword_local: bool = True
-
-    def get_normalized_services(self) -> dict[str, dict]:
-        """Zwraca spójny słownik usług {"service_name": {metadane_usługi}}."""
-        if isinstance(self.services, dict) and self.services:
-            return self.services
-
-        normalized = {}
-        service_list = self.services if isinstance(self.services, list) else ["llm", "audio", "satellite"]
-        if "ollama_worker" in service_list or "llm" in service_list or "worker" in service_list:
-            normalized["ollama_worker"] = {
-                "model_name": self.model_name or "qwen3.5:9b",
-                "priority": self.priority,
-                "mode": "extended",
-                "port": 8001
-            }
-        if "audio" in service_list or "stt" in service_list or "tts" in service_list or "worker" in service_list:
-            normalized["audio"] = {
-                "stt_model_size": "small",
-                "stt_language": "pl",
-                "tts_model_name": "pl_PL-darkman-medium",
-                "port": 8002
-            }
-        if "satellite" in service_list:
-            normalized["satellite"] = {
-                "room": self.room,
-                "node_type": self.node_type,
-                "capabilities": self.capabilities,
-                "wakeword_local": self.wakeword_local,
-            }
-        return normalized
+    # Słownik usług: np. {"ollama_worker": {...}, "stt_worker": {...}, "tts_worker": {...}, "satellite": {...}}
+    services: dict[str, dict] = {}
 
 
 # Aliasy wstecznej kompatybilności ze starym nazewnictwem "Node":
 NodeRegistrationRequest = ClientRegistrationRequest
 
 
-SUPPORTED_REGIS_MODELS = [
-    {
-        "id": "qwen3.5:9b",
-        "name": "Regis Agent (Qwen 3.5 9B)",
-        "description": "Oficjalny, zalecany model produkcyjny z pełnym rozumowaniem ReAct.",
-        "default": True,
-    },
-    {
-        "id": "qwen2.5:3b",
-        "name": "Light Agent (Qwen 2.5 3B)",
-        "description": "Szybki, lżejszy agent dla średnich komputera.",
-        "default": False,
-    },
-    {
-        "id": "qwen2.5:0.5b",
-        "name": "Butler NLU (Qwen 2.5 0.5B)",
-        "description": "Kompaktowy parser komend dla słabych urządzeń.",
-        "default": False,
-    },
-]
-
-
 class ClientConfigRequest(BaseModel):
     """Payload aktualizacji konfiguracji Klienta z poziomu Kontrolera / Web UI."""
     name: str | None = None
-    services: NodeServicesConfig | dict[str, dict] = {}
+    services: ClientServicesConfig | dict[str, dict] = {}
 
 
 NodeConfigRequest = ClientConfigRequest
 
 
-# ─── Modele Komunikatów WebSocket ──────────────────────────────────────────
+# ─── Modele Komunikatów i Stanów Mikrousług ───────────────────────────────
 
-from typing import Any
+class ServiceState(str, Enum):
+    """Oficjalny, znormalizowany stan operacyjny mikrousługi w kontrakcie sieciowym Regis."""
+    INITIALIZING = "INITIALIZING"
+    READY = "READY"
+    BUSY = "BUSY"
 
-from enum import Enum
 
 class ServiceName(str, Enum):
     """Oficjalny wykaz nazw usług w systemie Regis."""
     SATELLITE = "satellite"
-    AUDIO = "audio"
+    STT_WORKER = "stt_worker"
+    TTS_WORKER = "tts_worker"
     OLLAMA_WORKER = "ollama_worker"
-    LLM = "llm"
 
 
 class SatelliteAction(str, Enum):
@@ -184,7 +93,6 @@ class SatelliteAction(str, Enum):
     PAUSE = "pause"
 
 
-# Alias wstecznej kompatybilności
 ServiceAction = SatelliteAction
 
 
@@ -193,12 +101,6 @@ class ServiceCommand(str, Enum):
     PLAY_AUDIO = "play_audio"
     SATELLITE_CONTROL = "satellite_control"
     CHAT_STREAM = "chat_stream"
-
-
-class SatelliteControlPayload(BaseModel):
-    """Payload dla komendy 'satellite_control'."""
-    service: ServiceName = ServiceName.SATELLITE
-    action: SatelliteAction
 
 
 class WSCommand(BaseModel):
@@ -216,8 +118,12 @@ class WSCommandResult(BaseModel):
     error: str | None = None
 
 
-class WSSatelliteEvent(BaseModel):
-    """Zdarzenie z Satelity (np. VAD, Audio) przesyłane z Klienta do Kontrolera."""
+class WSClientEvent(BaseModel):
+    """Zdarzenie z Aplikacji Klienckiej (np. VAD, Audio) przesyłane do Kontrolera."""
     type: Literal["satellite_event"] = "satellite_event"
     event_type: str
     data: dict[str, Any] = {}
+
+
+# Alias wstecznej kompatybilności
+WSSatelliteEvent = WSClientEvent

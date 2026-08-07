@@ -42,6 +42,9 @@ def control_service(name: str, action: str | ProcessAction, config_data: dict = 
 
 DISPLAY_NAMES = {
     "satellite": "Satelita",
+    "stt_worker": "STT Worker (Whisper)",
+    "tts_worker": "TTS Worker (Piper)",
+    "speech_worker": "Speech Worker (STT+TTS)",
     "audio": "Audio (STT+TTS)",
     "ollama_worker": "Ollama Worker",
     "llm": "LLM (Agent)",

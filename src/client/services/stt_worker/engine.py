@@ -21,6 +21,7 @@ if os.name == 'nt':
 
 from faster_whisper import WhisperModel
 
+
 class STTEngine:
     def __init__(self, model_size="small", language="pl"):
         logging.info(f"Ładowanie modelu STT faster-whisper (rozmiar: {model_size})...")
@@ -32,17 +33,17 @@ class STTEngine:
         except Exception as e:
             logging.warning(f"Brak GPU lub błąd CUDA, fallback na CPU: {e}")
             self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
-        
+
     def transcribe_audio_file(self, file_like_object) -> str:
         import wave
         import numpy as np
         logging.info("Rozpoczęto transkrypcję z pliku (faster-whisper)...")
-        
+
         # Obejście błędów dekodowania ffmpeg/av - ręczne załadowanie do tablicy numpy float32
         with wave.open(file_like_object, 'rb') as wf:
             frames = wf.readframes(wf.getnframes())
             audio_data = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-            
+
         kwargs = {
             "language": self.language,
             "beam_size": 5,
@@ -50,7 +51,7 @@ class STTEngine:
             "condition_on_previous_text": False,
             "initial_prompt": "Regis, zgaś, zapal, zaświeć, włącz, wyłącz, światło, pracownia, salon, kuchnia, pokój."
         }
-            
+
         try:
             segments, info = self.model.transcribe(audio_data, **kwargs)
             results = []
@@ -63,5 +64,5 @@ class STTEngine:
             results = []
             for segment in segments:
                 results.append(segment.text)
-                
+
         return " ".join(results).strip()

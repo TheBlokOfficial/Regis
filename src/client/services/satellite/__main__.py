@@ -2,11 +2,10 @@ import os
 import asyncio
 import logging
 
-from protocol.schemas import SatelliteConfig, SatelliteAction
+from protocol.schemas import SatelliteConfig, SatelliteAction, ServiceState
 from client.config import DATA_DIR
 from client.services.base import BaseService
 
-from .states import SatelliteState
 from .event_bus import EventBus
 from .network import SatelliteAPIClient
 from .readiness import ReadinessChecker
@@ -18,7 +17,8 @@ from .audio.player import AudioPlayer
 SILENCE_THRESHOLD = 150
 
 class SatelliteService(BaseService):
-    """Główny orkiestrator Satelity zarządzający maszyną stanów (INITIALIZING, WAITING, WAKEWORD, LISTENING, STREAMING, PROCESSING, SPEAKING)."""
+    """Główny orkiestrator Satelity. Stan infrastrukturalny (READY/BUSY) jest jedynym stanem raportowanym do Kontrolera.
+    Wewnętrzne fazy interakcji (wakeword, nagrywanie, odtwarzanie) są emitowane jako zdarzenia domenowe do UI."""
 
     def __init__(self, config: SatelliteConfig = None):
         super().__init__(service_name="satellite", config_class=SatelliteConfig, config_obj=config)
@@ -30,11 +30,8 @@ class SatelliteService(BaseService):
         self.vad = self._init_vad(self.config)
         self.readiness = ReadinessChecker(self.wakeword, self.audio_manager, self.event_bus)
         
-        self.state = SatelliteState.INITIALIZING
         self._paused: bool = True
         self._listening_task: asyncio.Task | None = None
-
-
 
     @staticmethod
     def _init_vad(config: SatelliteConfig) -> EnergyVAD:
@@ -57,7 +54,7 @@ class SatelliteService(BaseService):
 
         # 1. Sprawdzenie sprzętu
         await self.readiness.ensure_ready()
-        self._set_state(SatelliteState.WAITING)
+        await self._set_state(ServiceState.READY)
 
         try:
             # 2. Główny pasywny punkt oczekiwania na komendy SSE
@@ -87,11 +84,12 @@ class SatelliteService(BaseService):
             case SatelliteAction.RESUME:
                 self._paused = False
                 self.event_bus.log("Otrzymano polecenie RESUME: Wznowienie komunikacji.")
-                if self.state == SatelliteState.WAITING:
+                if self.state == ServiceState.READY:
                     self._start_wakeword_listening()
             case SatelliteAction.PAUSE:
                 self._paused = True
                 self.event_bus.log("Otrzymano polecenie PAUSE: Wstrzymanie komunikacji.")
+                self.event_bus.emit({"type": "paused"})
 
     def _start_wakeword_listening(self):
         if self._listening_task and not self._listening_task.done():
@@ -99,31 +97,30 @@ class SatelliteService(BaseService):
             
         self.audio_manager.empty_queue()
         self.wakeword.reset()
-        self._set_state(SatelliteState.WAKEWORD)
-        self.event_bus.emit({"type": "state", "state": SatelliteState.WAKEWORD})
+        self.event_bus.emit({"type": "wakeword_listening"})
         self.event_bus.log("Uruchomiono nasłuch Wake Word.")
         
         self._listening_task = asyncio.create_task(self._listening_loop())
 
     async def _listening_loop(self):
-        """Pętla asynchroniczna nasłuchu mowy (WAKEWORD -> LISTENING/STREAMING)."""
+        """Pętla asynchroniczna nasłuchu mowy (wakeword -> nagrywanie -> streaming)."""
         try:
-            while self.state == SatelliteState.WAKEWORD:
+            while True:
                 await self._handle_wakeword()
                 if self._paused:
                     break
-                
-            if self.state == SatelliteState.STREAMING and not self._paused:
-                await self._handle_streaming()
+                if self.state == ServiceState.BUSY:
+                    await self._handle_streaming()
+                    break
         except asyncio.CancelledError:
             pass
         except Exception as e:
             self.event_bus.log(f"Błąd w pętli nasłuchu: {e}")
         finally:
-            if self.state != SatelliteState.WAITING:
-                self._set_state(SatelliteState.WAITING)
-                self.event_bus.emit({"type": "state", "state": SatelliteState.WAITING})
-                self.event_bus.log("Nasłuch zakończony. Powrót do uśpienia (WAITING).")
+            if self.state == ServiceState.BUSY:
+                await self._set_state(ServiceState.READY)
+            self.event_bus.emit({"type": "waiting"})
+            self.event_bus.log("Nasłuch zakończony. Powrót do uśpienia.")
 
     def _process_vad_for_wakeword(self, chunk) -> bool:
         is_speech = self.vad.is_speech(chunk)
@@ -166,10 +163,10 @@ class SatelliteService(BaseService):
         permitted = await self.network.check_wake_permission()
         if permitted and not self._paused:
             AudioPlayer.play_system_sound("Speech On")
-            self.event_bus.emit({"type": "state", "state": SatelliteState.LISTENING})
+            self.event_bus.emit({"type": "listening"})
             self.event_bus.log("Start nagrywania...")
             self.audio_manager.empty_queue()
-            self._set_state(SatelliteState.STREAMING)
+            await self._set_state(ServiceState.BUSY)
         else:
             AudioPlayer.play_system_sound("Speech Off")
             self.event_bus.log("Odmowa nagrywania (Wstrzymana komunikacja lub brak workerów).")
@@ -185,36 +182,30 @@ class SatelliteService(BaseService):
             self.event_bus.log(f"Błąd nagrywania audio: {e}")
             return
 
-        self._set_state(SatelliteState.PROCESSING)
-        self.event_bus.emit({"type": "state", "state": SatelliteState.PROCESSING})
+        self.event_bus.emit({"type": "processing"})
         AudioPlayer.play_system_sound("Speech Sleep")
 
         wav_bytes = self.audio_manager.create_wav_payload(collected_chunks)
-        self.event_bus.log(f"Przygotowano paczkę audio ({len(wav_bytes)} bajtów). Wysyłam do Kontrolera (PROCESSING)...")
+        self.event_bus.log(f"Przygotowano paczkę audio ({len(wav_bytes)} bajtów). Wysyłam do Kontrolera...")
 
         try:
             await self.network.send_audio_payload(wav_bytes)
         finally:
-            self._set_state(SatelliteState.WAITING)
-            self.event_bus.emit({"type": "state", "state": SatelliteState.WAITING})
+            self.event_bus.emit({"type": "waiting"})
 
     async def _handle_play_audio(self, cmd_data: dict):
         """Odtwarzanie odpowiedzi głosowej lektora."""
         audio_b64 = cmd_data.get("audio_b64", "")
-        self._set_state(SatelliteState.SPEAKING)
-        self.event_bus.emit({"type": "state", "state": SatelliteState.SPEAKING})
-        self.event_bus.log("Odtwarzam odpowiedź lektora (SPEAKING)...")
+        self.event_bus.emit({"type": "speaking"})
+        self.event_bus.log("Odtwarzam odpowiedź lektora...")
         try:
             await asyncio.to_thread(AudioPlayer.play_tts_audio, audio_b64)
         except Exception as e:
             self.event_bus.log(f"Błąd odtwarzania TTS: {e}")
         finally:
             await self.network.report_audio_complete()
-            self._set_state(SatelliteState.WAITING)
-            self.event_bus.emit({"type": "state", "state": SatelliteState.WAITING})
-
-    def _set_state(self, new_state: SatelliteState):
-        self.state = new_state
+            await self._set_state(ServiceState.READY)
+            self.event_bus.emit({"type": "waiting"})
 
 
 def _setup_logging():

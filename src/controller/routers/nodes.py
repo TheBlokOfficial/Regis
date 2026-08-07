@@ -6,10 +6,10 @@ import httpx
 import threading
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
-from controller.config import DATA_DIR
+from controller.config import DATA_DIR, SUPPORTED_REGIS_MODELS
 from protocol.schemas import (
-    ClientRegistrationRequest, ClientConfigRequest, SUPPORTED_REGIS_MODELS,
-    WSSatelliteEvent, WSCommandResult
+    ClientRegistrationRequest, ClientConfigRequest,
+    WSClientEvent, WSCommandResult
 )
 import controller.event_bus as event_bus
 import controller.registry as registry
@@ -117,7 +117,7 @@ async def websocket_client_endpoint(websocket: WebSocket, client_id: str):
                     req = ClientRegistrationRequest(**reg_payload)
                     
                     is_new = req.id not in registry.node_registry
-                    incoming_services = req.get_normalized_services()
+                    incoming_services = req.services
 
                     persistent_configs = load_nodes_config()
                     stored_profile = persistent_configs.get(req.id)
@@ -171,7 +171,7 @@ async def websocket_client_endpoint(websocket: WebSocket, client_id: str):
                 pass # Status jest trzymany po stronie węzła, heartbeat wystarczy
             elif msg_type == "satellite_event":
                 try:
-                    event = WSSatelliteEvent(**data)
+                    event = WSClientEvent(**data)
                     await event_bus.publish({
                         "type": "satellite_event",
                         "satellite_id": node_id,
@@ -186,7 +186,7 @@ async def websocket_client_endpoint(websocket: WebSocket, client_id: str):
                         if audio_nodes and (llm_nodes or providers.has_llm_provider()):
                             await registry.node_manager.send_command(node_id, "satellite_control", {"action": "resume"})
                 except Exception as e:
-                    logging.error(f"Błąd parsowania WSSatelliteEvent: {e}")
+                    logging.error(f"Błąd parsowania WSClientEvent: {e}")
             elif msg_type == "command_result":
                 try:
                     res = WSCommandResult(**data)
