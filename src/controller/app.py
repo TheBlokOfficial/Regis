@@ -13,8 +13,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 # --- Wewnętrzne moduły Regis ---
-import controller.core.client_registry as registry
-from controller.config import loader as config, SystemSettings
+import controller.core.app_state as app_state
+import controller.core.client_store as client_store
+from controller.core.heartbeat import _heartbeat_loop
+from controller.config import loader as config
+from controller.config.schemas import SystemSettings
 from controller.integrations.loader import load_integrations
 from controller.tools.tools_registry import ToolsRegistry
 from protocol.discovery import get_local_ip, start_discovery_server
@@ -37,13 +40,13 @@ DEFAULT_CONTROLLER_PORT = 8000
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządza cyklem życia (start i stop) kluczowych usług Kontrolera.
-    
+
     Faza 1 (Startup):
     - Wczytuje pliki konfiguracyjne.
     - Inicjalizuje i rejestruje wtyczki integracji zewnętrznych (np. Home Assistant).
     - Buduje rejestr narzędzi dla Agenta LLM (ToolsRegistry).
     - Uruchamia pętlę sprawdzania obecności połączeń (Heartbeat) oraz usługę Auto-Discovery (UDP).
-    
+
     Faza 2 (Shutdown):
     - Zamyka zadania w tle i czyści zasoby przy wyłączaniu serwera.
     """
@@ -54,14 +57,14 @@ async def lifespan(app: FastAPI):
 
     # 2. Dynamiczne ładowanie i rejestracja integracji zewnętrznych
     for integration in load_integrations(settings):
-        registry.register_integration(integration)
+        client_store.register_integration(integration)
 
     # 3. Inicjalizacja rejestru narzędzi Agenta oraz bufora ustawień
-    registry.tools_registry = ToolsRegistry()
-    registry._settings_cache.update(settings.model_dump())
+    app_state.tools_registry = ToolsRegistry()
+    app_state._settings_cache.update(settings.model_dump())
 
     # 4. Uruchomienie zadania sprawdzania obecności połączeń w tle (Heartbeat)
-    heartbeat_task = asyncio.create_task(registry._heartbeat_loop())
+    heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
     # 5. Uruchomienie serwera Auto-Discovery (rozgłaszanie adresu Kontrolera w sieci lokalnej UDP)
     local_ip = get_local_ip()

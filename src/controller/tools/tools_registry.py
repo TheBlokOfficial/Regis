@@ -6,15 +6,16 @@ import uuid
 import requests
 from typing import Any
 
-from controller.llm.prompt.tools_schema import BASE_TOOLS_SCHEMA
+import controller.core.app_state as app_state
+from controller.tools.schemas import BASE_TOOLS_SCHEMA
 
 
 class ToolsRegistry:
     """Rejestr narzędzi dostarczanych dla modelu LLM."""
-    
+
     def __init__(self, ha_client=None, rooms: dict = None, integration_registry: dict = None):
         self._direct_ha_client = ha_client
-        self.integration_registry = integration_registry
+        self._integration_registry = integration_registry
         if rooms is None:
             from controller.config import load, RoomsConfig
             self.rooms = load(RoomsConfig).root
@@ -26,21 +27,16 @@ class ToolsRegistry:
         """Zwraca obiekt integracji/klienta HA dla operacji na urządzeniach."""
         if self._direct_ha_client is not None:
             return self._direct_ha_client
-        import controller.core.client_registry as registry
-        ints = self.integration_registry or registry.integration_registry
+        ints = self._integration_registry or app_state.integration_registry
         if "home_assistant" in ints:
             return ints["home_assistant"]
-        return registry.ha_client
-        
+        return app_state.ha_client
+
     def execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
         """Kieruje wywołanie narzędzia do odpowiedniej logiki."""
         try:
-            tool_def = None
-            for t in BASE_TOOLS_SCHEMA:
-                if t["function"]["name"] == tool_name:
-                    tool_def = t
-                    break
-                    
+            tool_def = next((t for t in BASE_TOOLS_SCHEMA if t["function"]["name"] == tool_name), None)
+
             if tool_def is None:
                 return json.dumps({"error": f"Narzędzie '{tool_name}' nie istnieje."}, ensure_ascii=False)
 
@@ -52,12 +48,12 @@ class ToolsRegistry:
                 "get_weather": lambda: self._get_weather(arguments.get("location")),
                 "get_phone_battery": lambda: self._get_phone_battery(),
             }
-            
+
             handler = dispatch.get(tool_name)
             if handler:
                 return handler()
             return json.dumps({"error": f"Nieznane narzędzie: {tool_name}"}, ensure_ascii=False)
-            
+
         except Exception as e:
             logging.error(f"Błąd wykonania narzędzia {tool_name}: {e}")
             return json.dumps({"error": f"Wystąpił błąd podczas wykonania: {str(e)}"}, ensure_ascii=False)
@@ -65,87 +61,74 @@ class ToolsRegistry:
     # ─── Home Assistant ───────────────────────────────────────────────
 
     def _get_devices(self, domain: str = None, room: str = None) -> str:
-        """Zwraca urządzenia z opcjonalnym filtrowaniem po domenie i pokoju.
-        
-        Ukrywa surowe urządzenia, pozostawiając tylko te "zdefiniowane w abstrakcji":
-        - Wirtualne grupy
-        - Urządzenia przypisane do pokoi (rooms.json)
-        - Urządzenia ze zdefiniowanym aliasem (aliases.json)
-        """
+        """Zwraca urządzenia z opcjonalnym filtrowaniem po domenie i pokoju."""
         states = self.ha_client.get_all_states()
         room_filter = self.rooms.get(room) if room and self.rooms else None
         devices = []
-        
+
         virtual_groups = getattr(self.ha_client, "virtual_groups", {})
         aliases = getattr(self.ha_client, "aliases", {})
-        
-        # Zbierz wszystkie encje zdefiniowane w pokojach
+
         room_entities = set()
         for r_data in (self.rooms.values() if self.rooms else []):
             if isinstance(r_data, dict):
                 room_entities.update(r_data.get("devices", []))
             else:
                 room_entities.update(r_data)
-            
+
         active_virtual_groups = {}
         for vg_id, children in virtual_groups.items():
             vg_domain = vg_id.split(".")[0] if "." in vg_id else ""
             if domain and vg_domain != domain:
                 continue
-            
+
             is_in_room = False
             if room_filter is None:
                 is_in_room = True
-            elif room and room in vg_id: # np. light.moj_pokoj pasuje do room="moj_pokoj"
+            elif room and room in vg_id:
                 is_in_room = True
             else:
                 for child in children:
                     if room_filter and child in room_filter:
                         is_in_room = True
                         break
-                        
+
             if is_in_room:
                 active_virtual_groups[vg_id] = True
-                
+
         for entity_id, data in states.items():
             if domain and not entity_id.startswith(f"{domain}."):
                 continue
             if room_filter is not None and entity_id not in room_filter:
                 continue
-                
-            # Sprawdzenie definicji abstrakcji
+
             has_alias = entity_id in aliases
             in_room = entity_id in room_entities
-            
-            # Jeżeli encja składowa należy do jakiejś wirtualnej grupy, nie pokazuj jej osobno
+
             is_part_of_any_vg = any(entity_id in children for children in virtual_groups.values())
             if is_part_of_any_vg:
                 continue
-                
+
             if has_alias or in_room:
                 devices.append({"entity_id": entity_id, "name": data.get("friendly_name", "Nieznana Nazwa")})
-            
-        # Dodaj wirtualne grupy jako jedno syntetyczne urządzenie
+
         for vg_id in active_virtual_groups:
-            domain_part = vg_id.split(".")[0] if "." in vg_id else ""
             name_part = vg_id.split(".")[1].replace("_", " ").title() if "." in vg_id else vg_id
-            
             vg_children = virtual_groups.get(vg_id, [])
             nested_vgs = [c for c in vg_children if c in virtual_groups]
-            
             devices.append({
-                "entity_id": vg_id, 
+                "entity_id": vg_id,
                 "name": f"{name_part} (Grupa)",
                 "nested": nested_vgs
             })
-            
+
         return json.dumps({"devices": devices}, ensure_ascii=False)
 
     def get_global_menu(self) -> str:
-        """Zwraca sformatowany tekst w Markdown reprezentujący abstrakcyjne urządzenia domowe z uwzględnieniem pokoi."""
+        """Zwraca sformatowany tekst w Markdown reprezentujący abstrakcyjne urządzenia domowe."""
         devices_json = json.loads(self._get_devices())
         devices = devices_json.get("devices", [])
-        
+
         entity_to_room = {}
         room_metadata = {}
         if getattr(self, "rooms", None):
@@ -158,13 +141,13 @@ class ToolsRegistry:
                 else:
                     for ent in r_data:
                         entity_to_room[ent] = room_name.title()
-                    
+
         grouped_devices = {}
         for dev in devices:
             ent_id = dev["entity_id"]
             name = dev["name"]
             nested = dev.get("nested", [])
-            
+
             room = "Urządzenia bez przypisanego pokoju"
             if ent_id in entity_to_room:
                 room = entity_to_room[ent_id]
@@ -174,18 +157,18 @@ class ToolsRegistry:
                         r_data = self.rooms[r_name]
                         room = r_data.get("name", r_name.title()) if isinstance(r_data, dict) else r_name.title()
                         break
-                        
+
             if room not in grouped_devices:
                 grouped_devices[room] = []
-                
+
             entry = f"- {ent_id} ({name})"
             if nested:
                 entry += f" [Zawiera: {', '.join(nested)}]"
             grouped_devices[room].append(entry)
-            
+
         if not devices:
             return "BRAK URZĄDZEŃ W SYSTEMIE."
-            
+
         menu = "DOSTĘPNE URZĄDZENIA (Globalne Menu):\n"
         for room, devs in grouped_devices.items():
             menu += f"\n## Pokój: {room}\n"
@@ -194,42 +177,36 @@ class ToolsRegistry:
                 meta_str = ", ".join(room_metadata[orig_room])
                 menu += f"*Metadane: {meta_str}*\n"
             menu += "\n".join(devs) + "\n"
-            
+
         return menu.strip()
 
     def _get_device_state(self, entity_id: str | list[str]) -> str:
         states = self.ha_client.get_all_states()
         ha_virtual_groups = getattr(self.ha_client, "virtual_groups", {})
-        
+
         is_single_string = isinstance(entity_id, str)
         eids = [entity_id] if is_single_string else entity_id
-        
+
         results = {}
         for eid in eids:
             if eid in ha_virtual_groups:
                 children = self.ha_client._flatten_entities(eid) if hasattr(self.ha_client, "_flatten_entities") else ha_virtual_groups[eid]
-                any_on = any(
-                    child in states and states[child].get("state") == "on" 
-                    for child in children
-                )
+                any_on = any(child in states and states[child].get("state") == "on" for child in children)
                 name_part = eid.split(".")[-1].replace("_", " ").title()
-                
                 group_response = {
                     "state": "on" if any_on else "off",
                     "friendly_name": f"{name_part} (Grupa)",
                     "attributes": {}
                 }
-                
                 for child in children:
                     if child in states and states[child].get("state") == "on" and "attributes" in states[child]:
                         group_response["attributes"].update(states[child]["attributes"])
-                        
                 results[eid] = group_response
             elif eid in states:
                 results[eid] = states[eid]
             else:
                 results[eid] = {"error": "Urządzenie nie znalezione."}
-                
+
         if is_single_string:
             return json.dumps(results[entity_id], ensure_ascii=False)
         else:
@@ -245,8 +222,8 @@ class ToolsRegistry:
 
     def _execute_action(self, action: str, entity_id: str, parameters: dict[str, Any]) -> str:
         if action not in ["turn_on", "turn_off", "toggle"]:
-            return json.dumps({"error": f"Nieprawidłowa akcja: '{action}'. Dozwolone: 'turn_on', 'turn_off', 'toggle'. Użyj 'turn_on' do zmiany jasności/koloru."}, ensure_ascii=False)
-                
+            return json.dumps({"error": f"Nieprawidłowa akcja: '{action}'. Dozwolone: 'turn_on', 'turn_off', 'toggle'."}, ensure_ascii=False)
+
         try:
             success = self.ha_client.execute_action(action, entity_id, parameters)
             if success:
@@ -272,20 +249,20 @@ class ToolsRegistry:
     def _get_weather(self, location: str) -> str:
         if not location:
             return json.dumps({"error": "Musisz podać nazwę miasta."}, ensure_ascii=False)
-        
+
         try:
             url = f"https://wttr.in/{location}?format=j1"
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             data = response.json()
-            
+
             current = data.get("current_condition", [{}])[0]
             if not current:
-                return json.dumps({"error": "Nie znaleziono danych o pogodzie dla podanej lokalizacji."}, ensure_ascii=False)
-                
+                return json.dumps({"error": "Nie znaleziono danych o pogodzie."}, ensure_ascii=False)
+
             weather_desc_pl_list = current.get("lang_pl", [])
             weather_desc = weather_desc_pl_list[0].get("value") if weather_desc_pl_list else current.get("weatherDesc", [{}])[0].get("value")
-            
+
             result = {
                 "location": location,
                 "description": weather_desc,
@@ -295,10 +272,8 @@ class ToolsRegistry:
                 "wind_speed_kmh": current.get("windspeedKmph")
             }
             return json.dumps(result, ensure_ascii=False)
-            
+
         except requests.exceptions.RequestException as e:
             return json.dumps({"error": f"Nie udało się połączyć z serwisem pogodowym: {str(e)}"}, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"error": f"Błąd parsowania danych o pogodzie: {str(e)}"}, ensure_ascii=False)
-
-

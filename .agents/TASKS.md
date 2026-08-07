@@ -37,10 +37,27 @@
 
 ---
 
+## Rejestr Zrealizowanych Zadań (Sesja 2026-08-07 - Refaktoryzacja Rdzenia Kontrolera)
+
+- [x] **Rozbicie `core/client_registry.py`**:
+  - Zastąpiono globalny moduł-worek czterema dedykowanymi plikami: `app_state.py`, `connection_manager.py`, `client_store.py`, `session_store.py`, `heartbeat.py`.
+  - Clean break — 9 importerów zaktualizowanych, stary plik usunięty.
+- [x] **Optymalizacja i Dekompozycja Orkiestratora (`src/controller/llm/orchestrator.py`)**:
+  - Monolityczna `proxy_sse_to_queue()` (442 linie) rozbita na `llm/pipeline/cloud.py`, `llm/pipeline/worker.py`, `llm/pipeline/session_manager.py`.
+  - Orkiestrator zredukowany do ~70-linijnej fasady routingowej.
+  - Naprawiono broken ścieżkę worker (mechanizm `_pending_tasks` zamiast `event_bus.subscribe(callback)`).
+- [x] **Granica `tools/` ↔ `llm/prompt/`**:
+  - Utworzono `tools/schemas.py` jako single point of definition dla `BASE_TOOLS_SCHEMA`.
+- [x] **4 poprawki błędów krytycznych**:
+  - `save_cloud_providers` cache, `OllamaBackend model_name`, `/v1/rooms`, `task_event routing`.
+
+---
+
 ## Zadania Przyszłe
 
-- [ ] **Optymalizacja i Dekompozycja Orkiestratora (`src/controller/llm/orchestrator.py`)**:
-  - Dekompozycja pętli ReAct na mniejsze, modularne komponenty.
-  - Ewentualna implementacja inwalidacji kontekstu z `docs/context_invalidation_rfc.md`.
+- [ ] **Uproszczenie `llm/backends/`**:
+  - `ollama.py` i `openrouter.py` mają własne pętle ReAct (140-200 linii). Po przeniesieniu logiki ReAct do `pipeline/worker.py` backendy mogą stać się czystymi wrapperami HTTP.
+- [ ] **FastAPI Dependency Injection**:
+  - `app_state.py` jako moduł z globalnymi zmiennymi jest krokiem przejściowym. Docelowo `AppState` przez `Depends()` w routerach.
 - [ ] **Wdrożenie Dwuwarstwowych Sub-Agentów**:
   - Implementacja wzorca Mixture of Specialist Sub-Agents opisanego w `docs/hierarchical_subagents_rfc.md`.

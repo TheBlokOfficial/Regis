@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from protocol.schemas import ToolExecutionRequest
-import controller.core.client_registry as registry
+import controller.core.app_state as app_state
 
 router_tools = APIRouter()
 
@@ -20,7 +20,7 @@ async def execute_tool_proxy(request: ToolExecutionRequest):
     do pokoju Satelity, która zainicjowała żądanie.
     Zwraca wynik jako string JSON (identyczny format co ToolsRegistry.execute_tool).
     """
-    if not registry.tools_registry:
+    if not app_state.tools_registry:
         return Response(
             json.dumps({"error": "Rejestr narzędzi niedostępny."}, ensure_ascii=False),
             status_code=503,
@@ -30,12 +30,12 @@ async def execute_tool_proxy(request: ToolExecutionRequest):
     arguments = dict(request.arguments)
     if request.room is not None and "room" not in arguments:
         arguments["room"] = request.room
-    result = registry.tools_registry.execute_tool(request.tool_name, arguments)
+    result = app_state.tools_registry.execute_tool(request.tool_name, arguments)
     return Response(content=result, media_type="application/json")
 
 @router_tools.get("/v1/tools/menu")
 async def get_global_menu():
     """Zwraca globalne menu w postaci Markdown."""
-    if not registry.tools_registry:
+    if not app_state.tools_registry:
         return Response(content="BRAK REJESTRU", status_code=503)
-    return Response(content=registry.tools_registry.get_global_menu(), media_type="text/plain")
+    return Response(content=app_state.tools_registry.get_global_menu(), media_type="text/plain")
