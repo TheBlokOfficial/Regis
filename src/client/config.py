@@ -130,5 +130,6 @@ def get_controller_url(allow_fallback: bool = False) -> str:
 
 def _get_client_id() -> str:
     """Zwraca gwarantowane, tekstowe ID klienta."""
+    settings = _get_settings()
     return str(settings.get("client_id", "client-default"))
 
