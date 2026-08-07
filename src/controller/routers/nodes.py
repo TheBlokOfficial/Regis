@@ -138,7 +138,6 @@ async def websocket_client_endpoint(websocket: WebSocket, client_id: str):
                         "id": req.id,
                         "name": name,
                         "host": req.host,
-                        "port": req.port,
                         "services": services_dict,
                         "last_seen": time.time(),
                     }
@@ -148,7 +147,7 @@ async def websocket_client_endpoint(websocket: WebSocket, client_id: str):
                         service_names = list(services_dict.keys())
                         logging.info(
                             f"Zarejestrowano Klienta (WebSocket): {req.id} "
-                            f"(host={req.host}:{req.port}, usługi={service_names})"
+                            f"(host={req.host}, usługi={service_names})"
                         )
                         await event_bus.publish({
                             "type": "node_registered",
