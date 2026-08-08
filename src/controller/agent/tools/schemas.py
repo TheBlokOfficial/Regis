@@ -2,7 +2,7 @@
 Schematy JSON narzędzi dostępnych dla modelu LLM.
 
 Jest to jedyne źródło definicji narzędzi (single point of definition).
-Zarówno tools_registry.py (routing wywołań) jak i llm/prompt/ (schemat dla API)
+Zarówno registry.py (routing wywołań) jak i agent/prompt/ (schemat dla API)
 importują stąd — nie na odwrót.
 """
 

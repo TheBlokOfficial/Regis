@@ -1,5 +1,28 @@
 # Lista Zadań Projektu Regis (TASKS)
 
+## Rejestr Zrealizowanych Zadań (Sesja 2026-08-08 - Restrukturyzacja Architektoniczna Kontrolera)
+
+- [x] **Rozdzielenie Orkiestratora i Konsolidacja Pamięci Sesji**:
+  - Przeniesiono zarządcę sesji i czyszczenie historii do `src/controller/core/session/` (`store.py`, `history.py`, `manager.py`).
+  - Usunięto stary plik `session_store.py`.
+- [x] **Wydzielenie Czystego Mózgu Agenta ReAct (`src/controller/agent/`)**:
+  - Utworzono pętlę agenta ReAct w `agent/engine.py`.
+  - Przeniesiono prompt systemowy do `agent/prompt/` oraz definicje modeli do `agent/models.py`.
+- [x] **Hermetyzacja Rąk Agenta (`src/controller/agent/tools/`)**:
+  - Przeniesiono `tools_registry.py` oraz `schemas.py` z top-level `tools/` do `agent/tools/`.
+  - Usunięto stary katalog `src/controller/tools/`.
+- [x] **Ujednolicenie Dostawców Zmysłów w Warstwie 2 (`src/controller/providers/`)**:
+  - Skonsolidowano dostawców LLM pod `providers/llm/` (`openrouter.py`, `ollama.py`, `client_app.py`, `base.py`, `resolver.py`).
+  - Utworzono `providers/audio/service.py` realizujący niskopoziomowe zapytania HTTP do STT/TTS.
+  - Usunięto katalogi `src/controller/llm/` oraz `src/controller/audio/`.
+- [x] **Przemianowanie i Uporządkowanie Endpointów (`src/controller/endpoints/`)**:
+  - Przeniesiono dawne `api/` do `src/controller/endpoints/` (`interaction.py`, `clients.py`, `cloud.py`, `system.py`, `tools.py`).
+  - Usunięto martwy endpoint `POST /api/satellite/event`.
+  - Przeniesiono i zrefaktoryzowano komendy do klienta na `POST /v1/clients/{client_id}/command`.
+  - Zrefaktoryzowano pętlę WebSocket w `clients.py` na słownikową mapę handlerów zdarzeń.
+
+---
+
 ## Rejestr Zrealizowanych Zadań (Sesja 2026-08-07 - Refaktoryzacja Kontrolera)
 
 - [x] **Centralizacja Persystencji (`JSONStorage`)**:
@@ -37,26 +60,8 @@
 
 ---
 
-## Rejestr Zrealizowanych Zadań (Sesja 2026-08-07 - Refaktoryzacja Rdzenia Kontrolera)
-
-- [x] **Rozbicie `core/client_registry.py`**:
-  - Zastąpiono globalny moduł-worek czterema dedykowanymi plikami: `app_state.py`, `connection_manager.py`, `client_store.py`, `session_store.py`, `heartbeat.py`.
-  - Clean break — 9 importerów zaktualizowanych, stary plik usunięty.
-- [x] **Optymalizacja i Dekompozycja Orkiestratora (`src/controller/llm/orchestrator.py`)**:
-  - Monolityczna `proxy_sse_to_queue()` (442 linie) rozbita na `llm/pipeline/cloud.py`, `llm/pipeline/worker.py`, `llm/pipeline/session_manager.py`.
-  - Orkiestrator zredukowany do ~70-linijnej fasady routingowej.
-  - Naprawiono broken ścieżkę worker (mechanizm `_pending_tasks` zamiast `event_bus.subscribe(callback)`).
-- [x] **Granica `tools/` ↔ `llm/prompt/`**:
-  - Utworzono `tools/schemas.py` jako single point of definition dla `BASE_TOOLS_SCHEMA`.
-- [x] **4 poprawki błędów krytycznych**:
-  - `save_cloud_providers` cache, `OllamaBackend model_name`, `/v1/rooms`, `task_event routing`.
-
----
-
 ## Zadania Przyszłe
 
-- [ ] **Uproszczenie `llm/backends/`**:
-  - `ollama.py` i `openrouter.py` mają własne pętle ReAct (140-200 linii). Po przeniesieniu logiki ReAct do `pipeline/worker.py` backendy mogą stać się czystymi wrapperami HTTP.
 - [ ] **FastAPI Dependency Injection**:
   - `app_state.py` jako moduł z globalnymi zmiennymi jest krokiem przejściowym. Docelowo `AppState` przez `Depends()` w routerach.
 - [ ] **Wdrożenie Dwuwarstwowych Sub-Agentów**:
@@ -69,25 +74,3 @@
   - Cel dystrybucyjny: Regis jako obraz Docker na mini PC, analogia do instalacji HA. Ustalony jako docelowy model dystrybucji w sesji 2026-08-07. Niezaimplementowany.
 - [ ] **Formalne Interfejsy Warstwy 2** `[ARCH]`:
   - `ILLMProvider`, `ISTTProvider`, `ITTSProvider`, `ISatellite` istnieją jako koncepcja w MANIFEST §3.1 — nie są jeszcze sformalizowane jako klasy bazowe w kodzie.
-
----
-
-## Rejestr Zrealizowanych Zadań (Sesja 2026-08-07 - Filozofia i Dokumentacja)
-
-- [x] **Trójwarstwowy Model Architektury** — `docs/MANIFEST.md`:
-  - Nowa sekcja §3 z modelem Core / Providers & Channels / Integrations.
-  - Diagram ASCII, tabela interfejsów, opis Regis Desktop jako bundle warstwy 2.
-- [x] **Redefinicja Tożsamości Projektu** — `docs/MANIFEST.md §1`:
-  - Regis jako produkt (nie framework), z panelem webowym, analogia do HA.
-  - Dodany akapit "Istota projektu": agent interaktuje z oprogramowaniami jak człowiek.
-  - Explicite odróżnienie od LangChaina. Zakres osobisty/domowy, nie enterprise.
-- [x] **Przepisanie Persony Agenta** — `docs/MANIFEST.md §6`:
-  - Persona jest user-defined — system dostarcza mechanizm, nie treść.
-  - Usunięto prywatną preferencję ("charakterny, rzeczowy i bezpośredni") jako hardkodowany standard.
-  - Cele projektowe systemu jako intencje, nie twierdzenia.
-- [x] **Ujednolicenie Nazewnictwa**:
-  - "Kontroler" → "Regis" / "system Regis". "Windows Node" → "Regis Desktop". Instalator: `RegisDesktopSetup.exe`.
-- [x] **Aktualizacja AGENT_GUIDE.md**:
-  - Tabela decyzji: dodano trójwarstwowy model.
-  - Lista błędów: dodano punkt o mieszaniu warstw między Core/Providers/Integrations.
-

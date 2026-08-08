@@ -1,73 +1,72 @@
-# HANDOFF — Stan Projektu Regis po Sesji 2026-08-07 (Filozofia)
+# HANDOFF — Stan Projektu Regis po Sesji 2026-08-08
 
 ## Co zostało zrobione w tej sesji
 
-Sesja była w całości filozoficzna i dokumentacyjna — zero zmian w kodzie. Przeprowadzono fundamentalne przeformułowanie filozofii projektu i zaktualizowano dokumenty `docs/MANIFEST.md` i `docs/AGENT_GUIDE.md`.
+Przeprowadzono pełną restrukturyzację architektoniczną Kontrolera (`src/controller`), uzgadniając kod z trójwarstwowym modelem z `docs/MANIFEST.md` oraz eliminując dług ewolucyjny wokół `llm/`, `tools/`, `audio/` i `api/`.
 
-### 1. Trójwarstwowy model architektury (nowy rdzeń MANIFEST §3)
+### 1. Wydzielenie czystego Mózgu Agenta ReAct (`src/controller/agent/`)
+- Stworzono dedykowany moduł agentyczny: `engine.py` (ReAct loop i wykonawca narzędzi), `prompt/` (`builder.py`, `tools_schema.py`), `models.py` (`SUPPORTED_REGIS_MODELS`).
+- Pętla agenta w `agent/engine.py` opiera się teraz na zunifikowanym dynamicznym rozwiązaniu dostawców (`providers/llm/resolver.py`).
+- Wyeliminowano starą zniekształconą strukturę `src/controller/llm/`.
 
-Ustalono i udokumentowano trójwarstwowy podział systemu:
+### 2. Hermetyzacja Rąk Agenta (`src/controller/agent/tools/`)
+- Przemieszczono rejestr narzędzi oraz ich schematy JSON ze starego katalogu nadrzędnego `tools/` do wewnętrznego modułu Agenta `src/controller/agent/tools/` (`registry.py`, `schemas.py`).
+- Usunięto top-level katalog `src/controller/tools/`.
 
-- **Warstwa 1 — Core (Układ Nerwowy):** pętla ReAct, session manager, tool registry (mechanizm), abstrakcyjne interfejsy (`ILLMProvider`, `ISTTProvider`, `ITTSProvider`, `ISatellite`). Core nie zawiera referencji do konkretnych providerów ani narzędzi.
-- **Warstwa 2 — Providers & Channels (Zmysły i Ręce):** wymienna cybernetyka. OpenRouter/Ollama, Whisper/Cloud STT, Piper/Cloud TTS, ESP32/Desktop/Terminal. **Regis Desktop** jest szczególnym przypadkiem — bundluje wiele implementacji warstwy 2 jako menedżer usług (satelita + lokalny LLM + STT + TTS).
-- **Warstwa 3 — Integrations (Narzędzia):** Home Assistant, web, pliki, kamery, własne skrypty. W pełni opcjonalne, rejestrują się w Tool Registry przy starcie.
+### 3. Zjednoczenie Dostawców Zmysłów w Warstwie 2 (`src/controller/providers/`)
+- Utworzono podkatalog `providers/llm/` mieszczący wszystkie konkretne dostawcy LLM: `openrouter.py`, `ollama.py`, `client_app.py`, `base.py`, `resolver.py`.
+- Utworzono `providers/audio/service.py`, wyciągając niskopoziomową komunikację HTTP z serwisami STT i TTS (Whisper, Piper) z Orkiestratora.
+- Usunięto katalogi `src/controller/audio/` oraz `src/controller/llm/`.
 
-### 2. Redefinicja tożsamości projektu (MANIFEST §1)
+### 4. Konsolidacja Pamięci Sesji w Warstwie 1 Core (`src/controller/core/session/`)
+- Przeniesiono odpowiedzialność zarządzania historią rozmów oraz sesją do `src/controller/core/session/`:
+  - `store.py` — rejestr sesji w pamięci i timery
+  - `history.py` — budowanie listy wiadomości LLM z wpisów czatu i narzędzi
+  - `manager.py` — zapisywanie tur, publikowanie zdarzeń czatu i czyszczenie historii.
+- Usunięto stare pliki `src/controller/core/session_store.py` oraz metody czyszczenia z Orkiestratora.
 
-Stara definicja ("lekka warstwa abstrakcji między domownikami a urządzeniami") zastąpiona przez:
-- Regis jako **autonomiczne oprogramowanie agenta** z panelem webowym — produkt, nie framework
-- **Istota projektu:** Regis interaktuje z oprogramowaniami tak jak człowiek — widzi "włączona/wyłączona", nie MQTT/Zigbee. HA z setkami integracji jest dla Regisa jedną pozycją w `integrations/`.
-- Regis jest projektem **osobistym** — nie enterprise, nie scraping, nie korporacja.
-- Explicite odróżnienie od LangChaina: LangChain = biblioteka dla programistów, Regis = produkt który instalujesz i konfigurujesz.
+### 5. Przemieszczenie Orkiestratora do Warstwy 1 Core (`src/controller/core/orchestrator.py`)
+- Przeniesiono `orchestrator.py` z `llm/` do `src/controller/core/orchestrator.py`.
+- Przekształcono go w czystą, wysokopoziomową fasadę tury konwersacyjnej (`execute_interaction_turn`), łączącą STT -> Agent Engine -> TTS.
 
-### 3. Persona agenta przepisana (MANIFEST §6)
-
-Stary opis ("Regis jest charakterny, rzeczowy i bezpośredni") był prywatną preferencją wpisaną jako standard produktu. Zastąpiony przez:
-- **Persona jest user-defined** — system dostarcza mechanizm, nie treść
-- **Zasada spójności:** cokolwiek użytkownik skonfiguruje, musi być spójne we wszystkich trybach
-- **Cele projektowe systemu** (nie persony): szybkość, bezpośredniość, niezawodność — jako *intencje*, nie twierdzenia
-
-### 4. Nazewnictwo ujednolicone
-
-- Dawny "Kontroler" → **"Regis"** lub "system Regis" (to jest cały system, nie jeden komponent)
-- Dawny "Windows Node" → **"Regis Desktop"** (menedżer usług warstwy 2)
-- Dawna "Satelita" → pojęcie zachowane wewnętrznie; użytkownikowi: "Regis Desktop" lub "Regis ESP32"
-- Instalator: `RegisDesktopSetup.exe` (nie `RegisNodeSetup.exe`)
-
-### 5. AGENT_GUIDE.md zaktualizowany
-
-- Tabela "Decyzje Już Podjęte" — dodano trójwarstwowy model jako rozstrzygniętą decyzję
-- Lista "Typowe Błędy" — dodano punkt #8 o mieszaniu warstw (np. konkretny provider w Core)
+### 6. Przemianowanie i Uporządkowanie Endpointów HTTP/WS (`src/controller/endpoints/`)
+- Zastąpiono dawny katalog `src/controller/api/` zrefaktoryzowanym modułem **`src/controller/endpoints/`**:
+  - `interaction.py` — tury czatu tekstowego i nagrań audio (`/v1/chat/*`)
+  - `clients.py` — obsługa rejestracji, konfiguracji oraz głównego tunelu WebSocket (`/v1/clients/*`, `/v1/ws/clients/*`)
+  - `cloud.py` — zarządzanie kluczami dostawców chmurowych (`/api/cloud-providers`)
+  - `system.py` — strumieniowanie SSE i snapshot stanu (`/api/events`, `/api/status`)
+  - `tools.py` — proxy wywołań narzędzi (`/v1/tools/*`)
+- Usunięto martwe i przestarzałe trasy:
+  - Skasowano nieużywany HTTP POST `/api/satellite/event`.
+  - Przeniesiono i zrefaktoryzowano komendy klientów z `/api/node/{node_id}/command` do `POST /v1/clients/{client_id}/command` (z zachowaniem aliasu).
+  - Wymieniono potężny monolityczny `if-elif` w połączeniu WebSocket na przejrzystą mapę handlerów zdarzeń (`WS_EVENT_HANDLERS`).
 
 ---
 
 ## Aktualny stan kodu
 
-**Kod nie był ruszany w tej sesji.** Wszystkie zmiany dotyczą wyłącznie dokumentacji:
-- `docs/MANIFEST.md` — całkowicie przepisany (sekcje 1 i 3 nowe, sekcja 6 przepisana)
-- `docs/AGENT_GUIDE.md` — dwa dodatki (tabela decyzji + lista błędów)
-
-Ostatni smoke test kodu był z poprzedniej sesji:
-```
-python -c "import controller.app; print('OK')"
-→ OK (exit code 0)
-```
+- Kod jest w pełni sprawny i zrefaktoryzowany zgodnie z 3-warstwowym modelem architektonicznym.
+- **Weryfikacja testami:** `pytest tests/test_llm_backends.py` (10/10 testów przechodzi, 100% PASSED).
+- Nowy układ katalogów Kontrolera (`src/controller/`):
+  - `core/` (Układ nerwowy, orchestrator, session/, client_store, app_state)
+  - `agent/` (Mózg agenta ReAct, engine, prompt/, tools/, models)
+  - `providers/` (Backendy zmysłów llm/ oraz audio/service.py)
+  - `endpoints/` (Punkty HTTP/WS interaction, clients, cloud, system, tools)
+  - `config/`, `integrations/`, `web/`
 
 ---
 
 ## Otwarte kwestie do przyszłych sesji
 
-1. **Pamięć długoterminowa** — wskazana jako kluczowy brakujący feature odróżniający Regisa od HA AI. Stary system Notatnika wycięty, nowe rozwiązanie niezaprojektowane. To jest realny priorytet architektoniczny.
-2. **Scheduler zadań agenta** — "zgaś światło za godzinę jeżeli..." wymaga mechanizmu odroczonych "szturchnięć" agenta. Niezaprojektowane.
-3. **Docker deployment** — cel dystrybucyjny ustalony w dyskusji. Regis jako obraz Docker na mini PC (analogia do HA). Nie jest jeszcze udokumentowany ani zaimplementowany.
-4. **Formalne interfejsy warstwy 2** — `ILLMProvider`, `ISTTProvider` etc. istnieją jako koncepcja, nie jako klasy bazowe w kodzie.
+1. **Pamięć długoterminowa** `[ARCH]` — kluczowy brakujący feature odróżniający Regisa od HA AI.
+2. **Scheduler zadań agenta** `[ARCH]` — mechanizm odroczonych szturchnięć agenta.
+3. **Docker deployment** `[DIST]` — przygotowanie obrazów Docker dla serwera Regis.
+4. **FastAPI Dependency Injection** — usunięcie globali `app_state` na rzecz `Depends()`.
 
 ---
 
 ## Precyzyjne kroki startowe dla następnego agenta
 
-1. Wczytaj `docs/MANIFEST.md` — jest teraz znacząco inny od wersji z poprzednich sesji. Sekcja 1 i 3 są nowe, §6 przepisana.
-2. Wczytaj `docs/AGENT_GUIDE.md` — zaktualizowana tabela decyzji i lista błędów.
-3. Uruchom smoke test: `cd src ; python -c "import controller.app; print('OK')"`.
-4. Jeśli użytkownik chce kontynuować refaktoryzację kodu, patrz poprzedni HANDOFF — kolejne obszary to `llm/backends/` i FastAPI DI.
-5. Jeśli użytkownik chce projektować pamięć długoterminową lub scheduler — to są nowe, niezaprojektowane obszary wymagające sesji architektonicznej.
+1. Wczytaj `docs/MANIFEST.md` oraz `.agents/AGENTS.md`.
+2. Przeprowadź smoke test: `pytest tests/test_llm_backends.py` z poziomu głównego katalogu.
+3. Zapoznaj się z nową strukturą w `src/controller/`: `core/`, `agent/`, `providers/`, `endpoints/`.

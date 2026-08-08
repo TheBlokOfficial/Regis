@@ -1,9 +1,9 @@
 import logging
 from fastapi import APIRouter, HTTPException
-from typing import List, Literal
+from typing import List
 from pydantic import BaseModel
 
-from controller.llm.providers import get_cloud_providers, save_cloud_providers
+from controller.core.cloud_store import get_cloud_providers, save_cloud_providers
 
 class CloudProviderConfig(BaseModel):
     """Konfiguracja providera chmurowego (np. OpenRouter, Groq)."""
@@ -11,17 +11,15 @@ class CloudProviderConfig(BaseModel):
     type: str  # np. "openrouter"
     api_key: str
     model: str
-    mode: Literal["basic", "extended"] = "extended"
     priority: int = 50
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/cloud-providers", tags=["cloud-providers"])
+router_cloud = APIRouter(prefix="/api/cloud-providers", tags=["cloud-providers"])
 
-@router.get("", response_model=List[CloudProviderConfig])
+@router_cloud.get("", response_model=List[CloudProviderConfig])
 def get_providers():
     providers = get_cloud_providers()
-    # Mask api keys before returning to UI
     masked = []
     for p in providers:
         p_copy = dict(p)
@@ -31,10 +29,9 @@ def get_providers():
         masked.append(CloudProviderConfig(**p_copy))
     return masked
 
-@router.post("", response_model=CloudProviderConfig)
+@router_cloud.post("", response_model=CloudProviderConfig)
 def add_provider(provider: CloudProviderConfig):
     providers = get_cloud_providers()
-    # Create a new copy of the list to avoid mutating cache directly before saving
     new_providers = list(providers)
     
     if any(p.get("id") == provider.id for p in new_providers):
@@ -48,17 +45,15 @@ def add_provider(provider: CloudProviderConfig):
     
     return provider
 
-@router.patch("/{provider_id}", response_model=CloudProviderConfig)
+@router_cloud.patch("/{provider_id}", response_model=CloudProviderConfig)
 def update_provider(provider_id: str, updates: dict):
     providers = get_cloud_providers()
     new_providers = list(providers)
     
     for idx, p in enumerate(new_providers):
         if p.get("id") == provider_id:
-            # Create a copy of the dictionary to avoid mutating cache directly
             p_copy = dict(p)
             
-            # Aktualizacja pól (ignoruj zamaskowany klucz API z UI)
             if "api_key" in updates and "..." in updates["api_key"]:
                 del updates["api_key"]
                 
@@ -79,7 +74,7 @@ def update_provider(provider_id: str, updates: dict):
             
     raise HTTPException(status_code=404, detail="Provider nie znaleziony")
 
-@router.delete("/{provider_id}")
+@router_cloud.delete("/{provider_id}")
 def delete_provider(provider_id: str):
     providers = get_cloud_providers()
     new_providers = [p for p in providers if p.get("id") != provider_id]

@@ -19,15 +19,15 @@ from controller.core.heartbeat import _heartbeat_loop
 from controller.config import loader as config
 from controller.config.schemas import SystemSettings
 from controller.integrations.loader import load_integrations
-from controller.tools.tools_registry import ToolsRegistry
+from controller.agent.tools.registry import ToolsRegistry
 from protocol.discovery import get_local_ip, start_discovery_server
 
-# --- Routery API HTTP/WS ---
-from controller.api.chat import router_chat
-from controller.api.clients import router_clients
-from controller.api.cloud_providers import router as router_cloud_providers
-from controller.api.tools import router_tools
-from controller.api.ui import router_ui
+# --- Routery Endpoints HTTP/WS ---
+from controller.endpoints.interaction import router_interaction
+from controller.endpoints.clients import router_clients
+from controller.endpoints.cloud import router_cloud
+from controller.endpoints.tools import router_tools
+from controller.endpoints.system import router_system
 
 # Port domyślny Kontrolera
 DEFAULT_CONTROLLER_PORT = 8000
@@ -98,9 +98,9 @@ def create_app() -> FastAPI:
     api_routers = [
         router_clients,
         router_tools,
-        router_chat,
-        router_cloud_providers,
-        router_ui,
+        router_interaction,
+        router_cloud,
+        router_system,
     ]
 
     for router in api_routers:

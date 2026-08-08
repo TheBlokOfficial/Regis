@@ -13,7 +13,7 @@ router_tools = APIRouter()
 
 @router_tools.post("/v1/tools/execute")
 async def execute_tool_proxy(request: ToolExecutionRequest):
-    """Proxy wywołań narzędzi. Węzeł Roboczy nie ma dostępu do HA — wywołuje ten endpoint.
+    """Proxy wywołań narzędzi. Usługi klienta wywołują ten endpoint.
 
     Kontroler jest jedynym źródłem prawdy dla Home Assistant (MANIFEST.md §3.1).
     Parametr `room` z requesta jest przekazywany do ToolsRegistry — filtruje urządzenia

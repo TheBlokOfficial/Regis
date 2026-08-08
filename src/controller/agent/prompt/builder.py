@@ -18,17 +18,12 @@ def _read_prompt_file() -> str:
     return "Jesteś Regisem, rzeczowym asystentem domowym."
 
 
-def build_system_prompt(room: str | None = None, mode: str = "extended") -> str:
+def build_system_prompt(room: str | None = None) -> str:
     """Buduje i składa system prompt dla tożsamości Regis."""
     menu = app_state.tools_registry.get_global_menu() if app_state.tools_registry else ""
     room_info = f"OBECNY POKÓJ: {room}" if room else ""
 
-    if mode == "basic":
-        # W trybie basic model działa jak bezstanowy parser - minimalizujemy prompt
-        sys_prompt = "Jesteś asystentem domowym Regis. Masz wykonać polecenie użytkownika korzystając wyłącznie z udostępnionego menu urządzeń. Bądź zwięzły."
-        sections = [sys_prompt, menu, room_info]
-    else:
-        sys_prompt = _read_prompt_file()
-        sections = [sys_prompt, menu, room_info]
+    sys_prompt = _read_prompt_file()
+    sections = [sys_prompt, menu, room_info]
 
     return "\n\n".join(section for section in sections if section)

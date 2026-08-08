@@ -7,7 +7,7 @@ import requests
 from typing import Any
 
 import controller.core.app_state as app_state
-from controller.tools.schemas import BASE_TOOLS_SCHEMA
+from controller.agent.tools.schemas import BASE_TOOLS_SCHEMA
 
 
 class ToolsRegistry:

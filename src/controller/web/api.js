@@ -123,7 +123,7 @@ export function connectSSE() {
  */
 export async function sendNodeCommand(nodeId, command, payload = {}) {
     try {
-        const resp = await fetch(`/api/node/${encodeURIComponent(nodeId)}/command`, {
+        const resp = await fetch(`/v1/clients/${encodeURIComponent(nodeId)}/command`, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ command, data: payload }),

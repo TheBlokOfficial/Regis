@@ -5,23 +5,24 @@ from fastapi import APIRouter, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-import controller.llm.providers as providers
+import controller.providers.llm.resolver as providers
 import controller.core.app_state as app_state
 import controller.core.client_store as client_store
-import controller.core.session_store as session_store
-from controller.llm.orchestrator import proxy_sse_to_queue, clear_conversation_history
+import controller.core.session.store as session_store
+from controller.core.orchestrator import execute_interaction_turn
+from controller.core.session.manager import clear_conversation_history
 
-router_chat = APIRouter()
+router_interaction = APIRouter()
 
 
-class ChatRequest(BaseModel):
+class InteractionRequest(BaseModel):
     message: str
     satellite_id: str | None = None
     room: str | None = None
 
 
-@router_chat.post("/v1/chat/stream")
-async def chat_stream(request: ChatRequest):
+@router_interaction.post("/v1/chat/stream")
+async def chat_stream(request: InteractionRequest):
     if not providers.has_llm_provider():
         return JSONResponse(
             {"error": "Brak dostępnego providera LLM."},
@@ -43,7 +44,7 @@ async def chat_stream(request: ChatRequest):
 
     q: asyncio.Queue = asyncio.Queue()
 
-    asyncio.create_task(proxy_sse_to_queue(payload, q, is_audio=False, audio_bytes=None))
+    asyncio.create_task(execute_interaction_turn(payload, q, is_audio=False, audio_bytes=None))
 
     async def event_generator():
         while True:
@@ -55,7 +56,7 @@ async def chat_stream(request: ChatRequest):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router_chat.post("/v1/chat/audio_stream")
+@router_interaction.post("/v1/chat/audio_stream")
 async def chat_audio_stream(
     request: Request,
     file: UploadFile = File(...)
@@ -85,7 +86,7 @@ async def chat_audio_stream(
 
     q: asyncio.Queue = asyncio.Queue()
 
-    asyncio.create_task(proxy_sse_to_queue(payload, q, is_audio=True, audio_bytes=audio_bytes))
+    asyncio.create_task(execute_interaction_turn(payload, q, is_audio=True, audio_bytes=audio_bytes))
 
     has_tts = False
 
@@ -111,21 +112,21 @@ async def chat_audio_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router_chat.post("/v1/clear_history")
+@router_interaction.post("/v1/clear_history")
 async def clear_history(satellite_id: str | None = None):
     """Resetuje historię konwersacji (danej sesji lub wszystkich) w pamięci Kontrolera."""
     clear_conversation_history(satellite_id)
     return {"status": "ok"}
 
 
-@router_chat.get("/v1/chat/history")
+@router_interaction.get("/v1/chat/history")
 async def get_history(satellite_id: str | None = None):
     """Zwraca historię konwersacji dla wybranej Satelity / sesji."""
     history = session_store.get_session_history(satellite_id)
     return {"satellite_id": satellite_id or "default", "history": history}
 
 
-@router_chat.get("/v1/sessions")
+@router_interaction.get("/v1/sessions")
 async def get_sessions():
     """Zwraca listę aktywnych sesji konwersacji."""
     active_sessions = []
@@ -139,7 +140,7 @@ async def get_sessions():
     return {"sessions": active_sessions}
 
 
-@router_chat.get("/v1/rooms")
+@router_interaction.get("/v1/rooms")
 async def get_rooms():
     from controller.config import loader as config
     from controller.config.schemas import RoomsConfig

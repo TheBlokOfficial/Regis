@@ -10,7 +10,7 @@ import time
 
 import controller.core.app_state as app_state
 import controller.core.client_store as client_store
-import controller.core.session_store as session_store
+import controller.core.session.store as session_store
 import controller.core.event_bus as event_bus
 from controller.core.connection_manager import client_manager
 

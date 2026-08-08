@@ -12,7 +12,7 @@ SUPPORTED_REGIS_MODELS = [
     {
         "id": "qwen2.5:3b",
         "name": "Light Agent (Qwen 2.5 3B)",
-        "description": "Szybki, lżejszy agent dla średnich komputera.",
+        "description": "Szybki, lżejszy agent dla średnich komputerów.",
         "default": False,
     },
     {
