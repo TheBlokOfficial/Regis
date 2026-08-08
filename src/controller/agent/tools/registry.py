@@ -6,7 +6,7 @@ import uuid
 import requests
 from typing import Any
 
-import controller.core.app_state as app_state
+import controller.core.state as app_state
 from controller.agent.tools.schemas import BASE_TOOLS_SCHEMA
 
 

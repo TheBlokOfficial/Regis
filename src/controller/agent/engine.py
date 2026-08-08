@@ -15,11 +15,11 @@ import logging
 import time
 from typing import Any
 
-import controller.core.app_state as app_state
+import controller.core.state as app_state
 from controller.agent.prompt.builder import build_system_prompt
 from controller.agent.prompt.tools_schema import get_tools_schema
-from controller.core.session.history import build_messages_from_history
-from controller.core.session.manager import save_and_publish, build_turn
+from controller.agent.session.history import build_messages_from_history
+from controller.agent.session.manager import save_and_publish, build_turn
 
 logger = logging.getLogger(__name__)
 

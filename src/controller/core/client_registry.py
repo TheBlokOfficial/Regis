@@ -1,63 +1,12 @@
 """
-Rejestr podłączonych klientów, persystencja ich konfiguracji oraz kwerendy po typie usługi.
-
-Przechowuje runtime-owy rejestr aktywnych klientów (uzupełniany przy rejestracji przez WebSocket)
-oraz persystentną konfigurację klientów zapisywaną na dysk (clients.json).
+Rejestr podłączonych klientów w pamięci oraz kwerendy po typie usługi.
 """
-import logging
-import os
 import time
-
-from controller.config.loader import DATA_DIR, JSONStorage
-
-CLIENTS_CONFIG_FILE = os.path.join(DATA_DIR, "clients.json")
-LEGACY_CLIENTS_CONFIG_FILE = os.path.join(DATA_DIR, "clients_config.json")
-LEGACY_NODES_CONFIG_FILE = os.path.join(DATA_DIR, "nodes_config.json")
 
 # Główny rejestr aktywnych klientów: {client_id: {id, host, services, last_seen}}
 # Uzupełniany przy rejestracji WebSocket, czyszczony przez heartbeat.
 client_registry: dict[str, dict] = {}
 
-
-# ─── Persystencja ─────────────────────────────────────────────────────────────
-
-def load_persistent_clients() -> dict:
-    """Ładuje trwałą konfigurację Klientów z pliku JSON (z automatyczną migracją starych formatów)."""
-    legacy_path = (
-        LEGACY_CLIENTS_CONFIG_FILE
-        if os.path.exists(LEGACY_CLIENTS_CONFIG_FILE)
-        else (LEGACY_NODES_CONFIG_FILE if os.path.exists(LEGACY_NODES_CONFIG_FILE) else None)
-    )
-
-    if legacy_path and not os.path.exists(CLIENTS_CONFIG_FILE):
-        try:
-            data = JSONStorage.read_json(legacy_path, default={})
-            JSONStorage.write_json(CLIENTS_CONFIG_FILE, data)
-            logging.info(f"Zmigrowano profil konfiguracji z {os.path.basename(legacy_path)} do clients.json.")
-            return data
-        except Exception as e:
-            logging.error(f"Błąd migracji konfiguracji klientów: {e}")
-
-    return JSONStorage.read_json(CLIENTS_CONFIG_FILE, default={})
-
-
-def save_persistent_clients(config_dict: dict) -> None:
-    """Zapisuje profil konfiguracji Klientów w pliku JSON."""
-    JSONStorage.write_json(CLIENTS_CONFIG_FILE, config_dict)
-
-
-# ─── Rejestracja integracji ───────────────────────────────────────────────────
-
-def register_integration(integration) -> None:
-    """Rejestruje integrację zewnętrzną w Kontrolerze."""
-    import controller.core.app_state as app_state
-    app_state.integration_registry[integration.id] = integration
-    if integration.id == "home_assistant":
-        app_state.ha_client = getattr(integration, "ha_client", None)
-    logging.info(f"Zarejestrowano integrację: {integration.name} ({integration.id})")
-
-
-# ─── Kwerendy po typie usługi ─────────────────────────────────────────────────
 
 def get_llm_clients() -> list[dict]:
     """Zwraca listę zarejestrowanych Klientów oferujących usługę LLM (ollama_worker / llm / worker)."""

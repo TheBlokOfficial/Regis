@@ -1,16 +1,10 @@
-import asyncio
-import json
-
-from fastapi import APIRouter, UploadFile, File, Form, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, UploadFile, File, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-import controller.providers.llm.resolver as providers
-import controller.core.app_state as app_state
-import controller.core.client_store as client_store
-import controller.core.session.store as session_store
-from controller.core.orchestrator import execute_interaction_turn
-from controller.core.session.manager import clear_conversation_history
+import controller.orchestrator as orchestrator
+import controller.agent.session.store as session_store
+from controller.agent.session.manager import clear_conversation_history
 
 router_interaction = APIRouter()
 
@@ -23,93 +17,21 @@ class InteractionRequest(BaseModel):
 
 @router_interaction.post("/v1/chat/stream")
 async def chat_stream(request: InteractionRequest):
-    if not providers.has_llm_provider():
-        return JSONResponse(
-            {"error": "Brak dostępnego providera LLM."},
-            status_code=503
-        )
-
-    controller_url = app_state._settings_cache.get("controller_url", "auto")
-    if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
-        from protocol.discovery import get_local_ip
-        controller_url = f"http://{get_local_ip()}:8000"
-
-    room = request.room
-    if not room and request.satellite_id and request.satellite_id in client_store.client_registry:
-        services = client_store.client_registry[request.satellite_id].get("services", {})
-        if isinstance(services, dict) and "satellite" in services:
-            room = services["satellite"].get("room")
-
-    payload = {"message": request.message, "controller_url": controller_url, "room": room}
-
-    q: asyncio.Queue = asyncio.Queue()
-
-    asyncio.create_task(execute_interaction_turn(payload, q, is_audio=False, audio_bytes=None))
-
-    async def event_generator():
-        while True:
-            item = await q.get()
-            yield f"data: {json.dumps(item)}\n\n"
-            if item["type"] in ("done", "error"):
-                break
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        orchestrator.stream_chat(request.message, request.satellite_id, request.room),
+        media_type="text/event-stream"
+    )
 
 
 @router_interaction.post("/v1/chat/audio_stream")
-async def chat_audio_stream(
-    request: Request,
-    file: UploadFile = File(...)
-):
-    if not providers.has_llm_provider():
-        return JSONResponse(
-            {"error": "Brak dostępnego providera LLM."},
-            status_code=503
-        )
-
+async def chat_audio_stream(request: Request, file: UploadFile = File(...)):
     client_id = request.headers.get("X-Client-ID")
-    room = None
-    if client_id and client_id in client_store.client_registry:
-        services = client_store.client_registry[client_id].get("services", {})
-        if isinstance(services, dict) and "satellite" in services:
-            room = services["satellite"].get("room")
-
     audio_bytes = await file.read()
-    controller_url = app_state._settings_cache.get("controller_url", "auto")
-    if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
-        from protocol.discovery import get_local_ip
-        controller_url = f"http://{get_local_ip()}:8000"
-
-    payload = {"controller_url": controller_url}
-    if room:
-        payload["room"] = room
-
-    q: asyncio.Queue = asyncio.Queue()
-
-    asyncio.create_task(execute_interaction_turn(payload, q, is_audio=True, audio_bytes=audio_bytes))
-
-    has_tts = False
-
-    async def event_generator():
-        nonlocal has_tts
-        while True:
-            item = await q.get()
-            if item["type"] == "tts_audio":
-                has_tts = True
-                if client_id:
-                    from controller.core.connection_manager import client_manager
-                    await client_manager.send_command(
-                        client_id, "play_audio", {"audio_b64": item.get("content", "")}
-                    )
-                continue  # Nie przepuszczaj tts_audio przez SSE
-            yield f"data: {json.dumps(item)}\n\n"
-            if item["type"] in ("done", "error"):
-                if not has_tts and client_id:
-                    from controller.core.connection_manager import client_manager
-                    await client_manager.send_command(client_id, "satellite_control", {"action": "resume"})
-                break
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    
+    return StreamingResponse(
+        orchestrator.stream_chat_audio(audio_bytes, client_id),
+        media_type="text/event-stream"
+    )
 
 
 @router_interaction.post("/v1/clear_history")

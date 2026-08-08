@@ -9,7 +9,7 @@ import time
 
 import requests
 
-import controller.core.client_store as client_store
+import controller.core.client_registry as client_registry
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ async def transcribe_audio(audio_bytes: bytes) -> tuple[str | None, int]:
     Returns:
         tuple[tekst_lub_None, czas_w_ms]
     """
-    stt_nodes = client_store.get_audio_clients()
+    stt_nodes = client_registry.get_audio_clients()
     if not stt_nodes:
         logger.warning("Brak dostępnej usługi STT.")
         return None, 0
@@ -55,7 +55,7 @@ async def synthesize_speech(text: str) -> tuple[str | None, int]:
     Returns:
         tuple[audio_b64_lub_None, czas_w_ms]
     """
-    tts_nodes = client_store.get_audio_clients()
+    tts_nodes = client_registry.get_audio_clients()
     if not tts_nodes:
         logger.debug("Brak dostępnej usługi TTS.")
         return None, 0

@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-import controller.core.app_state as app_state
+import controller.core.state as app_state
 from controller.config import loader as config
 
 logger = logging.getLogger(__name__)

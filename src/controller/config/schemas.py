@@ -1,6 +1,7 @@
 """
 Schematy Pydantic dla konfiguracji i struktur danych w rdzeniu Kontrolera.
 """
+from typing import Any
 from pydantic import BaseModel, Field, RootModel
 
 
@@ -61,3 +62,28 @@ class VirtualGroupsConfig(BaseConfigModel, RootModel[dict[str, list[str]]]):
         file_name = "virtual_groups"
 
     root: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class CloudProviderConfig(BaseModel):
+    """Konfiguracja pojedynczego dostawcy chmurowego (np. OpenRouter, Groq)."""
+    id: str
+    type: str
+    api_key: str
+    model: str
+    priority: int = 50
+
+
+class CloudProvidersConfig(BaseConfigModel, RootModel[list[CloudProviderConfig]]):
+    """Schemat listy dostawców chmurowych z data/cloud_providers.json."""
+    class Meta:
+        file_name = "cloud_providers"
+        
+    root: list[CloudProviderConfig] = Field(default_factory=list)
+
+
+class ClientsConfig(BaseConfigModel, RootModel[dict[str, dict[str, Any]]]):
+    """Zapisane profile konfiguracji klientów z data/clients.json."""
+    class Meta:
+        file_name = "clients"
+        
+    root: dict[str, dict[str, Any]] = Field(default_factory=dict)

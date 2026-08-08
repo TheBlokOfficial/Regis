@@ -6,8 +6,8 @@ Jedno miejsce wyliczające i zwracające najlepszy dostępny backend LLM
 """
 import logging
 
-import controller.core.client_store as client_store
-import controller.core.cloud_store as cloud_store
+import controller.core.client_registry as client_registry
+import controller.endpoints.cloud as endpoints_cloud
 from controller.providers.llm.base import LLMBackend
 from controller.providers.llm.openrouter import OpenRouterBackend
 from controller.providers.llm.client_app import ClientAppBackend
@@ -20,7 +20,7 @@ def get_llm_backend() -> LLMBackend | None:
     candidates: list[tuple[int, LLMBackend, dict]] = []
 
     # 1. Zarejestrowane usługi aplikacji klienckich (np. Regis Desktop)
-    for worker in client_store.client_registry.values():
+    for worker in client_registry.client_registry.values():
         prio = worker.get("priority", 10)
         model_name = worker.get("model_name", "qwen3.5:9b")
         client_id = worker.get("id", "")
@@ -28,7 +28,7 @@ def get_llm_backend() -> LLMBackend | None:
             candidates.append((prio, ClientAppBackend(client_id=client_id, model_name=model_name), worker))
 
     # 2. Dostawcy chmurowi zarejestrowani w cloud_store
-    for cp in cloud_store.get_cloud_providers():
+    for cp in endpoints_cloud.get_cloud_providers():
         if cp.get("type") == "openrouter" and cp.get("api_key") and cp.get("model"):
             try:
                 backend = OpenRouterBackend(

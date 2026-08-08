@@ -5,7 +5,6 @@ import os
 from controller.providers.llm.ollama import OllamaBackend
 from controller.providers.llm.openrouter import OpenRouterBackend
 import controller.providers.llm.resolver as providers
-import controller.core.client_store as client_store
 
 @patch("requests.get")
 def test_ollama_is_available_true(mock_get):
@@ -27,43 +26,40 @@ def test_openrouter_is_available_false():
     backend = OpenRouterBackend(api_key="", model_name="")
     assert backend.is_available() is False
 
-import controller.core.cloud_store as cloud_store
-
 @patch.object(OpenRouterBackend, "is_available", return_value=True)
-def test_get_llm_backend_returns_openrouter(mock_openrouter_avail):
-    cloud_store._cloud_providers_cache = [{
+@patch("controller.providers.llm.resolver.endpoints_cloud.get_cloud_providers")
+def test_get_llm_backend_returns_openrouter(mock_get_cloud, mock_openrouter_avail):
+    mock_get_cloud.return_value = [{
         "id": "test",
         "type": "openrouter",
         "api_key": "test_key",
         "model": "test_model",
         "priority": 50
     }]
-    cloud_store._providers_loaded = True
     backend = providers.get_llm_backend()
     assert isinstance(backend, OpenRouterBackend)
 
 from controller.providers.llm.client_app import ClientAppBackend
 
 @patch.object(OpenRouterBackend, "is_available", return_value=False)
-def test_get_llm_backend_returns_client_app_if_registered(mock_openrouter_avail):
-    cloud_store._cloud_providers_cache = []
-    cloud_store._providers_loaded = True
-    client_store.client_registry = {"worker_1": {"id": "worker_1", "priority": 10, "model_name": "qwen3.5:9b"}}
+@patch("controller.providers.llm.resolver.endpoints_cloud.get_cloud_providers", return_value=[])
+def test_get_llm_backend_returns_client_app_if_registered(mock_get_cloud, mock_openrouter_avail):
+    providers.client_registry.client_registry = {"worker_1": {"id": "worker_1", "priority": 10, "model_name": "qwen3.5:9b"}}
     backend = providers.get_llm_backend()
     assert isinstance(backend, ClientAppBackend)
     assert backend.model_name == "qwen3.5:9b"
+    providers.client_registry.client_registry.clear()
     
 @patch.object(OpenRouterBackend, "is_available", return_value=False)
-def test_get_llm_backend_returns_none_if_no_worker(mock_openrouter_avail):
-    cloud_store._cloud_providers_cache = []
-    cloud_store._providers_loaded = True
-    client_store.client_registry = {}
+@patch("controller.providers.llm.resolver.endpoints_cloud.get_cloud_providers", return_value=[])
+def test_get_llm_backend_returns_none_if_no_worker(mock_get_cloud, mock_openrouter_avail):
+    providers.client_registry.client_registry = {}
     backend = providers.get_llm_backend()
     assert backend is None
 
 
 def test_build_messages_from_history_handles_tool_dicts_and_filters_raw_logs():
-    from controller.core.session.history import build_messages_from_history
+    from controller.agent.session.history import build_messages_from_history
 
     history = [
         {

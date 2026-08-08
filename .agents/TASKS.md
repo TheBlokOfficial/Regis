@@ -1,5 +1,22 @@
 # Lista Zadań Projektu Regis (TASKS)
 
+## Rejestr Zrealizowanych Zadań (Sesja 2026-08-08 - Refaktoryzacja Warstwy Stanu i EventBus SSE)
+
+- [x] **Eliminacja Katalogu `src/controller/core/state/`**:
+  - Usunięto cały folder `state/` usuwając zbędny bloatware.
+- [x] **Dostawcy Chmury w Config i Endpoints (`endpoints/cloud.py`)**:
+  - Przeniesiono `cloud_store.py` do `endpoints/cloud.py` używając schematu `CloudProvidersConfig` i `config.load()` / `config.save()`.
+- [x] **Zarządzanie Klientami (`endpoints/clients.py` & `core/client_registry.py`)**:
+  - Zmigrowano obsługę połączeń WS, rejestrację i zapis konfiguracji `ClientsConfig` do `endpoints/clients.py`.
+  - Stworzono lekki rejestr w pamięci RAM `core/client_registry.py`.
+- [x] **Wyniesienie EventBus i SSE (`core/event_bus.py` & `/api/events`)**:
+  - Przeniesiono `event_bus.py` do `core/event_bus.py`.
+  - Dodano endpoint SSE `/api/events` w `endpoints/system.py`.
+- [x] **Przeniesienie Stanu Runtime (`core/state.py`)**:
+  - Przeniesiono zmienne stanu runtime z `app_state.py` do `core/state.py`.
+- [x] **Aktualizacja Importów i Testów**:
+  - Zaktualizowano wszystkie ścieżki w kodzie oraz poprawiono zestaw testów w `tests/test_llm_backends.py`.
+
 ## Rejestr Zrealizowanych Zadań (Sesja 2026-08-08 - Restrukturyzacja Architektoniczna Kontrolera)
 
 - [x] **Rozdzielenie Orkiestratora i Konsolidacja Pamięci Sesji**:

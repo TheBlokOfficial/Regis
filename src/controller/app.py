@@ -6,6 +6,7 @@ oraz montuje wszystkie routery API HTTP/WebSocket oraz zasoby interfejsu Web UI.
 """
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,9 +14,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 # --- Wewnętrzne moduły Regis ---
-import controller.core.app_state as app_state
-import controller.core.client_store as client_store
-from controller.core.heartbeat import _heartbeat_loop
+import controller.core.state as app_state
+import controller.core.client_registry as client_registry
+import controller.endpoints.clients as endpoints_clients
+import controller.core.event_bus as event_bus
+import controller.agent.session.store as session_store
 from controller.config import loader as config
 from controller.config.schemas import SystemSettings
 from controller.integrations.loader import load_integrations
@@ -31,6 +34,45 @@ from controller.endpoints.system import router_system
 
 # Port domyślny Kontrolera
 DEFAULT_CONTROLLER_PORT = 8000
+
+# Stałe pętli Heartbeat
+SESSION_IDLE_TIMEOUT = 60.0
+CLIENT_TIMEOUT = 60.0
+HEARTBEAT_INTERVAL = 30.0
+
+
+async def _heartbeat_loop() -> None:
+    """
+    Główna pętla heartbeat działająca jako task asyncio w tle.
+
+    Wykonuje dwie operacje co HEARTBEAT_INTERVAL sekund:
+    1. Czyści sesje konwersacji bez aktywności przez SESSION_IDLE_TIMEOUT.
+    2. Usuwa klientów którzy nie aktualizowali last_seen przez CLIENT_TIMEOUT.
+    """
+    while True:
+        await asyncio.sleep(HEARTBEAT_INTERVAL)
+        now = time.time()
+
+        # 1. Automatyczne czyszczenie nieaktywnych sesji
+        expired_sids = [
+            sid for sid, t in list(session_store.session_last_interaction_times.items())
+            if now - t > SESSION_IDLE_TIMEOUT
+        ]
+        for sid in expired_sids:
+            logging.info(f"[Heartbeat] Sesja '{sid}' nieaktywna przez {SESSION_IDLE_TIMEOUT}s — czyszczę historię.")
+            session_store.clear_session_history(sid)
+
+        # 2. Sprawdzanie zdrowia klientów (WebSocket timeout)
+        for c in list(client_store.client_registry.values()):
+            cid = c.get("id")
+            if not cid:
+                continue
+            last_seen = c.get("last_seen", now)
+            if now - last_seen > CLIENT_TIMEOUT:
+                logging.info(f"[Heartbeat] Klient '{cid}' przekroczył timeout — usuwam z rejestru.")
+                client_store.client_registry.pop(cid, None)
+                client_store.client_manager.disconnect(cid)
+                await event_bus.publish({"type": "client_unregistered", "id": cid})
 
 
 # =============================================================================
@@ -57,7 +99,7 @@ async def lifespan(app: FastAPI):
 
     # 2. Dynamiczne ładowanie i rejestracja integracji zewnętrznych
     for integration in load_integrations(settings):
-        client_store.register_integration(integration)
+        app_state.register_integration(integration)
 
     # 3. Inicjalizacja rejestru narzędzi Agenta oraz bufora ustawień
     app_state.tools_registry = ToolsRegistry()

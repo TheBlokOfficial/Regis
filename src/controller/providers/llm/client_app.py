@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import AsyncGenerator
 
-from controller.core.connection_manager import client_manager
+from controller.endpoints.clients import client_manager
 from controller.providers.llm.base import LLMBackend
 from controller.exceptions import LLMConnectionError
 

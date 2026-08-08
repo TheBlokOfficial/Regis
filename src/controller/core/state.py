@@ -19,8 +19,17 @@ integration_registry: dict = {}
 _settings_cache: dict = {}
 
 # Skrót do klienta HTTP Home Assistant (z integration_registry["home_assistant"].ha_client)
-# Ustawiany przez client_store.register_integration() przy ładowaniu integracji HA
+# Ustawiany przy ładowaniu integracji HA
 ha_client = None  # HomeAssistantClient | None
+
+def register_integration(integration) -> None:
+    """Rejestruje integrację zewnętrzną w Kontrolerze."""
+    import logging
+    global ha_client
+    integration_registry[integration.id] = integration
+    if integration.id == "home_assistant":
+        ha_client = getattr(integration, "ha_client", None)
+    logging.info(f"Zarejestrowano integrację: {integration.name} ({integration.id})")
 
 # Rejestr narzędzi Agenta LLM — inicjalizowany w lifespan
 tools_registry = None  # ToolsRegistry | None

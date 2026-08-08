@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import Response
 
 from protocol.schemas import ToolExecutionRequest
-import controller.core.app_state as app_state
+import controller.core.state as app_state
 
 router_tools = APIRouter()
 

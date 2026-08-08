@@ -5,8 +5,8 @@ import datetime
 import logging
 import requests
 
-import controller.core.client_store as client_store
-import controller.core.session.store as session_store
+import controller.core.client_registry as client_registry
+import controller.agent.session.store as session_store
 import controller.core.event_bus as event_bus
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ def clear_conversation_history(satellite_id: str | None = None) -> None:
     """Resetuje historię konwersacji w pamięci Kontrolera oraz powiązanych węzłach/usługach."""
     session_store.clear_session_history(satellite_id)
 
-    for worker in client_store.get_llm_clients():
+    for worker in client_registry.get_llm_clients():
         try:
             requests.post(f"{worker['base_url']}/v1/clear_history", timeout=2)
         except Exception as e:

@@ -1,54 +1,41 @@
 """
-Router Systemowy (UI / Events / Status) dla Kontrolera.
+Router Systemowy (Status) dla Kontrolera.
 
 Obsługuje endpointy:
-- GET  /api/events              — SSE: strumień zdarzeń z EventBus
 - GET  /api/status              — REST: snapshot stanu systemu
-- POST /api/node/{node_id}/command — proxy komendy do klienta
-- POST /api/satellite/event     — zdarzenia Satelity → EventBus
+- GET  /api/events              — SSE: strumieniowanie zdarzeń EventBus
 """
+import time
 import asyncio
 import json
-import logging
-import time
-
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse, JSONResponse
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
 
+import controller.core.state as state
+import controller.core.client_registry as client_registry
 import controller.core.event_bus as event_bus
-import controller.core.app_state as app_state
-import controller.core.client_store as client_store
-from controller.core.connection_manager import client_manager
 
 router_system = APIRouter()
 
 
-# ---------------------------------------------------------------------------
-# Endpoint: snapshot stanu systemu
-# ---------------------------------------------------------------------------
-
-@router_system.get("/api/status")
-async def get_status():
+async def get_status_snapshot() -> dict:
     """Zwraca aktualny stan systemu: węzły, satelity, integracje, info o Kontrolerze."""
-    uptime_s = int(time.time() - app_state.controller_start_time)
+    uptime_s = int(time.time() - state.controller_start_time)
 
-    # Pobieranie statusów wszystkich zarejestrowanych integracji
     integrations = []
-    for integration in app_state.integration_registry.values():
+    for integration in state.integration_registry.values():
         try:
             status = await integration.check_status()
         except Exception:
             status = "offline"
         integrations.append(integration.to_dict(status))
 
-    # Wyciągnięcie ha_status dla wstecznej kompatybilności
-    ha_integration = app_state.integration_registry.get("home_assistant")
+    ha_integration = state.integration_registry.get("home_assistant")
     ha_status = integrations[0]["status"] if ha_integration and integrations else "unknown"
 
-    clients = list(client_store.client_registry.values())
-    workers = client_store.get_llm_clients()
-    satellites = client_store.get_satellite_clients()
+    clients = list(client_registry.client_registry.values())
+    workers = client_registry.get_llm_clients()
+    satellites = client_registry.get_satellite_clients()
 
     return {
         "nodes": clients,  # Klucze zachowane dla kompatybilności z UI
@@ -61,3 +48,33 @@ async def get_status():
             "ha_status": ha_status,
         }
     }
+
+
+@router_system.get("/api/status")
+async def get_status():
+    """Zwraca aktualny stan systemu: węzły, satelity, integracje, info o Kontrolerze."""
+    return await get_status_snapshot()
+
+
+@router_system.get("/api/events")
+async def get_events(request: Request):
+    """
+    Endpoint SSE (Server-Sent Events) dla zdarzeń systemowych (EventBus).
+    Zwraca historyczne zdarzenia od razu po podłączeniu, a następnie strumieniuje na żywo.
+    """
+    queue, history = await event_bus.subscribe()
+
+    async def event_generator():
+        try:
+            for past_event in history:
+                yield f"data: {json.dumps(past_event)}\n\n"
+            
+            while True:
+                if await request.is_disconnected():
+                    break
+                event = await queue.get()
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            event_bus.unsubscribe(queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
