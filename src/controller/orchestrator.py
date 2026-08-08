@@ -1,168 +1,155 @@
 """
 Orkiestrator Konwersacji Regis (Warstwa 1 – Core).
 
-Czysta fasada wysokiego poziomu — koordynuje przepływ tury:
-wywołuje transkrypcję audio, pobiera backend LLM, odpala silnik agenta, generuje syntezę mowy
-oraz wystawia wygenerowane zdarzenia w formie strumieni SSE.
+Jednolity koordynator tury konwersacji (tekstowej lub głosowej).
+Przyjmuje intencje tekstowe/głosowe od nadawcy (sender) i przekazuje je do
+jednolitego strumienia wykonawczego _execute_turn_stream (ReAct + TTS).
 """
 import asyncio
-import json
 import logging
 from typing import AsyncGenerator
 
 import controller.agent.session.store as session_store
-import controller.core.state as app_state
 import controller.core.client_registry as client_registry
-import controller.endpoints.clients as endpoints_clients
+import controller.core.state as app_state
 import controller.providers.llm.resolver as providers
+from controller.config.loader import get_controller_url
 from controller.providers.audio.service import transcribe_audio, synthesize_speech
 from controller.agent.engine import run_agent_loop
 
 logger = logging.getLogger(__name__)
 
 
-def _get_controller_url() -> str:
-    controller_url = app_state._settings_cache.get("controller_url", "auto")
-    if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
-        from protocol.discovery import get_local_ip
-        controller_url = f"http://{get_local_ip()}:8000"
-    return controller_url
+async def handle_text_message(
+    text: str,
+    sender: str = "web_ui",
+) -> AsyncGenerator[dict, None]:
+    """
+    Publiczne wejście dla przychodzącej wiadomości tekstowej.
+    Przekazuje treść i nadawcę bezpośrednio do strumienia wykonawczego.
+    """
+    async for event in _execute_turn_stream(text=text, sender=sender, is_audio=False):
+        yield event
 
 
-def _get_room_from_satellite(satellite_id: str | None) -> str | None:
-    if satellite_id and satellite_id in client_registry.client_registry:
-        services = client_registry.client_registry[satellite_id].get("services", {})
-        if isinstance(services, dict) and "satellite" in services:
-            return services["satellite"].get("room")
-    return None
-
-
-async def stream_chat(message: str, satellite_id: str | None = None, room: str | None = None) -> AsyncGenerator[str, None]:
-    if not providers.has_llm_provider():
-        yield f"data: {json.dumps({'type': 'error', 'content': 'Brak dostępnego providera LLM.'})}\n\n"
+async def handle_audio_message(
+    audio_bytes: bytes,
+    sender: str = "web_ui",
+) -> AsyncGenerator[dict, None]:
+    """
+    Publiczne wejście dla przychodzącej wiadomości głosowej.
+    Sprawdza obecność audio, wykonuje STT i przekazuje wytranskrybowany tekst do strumienia.
+    """
+    if not audio_bytes:
+        yield {"type": "error", "content": "Przesłany strumień audio jest pusty."}
         return
 
-    controller_url = _get_controller_url()
-    effective_room = room or _get_room_from_satellite(satellite_id)
+    stt_text, stt_ms = await transcribe_audio(audio_bytes)
 
-    payload = {"message": message, "controller_url": controller_url, "room": effective_room}
-    q: asyncio.Queue = asyncio.Queue()
-    asyncio.create_task(execute_interaction_turn(payload, q, is_audio=False, audio_bytes=None))
+    if stt_ms > 0:
+        yield {
+            "type": "profiler", 
+            "content": {"metric": "stt", "value": stt_ms}
+        }
 
-    while True:
-        item = await q.get()
-        yield f"data: {json.dumps(item)}\n\n"
-        if item["type"] in ("done", "error"):
-            break
-
-
-async def stream_chat_audio(audio_bytes: bytes, client_id: str | None = None) -> AsyncGenerator[str, None]:
-    if not providers.has_llm_provider():
-        yield f"data: {json.dumps({'type': 'error', 'content': 'Brak dostępnego providera LLM.'})}\n\n"
+    if not stt_text:
+        yield {"type": "error", "content": "Nie rozpoznano tekstu ze strumienia audio."}
         return
 
-    room = _get_room_from_satellite(client_id)
-    controller_url = _get_controller_url()
+    yield {"type": "stt_result", "content": stt_text}
 
-    payload = {"controller_url": controller_url}
-    if room:
-        payload["room"] = room
-
-    q: asyncio.Queue = asyncio.Queue()
-    asyncio.create_task(execute_interaction_turn(payload, q, is_audio=True, audio_bytes=audio_bytes))
-
-    has_tts = False
-
-    while True:
-        item = await q.get()
-        if item["type"] == "tts_audio":
-            has_tts = True
-            if client_id:
-                await endpoints_clients.client_manager.send_command(
-                    client_id, "play_audio", {"audio_b64": item.get("content", "")}
-                )
-            continue  # Nie przepuszczaj tts_audio przez SSE
-        
-        yield f"data: {json.dumps(item)}\n\n"
-        
-        if item["type"] in ("done", "error"):
-            if not has_tts and client_id:
-                await endpoints_clients.client_manager.send_command(client_id, "satellite_control", {"action": "resume"})
-            break
+    async for event in _execute_turn_stream(text=stt_text, sender=sender, is_audio=True):
+        yield event
 
 
-async def execute_interaction_turn(
-    base_payload: dict,
-    q: asyncio.Queue,
-    is_audio: bool = False,
-    audio_bytes: bytes | None = None,
-) -> None:
+async def _execute_turn_stream(
+    text: str,
+    sender: str,
+    is_audio: bool,
+) -> AsyncGenerator[dict, None]:
     """
-    Główny punkt wejścia Orkiestratora — wykonuje pełną turę interakcji:
-    zarządza wejściem STT, wybiera najlepszy backend LLM, odpala pętlę agenta oraz generuje wyjście TTS.
+    Prywatna logika wykonawcza: pobiera pokój nadawcy, weryfikuje obecność LLM,
+    uruchamia pętlę ReAct silnika agenta oraz opcjonalnie wykonuje syntezę mowy (TTS).
     """
-    loop = asyncio.get_event_loop()
+    if not providers.has_llm_provider():
+        yield {"type": "error", "content": "Brak dostępnego providera LLM."}
+        return
 
     backend = providers.get_llm_backend()
     if backend is None:
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": "Brak dostępnego providera LLM."})
+        yield {"type": "error", "content": "Brak dostępnego providera LLM."}
         return
 
-    # 1. Krok Wejścia Audio (STT)
-    if is_audio and audio_bytes:
-        stt_text, stt_ms = await transcribe_audio(audio_bytes)
-        if stt_ms > 0:
-            loop.call_soon_threadsafe(q.put_nowait, {
-                "type": "profiler", 
-                "content": {"metric": "stt", "value": stt_ms}
-            })
-
-        if not stt_text:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": "Nie rozpoznano tekstu ze strumienia audio."})
-            return
-
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "stt_result", "content": stt_text})
-        base_payload["message"] = stt_text
-
-    satellite_id = base_payload.get("satellite_id") or "web_ui"
-    room = base_payload.get("room")
-    user_message = base_payload.get("message", "")
-    session_history = session_store.get_session_history(satellite_id)
+    room = client_registry.get_client_room(sender)
+    session_history = session_store.get_session_history(sender)
     provider_name = backend.get_provider_name()
     model_name = getattr(backend, "model_name", "nieznany")
 
-    loop.call_soon_threadsafe(q.put_nowait, {
+    yield {
         "type": "routing_info",
         "worker_id": provider_name,
         "model": model_name,
         "provider": provider_name,
-    })
+    }
 
-    # 2. Krok Przetwarzania LLM (Silnik ReAct)
-    try:
-        final_content = await run_agent_loop(
-            stream_provider=backend,
-            session_history=session_history,
-            user_message=user_message,
-            satellite_id=satellite_id,
-            room=room,
-            worker_id=provider_name,
-            model_name=model_name,
-            q=q,
-            loop=loop,
-        )
-    except Exception as e:
-        logger.exception(f"Błąd w pętli orkiestratora: {e}")
-        loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": str(e)})
-        raise
+    q: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
 
-    # 3. Krok Wyjścia Audio (TTS)
-    if is_audio and final_content:
-        b64_audio, tts_ms = await synthesize_speech(final_content)
-        if tts_ms > 0:
-            loop.call_soon_threadsafe(q.put_nowait, {
-                "type": "profiler", 
-                "content": {"metric": "tts", "value": tts_ms}
-            })
-        if b64_audio:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "tts_audio", "content": b64_audio})
+    # Krok Przetwarzania LLM (Mózg Agenta ReAct)
+    async def _runner():
+        try:
+            final_content = await run_agent_loop(
+                stream_provider=backend,
+                session_history=session_history,
+                user_message=text or "",
+                satellite_id=sender,
+                room=room,
+                worker_id=provider_name,
+                model_name=model_name,
+                q=q,
+                loop=loop,
+                tools_registry=app_state.tools_registry,
+            )
+
+            if is_audio and final_content:
+                b64_audio, tts_ms = await synthesize_speech(final_content)
+                if tts_ms > 0:
+                    loop.call_soon_threadsafe(q.put_nowait, {
+                        "type": "profiler", 
+                        "content": {"metric": "tts", "value": tts_ms}
+                    })
+                if b64_audio:
+                    loop.call_soon_threadsafe(q.put_nowait, {"type": "tts_audio", "content": b64_audio})
+
+        except Exception as e:
+            logger.exception(f"Błąd w pętli orkiestratora: {e}")
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "content": str(e)})
+
+    task = asyncio.create_task(_runner())
+
+    while True:
+        item = await q.get()
+        yield item
+        if item["type"] in ("done", "error"):
+            break
+
+    await task
+
+
+# Rejestracja handlerów w Agnostycznej Magistrali Wiadomości (MessageBus)
+from controller.core.message_bus import message_bus
+from controller.messages import TextMessage, AudioMessage
+
+
+async def _on_text_message(msg: TextMessage) -> AsyncGenerator[dict, None]:
+    async for event in handle_text_message(msg.text, msg.sender):
+        yield event
+
+
+async def _on_audio_message(msg: AudioMessage) -> AsyncGenerator[dict, None]:
+    async for event in handle_audio_message(msg.audio_bytes, msg.sender):
+        yield event
+
+
+message_bus.subscribe(TextMessage, _on_text_message)
+message_bus.subscribe(AudioMessage, _on_audio_message)

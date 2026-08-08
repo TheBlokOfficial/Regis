@@ -55,7 +55,7 @@ class OllamaWorkerService(BaseService):
         """Anuluje obecną pętlę (jeśli jest) i uruchamia nową, przechodząc do INITIALIZING."""
         if self._ensure_ready_task and not self._ensure_ready_task.done():
             self._ensure_ready_task.cancel()
-        self.state = OllamaWorkerState.INITIALIZING
+        self.state = ServiceState.INITIALIZING
         self._ensure_ready_task = asyncio.create_task(self._ensure_ready_loop())
 
     async def start(self):

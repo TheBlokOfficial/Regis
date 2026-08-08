@@ -1,0 +1,21 @@
+{
+  "node-b521068e": {
+    "name": "desktop-rtx5070",
+    "services": {
+      "satellite": {
+        "wakeword_threshold": 0.65,
+        "silence_timeout_ms": 1500
+      },
+      "stt_worker": {
+        "stt_model_size": "small",
+        "stt_language": "pl"
+      },
+      "tts_worker": {
+        "tts_model_name": "pl_PL-darkman-medium"
+      },
+      "ollama_worker": {
+        "model_name": "qwen3.5:9b"
+      }
+    }
+  }
+}

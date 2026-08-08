@@ -86,3 +86,14 @@ def save(instance: BaseModel) -> None:
     """Zapisuje instancję schematu Pydantic na podstawie jej metadanych w `Meta.file_name`."""
     file_name = _get_file_name_from_schema(instance)
     save_config(file_name, instance)
+
+
+def get_controller_url() -> str:
+    """Zwraca wyznaczony adres URL serwera Kontrolera."""
+    from controller.core.state import _settings_cache
+    controller_url = _settings_cache.get("controller_url", "auto")
+    if controller_url == "auto" or "127.0.0.1" in controller_url or "localhost" in controller_url:
+        from protocol.discovery import get_local_ip
+        controller_url = f"http://{get_local_ip()}:8000"
+    return controller_url
+

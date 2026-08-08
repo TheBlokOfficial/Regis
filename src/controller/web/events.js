@@ -25,17 +25,17 @@ export function handleEvent(event) {
 
     switch (event.type) {
 
-        case "node_registered":
-        case "node_updated": {
-            const node = event.node || event;
+        case "client_registered":
+        case "client_updated": {
+            const node = event.client || event;
             renderNodeCard(node);
-            if (event.type === "node_registered" && !event.is_history) {
-                appendLog(now, "[INFO]", `Zarejestrowano węzeł ${node.name || node.id}`, "online");
+            if (event.type === "client_registered" && !event.is_history) {
+                appendLog(now, "[INFO]", `Zarejestrowano klienta RegisDesktop: ${node.name || node.id}`, "online");
             }
             break;
         }
 
-        case "node_unregistered": {
+        case "client_unregistered": {
             if (workers[event.id]) {
                 setWorkerStatus(event.id, "offline");
                 markWorkerOffline(event.id);
@@ -44,31 +44,7 @@ export function handleEvent(event) {
                 removeSatellite(event.id);
                 markSatelliteOffline(event.id);
             }
-            if (!event.is_history) appendLog(now, "[OFFLINE]", `Węzeł ${event.id} został odłączony`, "offline");
-            break;
-        }
-
-        case "worker_registered": {
-            upsertWorker({ ...event, status: "online" });
-            renderWorkerCard(workers[event.id]);
-            break;
-        }
-
-        case "worker_unregistered": {
-            setWorkerStatus(event.id, "offline");
-            markWorkerOffline(event.id);
-            break;
-        }
-
-        case "satellite_registered": {
-            upsertSatellite({ ...event });
-            renderSatelliteCard(satellites[event.id]);
-            break;
-        }
-
-        case "satellite_unregistered": {
-            removeSatellite(event.id);
-            markSatelliteOffline(event.id);
+            if (!event.is_history) appendLog(now, "[OFFLINE]", `RegisDesktop ${event.id} został odłączony`, "offline");
             break;
         }
 
@@ -104,12 +80,12 @@ export function handleEvent(event) {
             break;
         }
 
-        case "node_command_result": {
+        case "client_command_result": {
             // Logujemy tylko niepowodzenia komend (błędy)
             if (!event.success) {
                 const err = event.error || "brak szczegółów";
                 appendLog(now, "[ERROR]",
-                    `Błąd wykonania komendy '${event.command}' na węźle ${event.node_id}: ${err}`,
+                    `Błąd wykonania komendy '${event.command}' na kliencie ${event.client_id}: ${err}`,
                     "error");
             }
             break;

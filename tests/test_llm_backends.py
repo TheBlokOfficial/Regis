@@ -29,13 +29,14 @@ def test_openrouter_is_available_false():
 @patch.object(OpenRouterBackend, "is_available", return_value=True)
 @patch("controller.providers.llm.resolver.endpoints_cloud.get_cloud_providers")
 def test_get_llm_backend_returns_openrouter(mock_get_cloud, mock_openrouter_avail):
-    mock_get_cloud.return_value = [{
-        "id": "test",
-        "type": "openrouter",
-        "api_key": "test_key",
-        "model": "test_model",
-        "priority": 50
-    }]
+    from controller.config.schemas import CloudProviderConfig
+    mock_get_cloud.return_value = [CloudProviderConfig(
+        id="test",
+        type="openrouter",
+        api_key="test_key",
+        model="test_model",
+        priority=50
+    )]
     backend = providers.get_llm_backend()
     assert isinstance(backend, OpenRouterBackend)
 

@@ -86,3 +86,16 @@ def get_satellite_clients() -> list[dict]:
                 "last_seen": client.get("last_seen", time.time()),
             })
     return satellites
+
+
+def get_client_room(client_id: str | None) -> str | None:
+    """Zwraca pomieszczenie przypisane do danego klienta lub jego usługi satelity."""
+    if client_id and client_id in client_registry:
+        client = client_registry[client_id]
+        if client.get("room"):
+            return client["room"]
+        services = client.get("services", {})
+        if isinstance(services, dict) and "satellite" in services:
+            return services["satellite"].get("room")
+    return None
+

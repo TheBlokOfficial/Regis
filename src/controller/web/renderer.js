@@ -9,6 +9,8 @@
 
 import { workerCount, satelliteCount } from './state.js';
 import { escHtml } from './utils.js';
+import { fetchCloudProviders } from './api.js';
+import { setCloudProvidersCache, openClientConfigModal, openCloudProviderModal } from './modals.js';
 
 // Maksymalna liczba wpisów w dzienniku (zapobiega rosnącemu DOM bez końca)
 const LOG_MAX = 300;
@@ -81,7 +83,7 @@ export function updateHAStatus(status) {
     });
 }
 
-// ── Zjednoczone Karty Węzłów Systemowych ─────────────────────────────────
+// ── Karty Klientów (RegisDesktop) ──────────────────────────────────────────
 
 export function renderNodeCard(node) {
     const id = node.id;
@@ -95,10 +97,22 @@ export function renderNodeCard(node) {
 
     let tagsHtml = '';
 
-    const workerConfig = isDict ? services.worker : (Array.isArray(services) && services.includes("worker") ? node : null);
-    if (workerConfig) {
-        const model = workerConfig.model_name || node.model_name || "qwen3.5:9b";
-        tagsHtml += `<span class="service-tag">WORKER (${escHtml(model)})</span> `;
+    const ollamaConfig = isDict ? (services.ollama_worker || services.worker) : (Array.isArray(services) && services.includes("worker") ? node : null);
+    if (ollamaConfig) {
+        const model = ollamaConfig.model_name || node.model_name || "qwen3.5:9b";
+        tagsHtml += `<span class="service-tag">LLM (${escHtml(model)})</span> `;
+    }
+
+    const sttConfig = isDict ? services.stt_worker : null;
+    if (sttConfig) {
+        const sttSize = sttConfig.stt_model_size || "small";
+        tagsHtml += `<span class="service-tag">STT (${escHtml(sttSize)})</span> `;
+    }
+
+    const ttsConfig = isDict ? services.tts_worker : null;
+    if (ttsConfig) {
+        const ttsModel = ttsConfig.tts_model_name || "piper";
+        tagsHtml += `<span class="service-tag">TTS (${escHtml(ttsModel)})</span> `;
     }
 
     const satConfig = isDict ? services.satellite : (Array.isArray(services) && services.includes("satellite") ? node : null);
@@ -124,7 +138,7 @@ export function renderNodeCard(node) {
     `;
 
     card.querySelector(`#btn-config-${id}`)
-        .addEventListener("click", () => window.openNodeConfigModal(id));
+        .addEventListener("click", () => openClientConfigModal(id));
 
     const body = document.getElementById("nodes-tree-body");
     if (!body) return;
@@ -137,6 +151,41 @@ export function renderNodeCard(node) {
     if (countEl) {
         countEl.textContent = body.children.length;
     }
+}
+
+// ── Dostawcy Chmurowi (LLM) ───────────────────────────────────────────────
+
+export async function renderCloudProvidersList() {
+    const cloudProviders = await fetchCloudProviders();
+    setCloudProvidersCache(cloudProviders);
+
+    const container = document.getElementById("cloud-providers-tree-body");
+    if (!container) return;
+
+    if (!cloudProviders || cloudProviders.length === 0) {
+        container.innerHTML = '<div class="empty-state">Brak skonfigurowanych dostawców chmurowych.</div>';
+        return;
+    }
+
+    container.innerHTML = cloudProviders.map(cp => `
+        <div class="list-row">
+            <span class="list-icon">[EXT]</span>
+            <div class="list-info">
+                <span class="list-title">${escHtml(cp.id)}</span>
+                <span class="list-meta">(${escHtml(cp.type)}) Model: ${escHtml(cp.model)} | Prio: ${escHtml(String(cp.priority || 50))}</span>
+            </div>
+            <div class="list-actions">
+                <button class="btn btn-edit-cp" data-id="${escHtml(cp.id)}" style="font-size: 13px;">EDYTUJ</button>
+            </div>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.btn-edit-cp').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const providerId = btn.getAttribute('data-id');
+            openCloudProviderModal(providerId);
+        });
+    });
 }
 
 export function renderWorkerCard(worker) {
@@ -201,4 +250,45 @@ export function appendLog(timeStr, source, message, typeClass) {
     const threshold = 60;
     const atBottom  = list.scrollHeight - list.scrollTop - list.clientHeight < threshold;
     if (atBottom) list.scrollTop = list.scrollHeight;
+}
+
+// ── Toasty (Powiadomienia) ────────────────────────────────────────────────
+export function showToast(message, type = "info") {
+    const container = document.getElementById("toast-container");
+    if (!container) return;
+
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+    
+    let icon = "ℹ️";
+    if (type === "success") icon = "✅";
+    if (type === "error") icon = "❌";
+
+    toast.innerHTML = `<span>${icon}</span> <span>${escHtml(message)}</span>`;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add("fade-out");
+        toast.addEventListener("animationend", () => {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+        });
+    }, 3000);
+}
+
+// ── Zarządzanie stanem ładowania ──────────────────────────────────────────
+export async function withLoadingState(buttonElement, asyncCallback) {
+    if (!buttonElement) return await asyncCallback();
+
+    const originalText = buttonElement.innerHTML;
+    buttonElement.classList.add("loading");
+    buttonElement.disabled = true;
+    buttonElement.innerHTML = "Przetwarzanie...";
+
+    try {
+        await asyncCallback();
+    } finally {
+        buttonElement.classList.remove("loading");
+        buttonElement.disabled = false;
+        buttonElement.innerHTML = originalText;
+    }
 }

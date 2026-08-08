@@ -52,15 +52,10 @@ def load_settings() -> dict[str, Any]:
 
     migrated = False
     
-    # Migracja ze starych kluczy z czasów węzłów
     if "node_id" in merged:
         if "client_id" not in merged:
             merged["client_id"] = merged["node_id"]
         del merged["node_id"]
-        migrated = True
-        
-    if "instance_name" in merged:
-        del merged["instance_name"] # ignorujemy starą nazwę instancji na rzecz client_id
         migrated = True
 
     if not merged.get("client_id"):

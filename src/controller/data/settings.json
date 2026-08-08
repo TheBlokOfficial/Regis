@@ -1,0 +1,5 @@
+{
+    "ha_url": "http://192.168.0.50:8123",
+    "ha_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhY2VhZTFmZDllOTg0ZmRjYmY0YjlmZWZkYWU1NWE4OSIsImlhdCI6MTc4NjE3NzI2NywiZXhwIjoyMTAxNTM3MjY3fQ.71Srh_WRnUIUbaT3zHvbYkdsaXbGl7rDSuwbFm57Vq4",
+    "log_level": "INFO"
+}

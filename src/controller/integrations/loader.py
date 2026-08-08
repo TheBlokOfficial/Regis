@@ -22,7 +22,8 @@ def load_integrations(
     settings_dict = settings.model_dump() if hasattr(settings, "model_dump") else settings
 
     if aliases is None or virtual_groups is None:
-        from controller.config import load, AliasesConfig, VirtualGroupsConfig
+        from controller.config.loader import load
+        from controller.config.schemas import AliasesConfig, VirtualGroupsConfig
         if aliases is None:
             aliases = load(AliasesConfig).root
         if virtual_groups is None:

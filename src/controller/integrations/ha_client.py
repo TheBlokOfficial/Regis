@@ -21,6 +21,8 @@ class HomeAssistantClient:
             aliases (dict[str, str], optional): Słownik mapujący skomplikowane nazwy encji na przyjazne.
             virtual_groups (dict[str, list[str]], optional): Mapowanie wirtualnych grup na listy ID.
         """
+        if url and not url.startswith(("http://", "https://")):
+            url = f"http://{url}"
         self.url = url.rstrip("/")
         self.token = token
         self.aliases = aliases or {}

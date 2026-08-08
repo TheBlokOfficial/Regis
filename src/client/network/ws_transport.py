@@ -33,6 +33,19 @@ def wait_for_ws_connection(timeout: float = 3.0) -> bool:
     return _ws_connected_event.wait(timeout=timeout)
 
 
+async def _heartbeat_ping_loop(ws: Any) -> None:
+    """Wysyła ramkę keep-alive co 20 sekund, aby odświeżać last_seen w Kontrolerze."""
+    import json
+    try:
+        while True:
+            await asyncio.sleep(20.0)
+            await ws.send(json.dumps({"type": "status"}))
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.debug(f"Pętla heartbeat WS przerwana: {e}")
+
+
 async def _ws_client_loop() -> None:
     global _ws_client
     
@@ -51,12 +64,16 @@ async def _ws_client_loop() -> None:
                 from client.network.client_registry import register
                 register()
                 
-                async for message in ws:
-                    try:
-                        if _message_handler:
-                            await _message_handler(ws, message)
-                    except Exception as e:
-                        logger.error(f"Błąd przetwarzania komendy WS: {e}")
+                ping_task = asyncio.create_task(_heartbeat_ping_loop(ws))
+                try:
+                    async for message in ws:
+                        try:
+                            if _message_handler:
+                                await _message_handler(ws, message)
+                        except Exception as e:
+                            logger.error(f"Błąd przetwarzania komendy WS: {e}")
+                finally:
+                    ping_task.cancel()
         except Exception as e:
             _ws_client = None
             _ws_connected_event.clear()

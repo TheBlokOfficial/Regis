@@ -17,7 +17,8 @@ class ToolsRegistry:
         self._direct_ha_client = ha_client
         self._integration_registry = integration_registry
         if rooms is None:
-            from controller.config import load, RoomsConfig
+            from controller.config.loader import load
+            from controller.config.schemas import RoomsConfig
             self.rooms = load(RoomsConfig).root
         else:
             self.rooms = rooms
@@ -58,23 +59,34 @@ class ToolsRegistry:
             logging.error(f"Błąd wykonania narzędzia {tool_name}: {e}")
             return json.dumps({"error": f"Wystąpił błąd podczas wykonania: {str(e)}"}, ensure_ascii=False)
 
+    @staticmethod
+    def _extract_room_info(r_data: Any) -> tuple[str | None, list[str], list[str]]:
+        """Zwraca (name, metadata, devices) dla danego pokoju niezależnie czy r_data to dict, RoomDetail czy list."""
+        if hasattr(r_data, "devices"):  # Pydantic RoomDetail
+            return getattr(r_data, "name", None), getattr(r_data, "metadata", []) or [], getattr(r_data, "devices", []) or []
+        elif isinstance(r_data, dict):
+            return r_data.get("name"), r_data.get("metadata", []) or [], r_data.get("devices", []) or []
+        elif isinstance(r_data, list):
+            return None, [], r_data
+        return None, [], []
+
     # ─── Home Assistant ───────────────────────────────────────────────
 
     def _get_devices(self, domain: str = None, room: str = None) -> str:
         """Zwraca urządzenia z opcjonalnym filtrowaniem po domenie i pokoju."""
-        states = self.ha_client.get_all_states()
-        room_filter = self.rooms.get(room) if room and self.rooms else None
+        states = self.ha_client.get_all_states() if self.ha_client else {}
+        
+        raw_room_data = self.rooms.get(room) if room and self.rooms else None
+        _, _, room_filter_devices = self._extract_room_info(raw_room_data) if raw_room_data is not None else (None, [], None)
         devices = []
 
-        virtual_groups = getattr(self.ha_client, "virtual_groups", {})
-        aliases = getattr(self.ha_client, "aliases", {})
+        virtual_groups = getattr(self.ha_client, "virtual_groups", {}) if self.ha_client else {}
+        aliases = getattr(self.ha_client, "aliases", {}) if self.ha_client else {}
 
         room_entities = set()
         for r_data in (self.rooms.values() if self.rooms else []):
-            if isinstance(r_data, dict):
-                room_entities.update(r_data.get("devices", []))
-            else:
-                room_entities.update(r_data)
+            _, _, r_devs = self._extract_room_info(r_data)
+            room_entities.update(r_devs)
 
         active_virtual_groups = {}
         for vg_id, children in virtual_groups.items():
@@ -83,13 +95,13 @@ class ToolsRegistry:
                 continue
 
             is_in_room = False
-            if room_filter is None:
+            if room_filter_devices is None:
                 is_in_room = True
             elif room and room in vg_id:
                 is_in_room = True
             else:
                 for child in children:
-                    if room_filter and child in room_filter:
+                    if room_filter_devices and child in room_filter_devices:
                         is_in_room = True
                         break
 
@@ -99,7 +111,7 @@ class ToolsRegistry:
         for entity_id, data in states.items():
             if domain and not entity_id.startswith(f"{domain}."):
                 continue
-            if room_filter is not None and entity_id not in room_filter:
+            if room_filter_devices is not None and entity_id not in room_filter_devices:
                 continue
 
             has_alias = entity_id in aliases
@@ -133,14 +145,11 @@ class ToolsRegistry:
         room_metadata = {}
         if getattr(self, "rooms", None):
             for room_name, r_data in self.rooms.items():
-                if isinstance(r_data, dict):
-                    room_metadata[room_name] = r_data.get("metadata", [])
-                    display_name = r_data.get("name", room_name.title())
-                    for ent in r_data.get("devices", []):
-                        entity_to_room[ent] = display_name
-                else:
-                    for ent in r_data:
-                        entity_to_room[ent] = room_name.title()
+                r_disp, r_meta, r_devs = self._extract_room_info(r_data)
+                display_name = r_disp or room_name.title()
+                room_metadata[room_name] = r_meta
+                for ent in r_devs:
+                    entity_to_room[ent] = display_name
 
         grouped_devices = {}
         for dev in devices:
@@ -155,7 +164,8 @@ class ToolsRegistry:
                 for r_name in (self.rooms.keys() if getattr(self, "rooms", None) else []):
                     if r_name in ent_id:
                         r_data = self.rooms[r_name]
-                        room = r_data.get("name", r_name.title()) if isinstance(r_data, dict) else r_name.title()
+                        r_disp, _, _ = self._extract_room_info(r_data)
+                        room = r_disp or r_name.title()
                         break
 
             if room not in grouped_devices:
@@ -172,10 +182,17 @@ class ToolsRegistry:
         menu = "DOSTĘPNE URZĄDZENIA (Globalne Menu):\n"
         for room, devs in grouped_devices.items():
             menu += f"\n## Pokój: {room}\n"
-            orig_room = next((k for k, v in self.rooms.items() if (v.get("name") if isinstance(v, dict) else k.title()) == room), None)
+            orig_room = None
+            if getattr(self, "rooms", None):
+                for k, v in self.rooms.items():
+                    r_disp, _, _ = self._extract_room_info(v)
+                    if (r_disp or k.title()) == room:
+                        orig_room = k
+                        break
             if orig_room and orig_room in room_metadata and room_metadata[orig_room]:
                 meta_str = ", ".join(room_metadata[orig_room])
-                menu += f"*Metadane: {meta_str}*\n"
+                meta_str_clean = ", ".join(meta_str) if isinstance(meta_str, list) else meta_str
+                menu += f"*Metadane: {meta_str_clean}*\n"
             menu += "\n".join(devs) + "\n"
 
         return menu.strip()

@@ -64,8 +64,8 @@ NodeRegistrationRequest = ClientRegistrationRequest
 class ClientConfigRequest(BaseModel):
     """Payload aktualizacji konfiguracji Klienta z poziomu Kontrolera / Web UI."""
     name: str | None = None
-    services: ClientServicesConfig | dict[str, dict] = {}
-
+    room: str | None = None
+    services: dict[str, dict] | None = None
 
 NodeConfigRequest = ClientConfigRequest
 

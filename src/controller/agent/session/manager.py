@@ -4,10 +4,14 @@ Wspólna logika kończenia tury konwersacji: zapis historii i publikacja do Even
 import datetime
 import logging
 import requests
+import asyncio
 
 import controller.core.client_registry as client_registry
 import controller.agent.session.store as session_store
-import controller.core.event_bus as event_bus
+from controller.core.message_bus import message_bus
+from controller.messages import ConversationTurnMessage, ClearHistoryMessage
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +22,7 @@ HISTORY_LIMIT = 10
 
 async def save_and_publish(satellite_id: str, turn: dict) -> None:
     """
-    Zapisuje turę konwersacji do sesji, trymuje historię i publikuje zdarzenie do EventBus.
+    Zapisuje turę konwersacji do sesji, trymuje historię i publikuje zdarzenie do MessageBus.
 
     Args:
         satellite_id: Identyfikator sesji/satelity. Używany jako klucz w session_store.
@@ -32,19 +36,19 @@ async def save_and_publish(satellite_id: str, turn: dict) -> None:
     if len(hist) > HISTORY_LIMIT:
         del hist[:-HISTORY_LIMIT]
 
-    await event_bus.publish({
-        "type": "conversation_turn",
-        "user_text": turn.get("user", ""),
-        "assistant_text": turn.get("assistant", ""),
-        "worker_id": turn.get("worker_id", "unknown"),
-        "satellite_id": satellite_id,
-        "room": turn.get("room"),
-        "tools": turn.get("tools", []),
-        "tool_count": len(turn.get("tools", [])),
-        "elapsed_ms": turn.get("elapsed_ms"),
-        "profiler": turn.get("profiler", {}),
-        "model": turn.get("model", "unknown"),
-    })
+    msg = ConversationTurnMessage(
+        satellite_id=satellite_id,
+        user_text=turn.get("user", ""),
+        assistant_text=turn.get("assistant", ""),
+        worker_id=turn.get("worker_id", "unknown"),
+        room=turn.get("room"),
+        tools=turn.get("tools", []),
+        elapsed_ms=turn.get("elapsed_ms"),
+        profiler=turn.get("profiler", {}),
+        model=turn.get("model", "unknown"),
+    )
+    await message_bus.publish(msg)
+
 
 
 def build_turn(
@@ -74,12 +78,17 @@ def build_turn(
     }
 
 
-def clear_conversation_history(satellite_id: str | None = None) -> None:
+async def _on_clear_history(msg: ClearHistoryMessage) -> None:
     """Resetuje historię konwersacji w pamięci Kontrolera oraz powiązanych węzłach/usługach."""
-    session_store.clear_session_history(satellite_id)
+    session_store.clear_session_history(msg.satellite_id)
+
+    def _notify_worker(worker_url: str):
+        try:
+            requests.post(f"{worker_url}/v1/clear_history", timeout=2)
+        except Exception as e:
+            logger.debug(f"Nie udało się powiadomić usługi LLM o czyszczeniu historii: {e}")
 
     for worker in client_registry.get_llm_clients():
-        try:
-            requests.post(f"{worker['base_url']}/v1/clear_history", timeout=2)
-        except Exception as e:
-            logger.debug(f"Nie udało się powiadomić usługi {worker.get('id')} o czyszczeniu historii: {e}")
+        await asyncio.to_thread(_notify_worker, worker['base_url'])
+
+message_bus.subscribe(ClearHistoryMessage, _on_clear_history)

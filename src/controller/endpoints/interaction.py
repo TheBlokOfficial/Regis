@@ -1,10 +1,18 @@
+import json
 from fastapi import APIRouter, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-import controller.orchestrator as orchestrator
 import controller.agent.session.store as session_store
-from controller.agent.session.manager import clear_conversation_history
+from controller.core.message_bus import message_bus
+from controller.messages import (
+    TextMessage, 
+    AudioMessage, 
+    PlayAudioMessage, 
+    ResumeSatelliteMessage, 
+    ClearHistoryMessage
+)
+
 
 router_interaction = APIRouter()
 
@@ -15,10 +23,39 @@ class InteractionRequest(BaseModel):
     room: str | None = None
 
 
+async def _format_sse_text_stream(event_generator):
+    async for item in event_generator:
+        yield f"data: {json.dumps(item)}\n\n"
+
+
+async def _format_sse_audio_stream(event_generator, client_id: str | None = None):
+    has_tts = False
+    async for item in event_generator:
+        if item["type"] == "tts_audio":
+            has_tts = True
+            if client_id:
+                await message_bus.publish(
+                    PlayAudioMessage(client_id=client_id, audio_b64=item.get("content", ""))
+                )
+            continue  # Nie przepuszczaj tts_audio przez SSE
+
+        yield f"data: {json.dumps(item)}\n\n"
+
+        if item["type"] in ("done", "error"):
+            if not has_tts and client_id:
+                await message_bus.publish(ResumeSatelliteMessage(client_id=client_id))
+            break
+
+
 @router_interaction.post("/v1/chat/stream")
 async def chat_stream(request: InteractionRequest):
+    msg = TextMessage(
+        text=request.message,
+        sender=request.satellite_id or "web_ui",
+    )
+    generator = await message_bus.publish(msg)
     return StreamingResponse(
-        orchestrator.stream_chat(request.message, request.satellite_id, request.room),
+        _format_sse_text_stream(generator),
         media_type="text/event-stream"
     )
 
@@ -27,17 +64,33 @@ async def chat_stream(request: InteractionRequest):
 async def chat_audio_stream(request: Request, file: UploadFile = File(...)):
     client_id = request.headers.get("X-Client-ID")
     audio_bytes = await file.read()
-    
+
+    msg = AudioMessage(
+        audio_bytes=audio_bytes,
+        sender=client_id or "web_ui",
+    )
+    generator = await message_bus.publish(msg)
     return StreamingResponse(
-        orchestrator.stream_chat_audio(audio_bytes, client_id),
+        _format_sse_audio_stream(generator, client_id),
         media_type="text/event-stream"
     )
+
+
+
+
+
+
+
+
+
+
+
 
 
 @router_interaction.post("/v1/clear_history")
 async def clear_history(satellite_id: str | None = None):
     """Resetuje historię konwersacji (danej sesji lub wszystkich) w pamięci Kontrolera."""
-    clear_conversation_history(satellite_id)
+    await message_bus.publish(ClearHistoryMessage(satellite_id=satellite_id))
     return {"status": "ok"}
 
 

@@ -2,7 +2,8 @@ import os
 import logging
 from typing import Any
 
-from controller.config import DATA_DIR, JSONStorage
+from controller.config.loader import DATA_DIR
+from controller.config.storage import JSONStorage
 
 STATE_FILE = os.path.join(DATA_DIR, "ha_state.json")
 

@@ -46,7 +46,13 @@ def apply_service_config(config_data: dict, from_registration: bool = False) -> 
 
     # Pętla synchronizacji podprocesów mikrousług z wykorzystaniem silnych typów
     active_statuses = get_all_services_status()
-    target_services = [ServiceName.OLLAMA_WORKER.value, ServiceName.LLM.value, ServiceName.AUDIO.value, ServiceName.SATELLITE.value]
+    target_services = [
+        ServiceName.OLLAMA_WORKER.value,
+        ServiceName.STT_WORKER.value,
+        ServiceName.TTS_WORKER.value,
+        ServiceName.SATELLITE.value,
+        "worker", "llm", "audio"
+    ]
 
     for s_name in target_services:
         display_label = DISPLAY_NAMES.get(s_name, s_name.capitalize())
@@ -79,9 +85,11 @@ def register() -> None:
         return
 
     client_id = _get_client_id()
+    settings = _get_settings()
+    instance_name = settings.get("instance_name") or client_id
     reg_request = ClientRegistrationRequest(
         id=client_id,
-        name=client_id,
+        name=instance_name,
         host=get_local_ip(),
         services=get_active_services_registration(),
     )

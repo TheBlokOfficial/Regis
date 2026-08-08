@@ -13,9 +13,11 @@ from fastapi.responses import StreamingResponse
 
 import controller.core.state as state
 import controller.core.client_registry as client_registry
-import controller.core.event_bus as event_bus
+import controller.core.telemetry as telemetry
 
 router_system = APIRouter()
+
+
 
 
 async def get_status_snapshot() -> dict:
@@ -62,7 +64,7 @@ async def get_events(request: Request):
     Endpoint SSE (Server-Sent Events) dla zdarzeń systemowych (EventBus).
     Zwraca historyczne zdarzenia od razu po podłączeniu, a następnie strumieniuje na żywo.
     """
-    queue, history = await event_bus.subscribe()
+    queue, history = await telemetry.subscribe_sse()
 
     async def event_generator():
         try:
@@ -72,9 +74,22 @@ async def get_events(request: Request):
             while True:
                 if await request.is_disconnected():
                     break
-                event = await queue.get()
-                yield f"data: {json.dumps(event)}\n\n"
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
         finally:
-            event_bus.unsubscribe(queue)
+            telemetry.unsubscribe_sse(queue)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )

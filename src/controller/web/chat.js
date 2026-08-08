@@ -5,6 +5,7 @@
  */
 
 import { escHtml } from './utils.js';
+import { showToast, withLoadingState } from './renderer.js';
 
 let _activeSatelliteId = "web_ui";
 let _activeRoom = "";
@@ -241,11 +242,15 @@ function _bindChatForm() {
         const text = input.value.trim();
         if (!text) return;
 
-        input.value = "";
-        const now = new Date().toLocaleTimeString();
+        const sendBtn = document.getElementById("chat-send-btn");
+        
+        await withLoadingState(sendBtn, async () => {
+            input.disabled = true;
+            input.value = "";
+            const now = new Date().toLocaleTimeString();
 
-        // 1. Pokaż dymek użytkownika
-        appendTurnToChat({ user: text, timestamp: now });
+            // 1. Pokaż dymek użytkownika
+            appendTurnToChat({ user: text, timestamp: now });
 
         // 2. Przygotuj dymek odpowiedzi do strumieniowania
         const container = document.getElementById("chat-messages");
@@ -328,10 +333,14 @@ function _bindChatForm() {
                                 fullText += data.content;
                                 if (bubble) bubble.textContent = fullText;
                                 _scrollToBottom();
-                            } else if (data.type === "tool_dict") {
-                                usedTools.push(data.content);
+                            } else if (data.type === "tool_dict" || data.type === "tool_call_raw") {
+                                const toolInfo = typeof data.content === "string" ? data.content : JSON.stringify(data.content);
+                                usedTools.push(toolInfo);
                                 if (toolsContainer) toolsContainer.innerHTML = renderToolsBlock(usedTools);
                                 _scrollToBottom();
+                            } else if (data.type === "error") {
+                                if (bubble) bubble.textContent = `[Błąd: ${data.content}]`;
+                                showToast(`Błąd: ${data.content}`, "error");
                             } else if (data.type === "profiler") {
                                 const m = data.content;
                                 if (m && m.metric) {
@@ -339,7 +348,7 @@ function _bindChatForm() {
                                 }
                             } else if (data.type === "done") {
                                 elapsedMs = data.elapsed_ms || null;
-                                if (bubble && !fullText) bubble.textContent = data.content;
+                                if (bubble && !fullText) bubble.textContent = data.content || fullText;
                                 const finalMetaStr = formatAssistantMeta({
                                     model: currentModel,
                                     tools: usedTools,
@@ -355,11 +364,15 @@ function _bindChatForm() {
             }
         } catch (e) {
             if (bubble) bubble.textContent = `[Błąd: ${e.message}]`;
+            showToast(`Błąd generowania odpowiedzi: ${e.message}`, "error");
         } finally {
             if (bubble) bubble.removeAttribute("id");
             if (meta) meta.removeAttribute("id");
             if (toolsContainer) toolsContainer.removeAttribute("id");
+            input.disabled = false;
+            input.focus();
         }
+        });
     });
 }
 
@@ -369,10 +382,16 @@ function _bindClearButton() {
 
     btn.addEventListener("click", async () => {
         if (!confirm("Czy na pewno chcesz wyczyścić historię tej sesji?")) return;
-        try {
-            await fetch(`/v1/clear_history?satellite_id=${encodeURIComponent(_activeSatelliteId)}`, { method: "POST" });
-            loadSessionHistory(_activeSatelliteId);
-        } catch (_) {}
+        await withLoadingState(btn, async () => {
+            try {
+                const resp = await fetch(`/v1/clear_history?satellite_id=${encodeURIComponent(_activeSatelliteId)}`, { method: "POST" });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                showToast("Historia sesji została wyczyszczona.", "success");
+                await loadSessionHistory(_activeSatelliteId);
+            } catch (e) {
+                showToast(`Błąd czyszczenia historii: ${e.message}`, "error");
+            }
+        });
     });
 }
 

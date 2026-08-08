@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 def _read_prompt_file() -> str:
     """Ładuje treść pliku promptu systemu Regis."""
-    path = Path(config.CONFIG_DIR) / "prompts" / "system_prompt.md"
+    path = Path(config.DATA_DIR) / "prompts" / "system_prompt.md"
     if path.exists():
         try:
             return path.read_text(encoding="utf-8").strip()

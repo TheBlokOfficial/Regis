@@ -40,12 +40,19 @@ class SystemSettings(BaseConfigModel):
     log_level: str = Field(default="INFO", description="Poziom logowania serwera")
 
 
-class RoomsConfig(BaseConfigModel, RootModel[dict[str, list[str]]]):
+class RoomDetail(BaseModel):
+    """Rozbudowany opis pokoju z nazwą wyświetlaną, metadanymi i listą urządzeń."""
+    name: str | None = None
+    metadata: list[str] = Field(default_factory=list)
+    devices: list[str] = Field(default_factory=list)
+
+
+class RoomsConfig(BaseConfigModel, RootModel[dict[str, list[str] | RoomDetail | dict[str, Any]]]):
     """Silnie typowany schemat pokoi z config/rooms.json."""
     class Meta:
         file_name = "rooms"
 
-    root: dict[str, list[str]] = Field(default_factory=dict)
+    root: dict[str, list[str] | RoomDetail | dict[str, Any]] = Field(default_factory=dict)
 
 
 class AliasesConfig(BaseConfigModel, RootModel[dict[str, str]]):

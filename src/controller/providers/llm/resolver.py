@@ -29,16 +29,16 @@ def get_llm_backend() -> LLMBackend | None:
 
     # 2. Dostawcy chmurowi zarejestrowani w cloud_store
     for cp in endpoints_cloud.get_cloud_providers():
-        if cp.get("type") == "openrouter" and cp.get("api_key") and cp.get("model"):
+        if cp.type == "openrouter" and cp.api_key and cp.model:
             try:
                 backend = OpenRouterBackend(
-                    api_key=cp["api_key"],
-                    model_name=cp["model"]
+                    api_key=cp.api_key,
+                    model_name=cp.model
                 )
                 if backend.is_available():
-                    candidates.append((cp.get("priority", 50), backend, cp))
+                    candidates.append((cp.priority, backend, cp))
             except Exception as e:
-                logger.warning(f"Błąd ładowania chmury {cp.get('id')}: {e}")
+                logger.warning(f"Błąd ładowania chmury {cp.id}: {e}")
 
     if not candidates:
         return None

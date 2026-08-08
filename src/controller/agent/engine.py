@@ -14,8 +14,6 @@ import json
 import logging
 import time
 from typing import Any
-
-import controller.core.state as app_state
 from controller.agent.prompt.builder import build_system_prompt
 from controller.agent.prompt.tools_schema import get_tools_schema
 from controller.agent.session.history import build_messages_from_history
@@ -154,9 +152,6 @@ async def run_agent_loop(
     """
     Uruchamia pętlę ReAct dla przekazanego dostawcy strumienia.
     """
-    if tools_registry is None:
-        tools_registry = app_state.tools_registry
-
     system_prompt = build_system_prompt(room=room)
     messages = build_messages_from_history(
         system_prompt=system_prompt,

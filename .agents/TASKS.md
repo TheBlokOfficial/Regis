@@ -1,5 +1,22 @@
 # Lista Zadań Projektu Regis (TASKS)
 
+## Rejestr Zrealizowanych Zadań (Sesja 2026-08-08 - Unifikacja MessageBus, Katalog Wiadomości i Eliminacja Tight Coupling)
+
+- [x] **Uniwersalna Magistrala Wiadomości (`src/controller/core/message_bus.py`)**:
+  - Usunięto rozczłonkowane `command_bus.py` oraz `event_bus.py`. Stworzono lekki (~35 linii) agnostyczny `MessageBus`.
+  - Utworzono `telemetry.py` z buforem historii SSE (500 zdarzeń) podłączonym do `message_bus`.
+- [x] **Pełny Katalog Silnie Typowanych Wiadomości (`src/controller/messages.py`)**:
+  - Stworzono i posegregowano w 4 sekcje klasy wiadomości: `TextMessage`, `AudioMessage` (ze spójnym polem `sender`), `PlayAudioMessage`, `PauseSatelliteMessage`, `ResumeSatelliteMessage`, `ClearHistoryMessage`, `ClientRegisteredMessage`, `ClientUnregisteredMessage`, `ClientUpdatedMessage`, `ClientCommandResultMessage`, `SatelliteEventMessage`, `ConversationTurnMessage`, `SystemLogMessage`.
+- [x] **Eliminacja Ciasnych Powiązań (Tight Coupling)**:
+  - Usunięto bezpośrednie importy `client_manager` w `interaction.py`, zastępując je publikacją `PlayAudioMessage` i `ResumeSatelliteMessage`.
+  - Wdrożono reaktywne słuchacze w `clients.py` sterujące Satelitami przez gniazda WebSocket.
+  - Przeniesiono czyszczenie historii w `manager.py` na asynchroniczne wywołania `asyncio.to_thread` reagujące na `ClearHistoryMessage`.
+- [x] **Maksymalne Uproszczenie Orkiestratora (`src/controller/orchestrator.py`)**:
+  - Usunięto klasę `TurnContext` i funkcję `_build_context`. `handle_text_message` oraz `handle_audio_message` przekazują treść i `sender` bezpośrednio do `_execute_turn_stream`.
+  - Odspawano silnik agenta `engine.py` od globalnego `app_state`, wstrzykując `tools_registry` bezpośrednio z Orkiestratora.
+
+---
+
 ## Rejestr Zrealizowanych Zadań (Sesja 2026-08-08 - Refaktoryzacja Warstwy Stanu i EventBus SSE)
 
 - [x] **Eliminacja Katalogu `src/controller/core/state/`**:
@@ -16,6 +33,8 @@
   - Przeniesiono zmienne stanu runtime z `app_state.py` do `core/state.py`.
 - [x] **Aktualizacja Importów i Testów**:
   - Zaktualizowano wszystkie ścieżki w kodzie oraz poprawiono zestaw testów w `tests/test_llm_backends.py`.
+
+---
 
 ## Rejestr Zrealizowanych Zadań (Sesja 2026-08-08 - Restrukturyzacja Architektoniczna Kontrolera)
 
@@ -40,54 +59,17 @@
 
 ---
 
-## Rejestr Zrealizowanych Zadań (Sesja 2026-08-07 - Refaktoryzacja Kontrolera)
-
-- [x] **Centralizacja Persystencji (`JSONStorage`)**:
-  - Utworzono wątkowo bezpieczny pomocnik `JSONStorage` z per-plikowymi blokadami oraz atomowym zapisem (`os.replace`).
-- [x] **Podział Kontrolera na 6 Domen**:
-  - Reorganizacja kodu w `src/controller` na 6 spójnych katalogów: `config/`, `core/`, `llm/`, `integrations/`, `tools/`, `api/`.
-- [x] **Silne Typowanie Pydantic (`BaseConfigModel`)**:
-  - Wdrożono klasę bazową `BaseConfigModel` wymuszającą obecność wewnętrznej klasy `Meta` z `file_name`.
-  - Stworzono schematy Pydantic: `SystemSettings`, `RoomsConfig`, `AliasesConfig`, `VirtualGroupsConfig`.
-  - Wprowadzono jednolite API: `config.load(SchemaClass)` i `config.save(instance)`.
-- [x] **Hermetyzacja i Czyszczenie Cyklu Życia (`app.py`)**:
-  - Uproszczono funkcję `lifespan` w `app.py` do czytelnych 3 kroków.
-  - Wyeliminowano sztuczny import `tools_config` oraz ręczne rozgrzebywanie słowników.
-- [x] **Ujednoznacznienie Nomenklatury Rejestrów**:
-  - Zmieniono nazwy: `core/registry.py` $\rightarrow$ `client_registry.py`, `tools/registry.py` $\rightarrow$ `tools_registry.py`.
-  - Usunięto nie-typowany plik `src/controller/tools/config.py`.
-- [x] **Dokumentacja Architektoniczna (RFC)**:
-  - Utworzono dokument [`docs/hierarchical_subagents_rfc.md`](file:///d:/Projekty/Regis/docs/hierarchical_subagents_rfc.md) dotyczący dwuwarstwowych sub-agentów.
-
----
-
-## Rejestr Zrealizowanych Zadań (Sesja 2026-08-07 - Protokół i Klient)
-
-- [x] **Refaktoryzacja Protokołu i Uporządkowanie Schematów (`src/protocol/schemas.py`)**:
-  - Usunięto nieużywane schematy rejestracji i pomocnicze metody.
-  - Wyodrębniono `CloudProviderConfig` z protokołu sieciowego do modułu Kontrolera.
-  - Zmieniono nazwę `WSSatelliteEvent` na `WSClientEvent`.
-- [x] **Usunięcie Dwuwarstwowej Maszyny Stanów w Satelicie**:
-  - Skasowano `SatelliteInteractionState` i plik `states.py`.
-  - Przestawiono Satelitę na operowanie wyłącznie w stanach `READY` / `BUSY` ze zdarzeniami emisyjnymi do EventBusa.
-- [x] **Audyt i Eliminacja Długu Ewolucyjnego Aplikacji Klienckiej (`src/client`)**:
-  - Usunięto przestarzały folder `src/client/legacy/`.
-  - Ujednolicono terminologię z `Node` na `Client` w całej konfiguracji i komunikacji z serwerem.
-  - Zapewniono płynną migrację kluczy konfiguracyjnych `node_id` -> `client_id`.
-
----
-
 ## Zadania Przyszłe
 
+- [ ] **Wdrożenie Podmiotu `AgentGateway`**:
+  - Stworzenie `src/controller/core/agent_gateway.py` nasłuchującego wiadomości przeznaczonych dla Agenta i generującego zunifikowany `InputContext` dla Orkiestratora.
 - [ ] **FastAPI Dependency Injection**:
-  - `app_state.py` jako moduł z globalnymi zmiennymi jest krokiem przejściowym. Docelowo `AppState` przez `Depends()` w routerach.
+  - `state.py` jako moduł z globalnymi zmiennymi jest krokiem przejściowym. Docelowo `AppState` przez `Depends()` w routerach.
 - [ ] **Wdrożenie Dwuwarstwowych Sub-Agentów**:
   - Implementacja wzorca Mixture of Specialist Sub-Agents opisanego w `docs/hierarchical_subagents_rfc.md`.
 - [ ] **Pamięć Długoterminowa** `[ARCH]`:
-  - Kluczowy brakujący feature odróżniający Regisa od HA AI. Stary system Notatnika wycięty. Nowe rozwiązanie (wektorowe lub inne) wymaga osobnej sesji architektonicznej.
+  - Kluczowy brakujący feature odróżniający Regisa od HA AI. Nowe rozwiązanie wymaga osobnej sesji architektonicznej.
 - [ ] **Scheduler Zadań Agenta** `[ARCH]`:
-  - Mechanizm odroczonych "szturchnięć" agenta (np. "sprawdź za godzinę czy nikogo nie ma w domu"). Niezaprojektowany, wymaga sesji architektonicznej.
+  - Mechanizm odroczonych "szturchnięć" agenta. Niezaprojektowany, wymaga sesji architektonicznej.
 - [ ] **Docker Deployment** `[DIST]`:
-  - Cel dystrybucyjny: Regis jako obraz Docker na mini PC, analogia do instalacji HA. Ustalony jako docelowy model dystrybucji w sesji 2026-08-07. Niezaimplementowany.
-- [ ] **Formalne Interfejsy Warstwy 2** `[ARCH]`:
-  - `ILLMProvider`, `ISTTProvider`, `ITTSProvider`, `ISatellite` istnieją jako koncepcja w MANIFEST §3.1 — nie są jeszcze sformalizowane jako klasy bazowe w kodzie.
+  - Cel dystrybucyjny: Regis jako obraz Docker na mini PC.

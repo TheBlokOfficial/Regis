@@ -1,6 +1,5 @@
 import asyncio
 from typing import TYPE_CHECKING, Optional
-from .states import SatelliteState
 
 if TYPE_CHECKING:
     from .audio.wakeword import WakeWordEngine
@@ -32,7 +31,7 @@ class ReadinessChecker:
                 continue
 
             self.event_bus.emit({"type": "readiness", "ready": True})
-            self.event_bus.emit({"type": "state", "state": SatelliteState.WAITING})
+            self.event_bus.emit({"type": "waiting"})
             self.event_bus.log("Sprzęt audio i silniki AI gotowe. Oczekiwanie na sygnał z Kontrolera (WAITING)...")
             break
 

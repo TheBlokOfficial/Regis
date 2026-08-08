@@ -55,7 +55,7 @@ class BaseService:
                             try:
                                 cmd_event = json.loads(data_str)
                                 target_service = cmd_event.get("service")
-                                if target_service != self.service_name:
+                                if target_service and target_service != self.service_name:
                                     continue
                                 command_type = cmd_event.get("command")
                                 
@@ -69,7 +69,10 @@ class BaseService:
                                         logging.error(f"[{self.service_name}] Błąd podczas zatrzymywania: {e}")
                                     sys.exit(0)
                                     
-                                payload = cmd_event.get("payload", {})
+                                payload = cmd_event.get("payload")
+                                if payload is None:
+                                    payload = {k: v for k, v in cmd_event.items() if k not in ("command", "service", "task_id")}
+                                
                                 task_id = cmd_event.get("task_id")
                                 asyncio.create_task(self.handle_command(command_type, payload, task_id))
                             except Exception as e:

@@ -34,14 +34,16 @@ export async function init() {
             document.getElementById("uptime").textContent = fmtUptime(_currentUptimeS);
         }
 
-        (data.workers || []).forEach(w => {
-            upsertWorker({ ...w, status: "online" });
-            renderWorkerCard(workers[w.id]);
-        });
-
-        (data.satellites || []).forEach(s => {
-            upsertSatellite({ ...s });
-            renderSatelliteCard(satellites[s.id]);
+        (data.clients || []).forEach(c => {
+            const clientData = { ...c, status: "online" };
+            if (c.services && (c.services.worker || c.services.ollama_worker)) {
+                upsertWorker(clientData);
+            }
+            if (c.services && c.services.satellite) {
+                upsertSatellite(clientData);
+            }
+            // renderNodeCard obsługuje każdy rodzaj klienta i dodaje mu odpowiednie tagi usług
+            renderWorkerCard(clientData); 
         });
 
         _startUptimeTicker();
@@ -83,11 +85,19 @@ function _startUptimeTicker() {
 
 // ── Połączenie SSE ─────────────────────────────────────────────────────────
 
+let _activeES = null;
+
 export function connectSSE() {
     const sseDot    = document.getElementById("sse-dot");
     const sseStatus = document.getElementById("sse-status");
 
+    if (_activeES) {
+        _activeES.close();
+        _activeES = null;
+    }
+
     const es = new EventSource("/api/events");
+    _activeES = es;
 
     es.onopen = () => {
         sseDot.style.background = "var(--online)";
@@ -104,10 +114,7 @@ export function connectSSE() {
 
     es.onerror = () => {
         sseDot.style.background = "var(--offline)";
-        sseStatus.textContent   = "brak połączenia";
-        es.close();
-        // Próba ponownego połączenia po 5 sekundach
-        setTimeout(connectSSE, 5000);
+        sseStatus.textContent   = "ponawianie...";
     };
 }
 

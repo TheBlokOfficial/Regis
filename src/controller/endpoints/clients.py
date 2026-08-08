@@ -12,9 +12,20 @@ from protocol.schemas import (
     WSCommandResult,
 )
 import controller.core.client_registry as client_registry
-import controller.core.event_bus as event_bus
+from controller.core.message_bus import message_bus
+from controller.messages import (
+    PlayAudioMessage,
+    PauseSatelliteMessage,
+    ResumeSatelliteMessage,
+    ClientCommandResultMessage,
+    SatelliteEventMessage,
+    ClientUpdatedMessage,
+    ClientRegisteredMessage,
+    ClientUnregisteredMessage
+)
 from controller.config import loader as config
 from controller.config.schemas import ClientsConfig
+
 
 router_clients = APIRouter()
 
@@ -71,13 +82,12 @@ async def send_client_command(client_id: str, command: str, payload: dict) -> di
     if not success:
         error_msg = f"Klient {client_id} jest nieosiągalny (brak aktywnego połączenia WebSocket)."
         logging.warning(f"[Clients] Komenda '{command}' do klienta '{client_id}' nie powiodła się: {error_msg}")
-        await event_bus.publish({
-            "type": "client_command_result",
-            "client_id": client_id,
-            "command": command,
-            "success": False,
-            "error": error_msg,
-        })
+        await message_bus.publish(ClientCommandResultMessage(
+            client_id=client_id,
+            command=command,
+            success=False,
+            error=error_msg,
+        ))
         raise HTTPException(status_code=502, detail=error_msg)
 
     logging.info(f"[Clients] Komenda '{command}' wysłana do klienta '{client_id}' przez WS.")
@@ -116,17 +126,27 @@ async def update_client_config(client_id: str, body: ClientConfigRequest):
     current_profile = persistent_configs.get(client_id, {})
 
     new_name = body.name if body.name is not None else current_profile.get("name", client_id)
-    new_services = body.services if body.services else current_profile.get("services", {})
+    new_room = body.room if body.room is not None else current_profile.get("room", "")
+    new_services = body.services if body.services is not None else current_profile.get("services", {})
+
+    # Usuń ewentualny room ze słownika usług satelity, by nie wyciekał do operacyjnej konfiguracji klienta
+    if isinstance(new_services, dict) and "satellite" in new_services and isinstance(new_services["satellite"], dict):
+        new_services["satellite"].pop("room", None)
 
     updated_profile = {
         "name": new_name,
+        "room": new_room,
         "services": new_services,
     }
     persistent_configs[client_id] = updated_profile
     _save_persistent_clients(persistent_configs)
 
     if client_id in client_registry.client_registry:
-        success = await client_manager.send_command(client_id, "config", updated_profile)
+        # Wysyłamy do klienta tylko konfigurację operacyjną usług (bez metadanych Kontrolera typu room)
+        success = await client_manager.send_command(client_id, "config", {
+            "name": new_name,
+            "services": new_services,
+        })
         if not success:
             persistent_configs[client_id] = current_profile
             _save_persistent_clients(persistent_configs)
@@ -137,13 +157,13 @@ async def update_client_config(client_id: str, body: ClientConfigRequest):
             )
 
         client_registry.client_registry[client_id]["name"] = new_name
+        client_registry.client_registry[client_id]["room"] = new_room
         client_registry.client_registry[client_id]["services"] = new_services
 
-    await event_bus.publish({
-        "type": "client_updated",
-        "id": client_id,
-        "client": client_registry.client_registry.get(client_id, {"id": client_id, **updated_profile}),
-    })
+    await message_bus.publish(ClientUpdatedMessage(
+        client_id=client_id,
+        client=client_registry.client_registry.get(client_id, {"id": client_id, **updated_profile}),
+    ))
 
     return {"status": "ok", "config": updated_profile}
 
@@ -163,12 +183,15 @@ async def _handle_ws_register(client_id: str, data: dict, websocket: WebSocket):
 
         if stored_profile:
             name = stored_profile.get("name", req.name or req.id)
+            room = stored_profile.get("room", "")
             services_dict = stored_profile.get("services", incoming_services)
         else:
             name = req.name or req.id
+            room = ""
             services_dict = incoming_services
             persistent_configs[req.id] = {
                 "name": name,
+                "room": room,
                 "services": services_dict,
             }
             _save_persistent_clients(persistent_configs)
@@ -176,6 +199,7 @@ async def _handle_ws_register(client_id: str, data: dict, websocket: WebSocket):
         client_data = {
             "id": req.id,
             "name": name,
+            "room": room,
             "host": req.host,
             "services": services_dict,
             "last_seen": time.time(),
@@ -188,13 +212,15 @@ async def _handle_ws_register(client_id: str, data: dict, websocket: WebSocket):
                 f"Zarejestrowano Klienta (WebSocket): {req.id} "
                 f"(host={req.host}, usługi={service_names})"
             )
-            await event_bus.publish({
-                "type": "client_registered",
-                "id": req.id,
-                "client": client_data,
-            })
+            await message_bus.publish(ClientRegisteredMessage(
+                client_id=req.id,
+                client_type="websocket",
+                room=room,
+                name=name
+            ))
 
         await websocket.send_json({
+
             "type": "config",
             "data": {
                 "name": name,
@@ -207,12 +233,11 @@ async def _handle_ws_register(client_id: str, data: dict, websocket: WebSocket):
 async def _handle_ws_satellite_event(client_id: str, data: dict, websocket: WebSocket):
     try:
         event = WSClientEvent(**data)
-        await event_bus.publish({
-            "type": "satellite_event",
-            "satellite_id": client_id,
-            "event_type": event.event_type,
-            "data": event.data,
-        })
+        await message_bus.publish(SatelliteEventMessage(
+            satellite_id=client_id,
+            event_type=event.event_type,
+            data=event.data,
+        ))
 
         if event.event_type == "state" and event.data.get("state") == "WAITING":
             import controller.providers.llm.resolver as providers
@@ -226,14 +251,13 @@ async def _handle_ws_satellite_event(client_id: str, data: dict, websocket: WebS
 async def _handle_ws_command_result(client_id: str, data: dict, websocket: WebSocket):
     try:
         res = WSCommandResult(**data)
-        await event_bus.publish({
-            "type": "client_command_result",
-            "client_id": client_id,
-            "command": res.command,
-            "success": res.success,
-            "error": res.error,
-            "result": res.result,
-        })
+        await message_bus.publish(ClientCommandResultMessage(
+            client_id=client_id,
+            command=res.command,
+            success=res.success,
+            error=res.error,
+            result=res.result,
+        ))
     except Exception as e:
         logging.error(f"Błąd parsowania WSCommandResult: {e}")
 
@@ -309,4 +333,19 @@ async def websocket_client_endpoint(websocket: WebSocket, client_id: str):
         if client_id in client_registry.client_registry:
             del client_registry.client_registry[client_id]
             logging.info(f"Klient {client_id} rozłączył się (WebSocket) i został automatycznie wyrejestrowany.")
-            await event_bus.publish({"type": "client_unregistered", "id": client_id})
+            await message_bus.publish(ClientUnregisteredMessage(client_id=client_id))
+
+# Rejestracja słuchaczy do sterowania satelitą
+
+async def _on_play_audio(msg: PlayAudioMessage):
+    await client_manager.send_command(msg.client_id, "play_audio", {"audio_b64": msg.audio_b64})
+
+async def _on_pause_satellite(msg: PauseSatelliteMessage):
+    await client_manager.send_command(msg.client_id, "satellite_control", {"action": "pause"})
+
+async def _on_resume_satellite(msg: ResumeSatelliteMessage):
+    await client_manager.send_command(msg.client_id, "satellite_control", {"action": "resume"})
+
+message_bus.subscribe(PlayAudioMessage, _on_play_audio)
+message_bus.subscribe(PauseSatelliteMessage, _on_pause_satellite)
+message_bus.subscribe(ResumeSatelliteMessage, _on_resume_satellite)
