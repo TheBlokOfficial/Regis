@@ -2,7 +2,9 @@ import asyncio
 import uvicorn
 from shared import EventBus, get_logger, setup_logging
 
-from server.core.engine import AgentEngine
+from server.agent import AgentEngine
+from server.agent.backend import BackendRegistry
+from server.config import load_settings
 from server.network.gateway import create_gateway_app
 
 # 1. Konfiguracja jednolitych, minimalistycznych logów
@@ -11,29 +13,34 @@ logger = get_logger("regis.main")
 
 
 async def main() -> None:
-    logger.info("Uruchamianie Systemu Operacyjnego Agenta AI (Regis OS)...")
+    settings = load_settings()
+    logger.info(f"Uruchamianie {settings.app_name} (v{settings.version})...")
 
-    # 2. Tworzenie centralnej magistrali zdarzeń (Event Bus)
+    # 1. Tworzenie centralnej magistrali zdarzeń (Event Bus)
     event_bus = EventBus()
 
-    # 3. Inicjalizacja rdzenia Agenta z podpiętą magistralą zdarzeń
-    agent_engine = AgentEngine(event_bus=event_bus)
+    # 2. Inicjalizacja rejestru backendów i pobranie aktywnego dostawcy LLM
+    backend_registry = BackendRegistry()
+    active_llm_provider = backend_registry.get_active_provider()
+
+    # 3. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM
+    agent_engine = AgentEngine(llm_provider=active_llm_provider)
     await agent_engine.initialize()
 
-    # 4. Inicjalizacja bramki sieciowej dla satelitów z podpiętą magistralą zdarzeń
+    # 3. Inicjalizacja bramki sieciowej dla satelitów z podpiętą magistralą zdarzeń
     app = create_gateway_app(agent_engine=agent_engine, event_bus=event_bus)
 
-    # 5. Start serwera uvicorn (port 8000, log_config=None zachowuje nasz format)
+    # 4. Start serwera uvicorn
     config = uvicorn.Config(
         app,
-        host="0.0.0.0",
-        port=8000,
+        host=settings.host,
+        port=settings.port,
         log_config=None,
     )
 
     server = uvicorn.Server(config)
 
-    logger.info("Bramka sieciowa gotowa na http://0.0.0.0:8000 oraz ws://0.0.0.0:8000/ws/satellite/{id}")
+    logger.info(f"Bramka sieciowa gotowa na http://{settings.host}:{settings.port} oraz ws://{settings.host}:{settings.port}/ws/satellite/{{id}}")
     try:
         await server.serve()
     finally:

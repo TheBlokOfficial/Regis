@@ -58,6 +58,9 @@ dmypy.json
 .env.*
 !.env.example
 !.env.template
+config/
+data/
+*.config.json
 
 # Virtual environments
 venv/

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from shared import Event, EventBus, get_logger
-from server.core.events import (
+from server.agent.events import (
     SatelliteConnectedPayload,
     SatelliteDisconnectedPayload,
     SatelliteMessagePayload,
