@@ -2,6 +2,7 @@ import json
 from typing import Any, AsyncIterator
 import httpx
 from shared import get_logger
+from server.config import load_settings
 from server.agent.backend.providers.base import BaseLLMProvider, LLMMessage
 
 logger = get_logger("regis.agent.providers.openrouter")
@@ -10,17 +11,16 @@ logger = get_logger("regis.agent.providers.openrouter")
 class OpenRouterProvider(BaseLLMProvider):
     """Dostawca LLM dla usługi OpenRouter API (REST API ze strumieniowaniem SSE)."""
 
+    BASE_URL = "https://openrouter.ai/api/v1"
+
     def __init__(
         self,
         api_key: str = "",
         model: str = "anthropic/claude-3.5-sonnet",
-        base_url: str = "https://openrouter.ai/api/v1",
-        timeout: float = 30.0,
     ) -> None:
         self.api_key = api_key
         self._model = model
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        self.base_url = self.BASE_URL
 
     @property
     def model(self) -> str:
@@ -50,7 +50,8 @@ class OpenRouterProvider(BaseLLMProvider):
 
         logger.debug(f"Strumieniowanie z OpenRouter [{url}] (model: '{payload['model']}')...")
 
-        httpx_timeout = httpx.Timeout(self.timeout, connect=5.0)
+        timeout_val = load_settings().llm_timeout
+        httpx_timeout = httpx.Timeout(timeout_val, connect=5.0)
 
         try:
             async with httpx.AsyncClient(timeout=httpx_timeout) as client:
@@ -79,8 +80,8 @@ class OpenRouterProvider(BaseLLMProvider):
             logger.error(f"Błąd HTTP OpenRouter API [{e.response.status_code}]: {e.response.text}")
             raise RuntimeError(f"Błąd OpenRouter API HTTP {e.response.status_code}: {e.response.text}") from e
         except httpx.ReadTimeout as e:
-            logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({self.timeout}s) z OpenRouter.")
-            raise RuntimeError(f"Timeout strumienia z OpenRouter ({self.timeout}s): {e}") from e
+            logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({timeout_val}s) z OpenRouter.")
+            raise RuntimeError(f"Timeout strumienia z OpenRouter ({timeout_val}s): {e}") from e
         except Exception as e:
             logger.error(f"Błąd podczas strumieniowania odpowiedzi przez OpenRouterProvider: {e}")
             raise

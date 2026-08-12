@@ -3,6 +3,7 @@ from typing import Any, AsyncIterator
 import httpx
 from shared import get_logger
 
+from server.config import load_settings
 from server.agent.backend.providers.base import BaseLLMProvider, LLMMessage
 
 logger = get_logger("regis.agent.providers.ollama")
@@ -15,11 +16,9 @@ class OllamaProvider(BaseLLMProvider):
         self,
         base_url: str = "http://localhost:11434",
         model: str = "llama3",
-        timeout: float = 30.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._model = model
-        self.timeout = timeout
 
     @property
     def model(self) -> str:
@@ -42,7 +41,8 @@ class OllamaProvider(BaseLLMProvider):
 
         logger.debug(f"Strumieniowanie z Ollamy [{url}] (model: '{payload['model']}')...")
 
-        httpx_timeout = httpx.Timeout(self.timeout, connect=5.0)
+        timeout_val = load_settings().llm_timeout
+        httpx_timeout = httpx.Timeout(timeout_val, connect=5.0)
 
         try:
             async with httpx.AsyncClient(timeout=httpx_timeout) as client:
@@ -66,8 +66,8 @@ class OllamaProvider(BaseLLMProvider):
             )
             raise RuntimeError(f"Błąd połączenia z Ollamą: {e}") from e
         except httpx.ReadTimeout as e:
-            logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({self.timeout}s) z Ollamy.")
-            raise RuntimeError(f"Timeout strumienia z Ollama ({self.timeout}s): {e}") from e
+            logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({timeout_val}s) z Ollamy.")
+            raise RuntimeError(f"Timeout strumienia z Ollama ({timeout_val}s): {e}") from e
         except Exception as e:
             logger.error(f"Błąd podczas strumieniowania odpowiedzi przez OllamaProvider: {e}")
             raise

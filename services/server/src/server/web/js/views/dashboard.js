@@ -59,7 +59,7 @@ export class DashboardView {
 
     const activeProvider = data.providers.find((p) => p.is_active) || data.providers[0];
     const modelName = activeProvider.options?.model || 'domyślny';
-    const baseUrl = activeProvider.options?.base_url || 'N/A';
+    const baseUrl = activeProvider.options?.base_url || (activeProvider.type === 'OPENROUTER' ? 'https://openrouter.ai/api/v1' : 'N/A');
 
     container.innerHTML = `
       <div class="bento-card" style="padding: 36px 40px; min-height: 280px; justify-content: space-between;">
@@ -222,7 +222,7 @@ export class DashboardView {
           ${data.providers.map((p) => {
             const isActive = p.is_active;
             const modelName = p.options?.model || 'domyślny';
-            const baseUrl = p.options?.base_url || 'N/A';
+            const baseUrl = p.options?.base_url || (p.type === 'OPENROUTER' ? 'https://openrouter.ai/api/v1' : 'N/A');
 
             return `
               <div class="modal-provider-item ${isActive ? 'active' : ''}">

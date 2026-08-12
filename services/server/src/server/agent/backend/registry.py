@@ -7,7 +7,6 @@ from shared import ConfigStore, get_service_root, get_logger
 from server.agent.backend.factory import LLMFactory
 from server.agent.backend.models import ActiveBackendConfig, BackendFileContent, BackendInstanceConfig, ProviderType
 from server.agent.backend.providers import BaseLLMProvider
-from server.config import load_settings
 
 logger = get_logger("regis.agent.backends.registry")
 
@@ -24,7 +23,6 @@ class BackendRegistry:
         self.active_store = ConfigStore(ActiveBackendConfig, self.active_config_path)
         self._lock = asyncio.Lock()
         self._defaults_ensured = False
-        self._default_timeout = load_settings().llm_timeout
 
     # --------------------------------------------------------------------------
     # Inicjalizacja domyślnych instancji (wykonuje się tylko raz, poza lockiem)
@@ -48,7 +46,6 @@ class BackendRegistry:
                 options={
                     "base_url": "http://localhost:11434",
                     "model": "llama3",
-                    "timeout": 30.0,
                 },
             )
             ConfigStore(BackendFileContent, self.backends_dir / f"{ollama_id}.json").save(ollama_content)
@@ -60,8 +57,6 @@ class BackendRegistry:
                 options={
                     "api_key": "",
                     "model": "anthropic/claude-3.5-sonnet",
-                    "base_url": "https://openrouter.ai/api/v1",
-                    "timeout": 30.0,
                 },
             )
             ConfigStore(BackendFileContent, self.backends_dir / f"{openrouter_id}.json").save(openrouter_content)
@@ -181,4 +176,4 @@ class BackendRegistry:
             selected_config = all_instances[first_id]
             await self.set_active_backend_id(first_id)
 
-        return LLMFactory.create_provider(selected_config, default_timeout=self._default_timeout)
+        return LLMFactory.create_provider(selected_config)

@@ -9,11 +9,10 @@ class LLMFactory:
     """Fabryka do tworzenia instancji dostawców LLM z obiektów konfiguracji."""
 
     @staticmethod
-    def create_provider(config: BackendInstanceConfig, default_timeout: float = 30.0) -> BaseLLMProvider:
+    def create_provider(config: BackendInstanceConfig) -> BaseLLMProvider:
         """Tworzy i zwraca instancję BaseLLMProvider dopasowaną do podanej konfiguracji.
 
         :param config: Obiekt BackendInstanceConfig opisujący dane instancji.
-        :param default_timeout: Domyślny timeout (w sekundach) gdy opcje nie zawierają wartości.
         :return: Wygenerowana instancja dostawcy LLM.
         """
         logger.info(
@@ -25,14 +24,11 @@ class LLMFactory:
             return OllamaProvider(
                 base_url=config.options.get("base_url", "http://localhost:11434"),
                 model=config.options.get("model", "llama3"),
-                timeout=float(config.options.get("timeout", default_timeout)),
             )
         elif config.type == ProviderType.OPENROUTER:
             return OpenRouterProvider(
                 api_key=config.options.get("api_key", ""),
                 model=config.options.get("model", "anthropic/claude-3.5-sonnet"),
-                base_url=config.options.get("base_url", "https://openrouter.ai/api/v1"),
-                timeout=float(config.options.get("timeout", default_timeout)),
             )
         else:
             raise ValueError(f"Nieobsługiwany typ dostawcy LLM: {config.type}")
@@ -87,14 +83,6 @@ class LLMFactory:
                             required=True,
                             default_value="",
                             placeholder="sk-or-v1-...",
-                        ),
-                        ProviderOptionSpec(
-                            name="base_url",
-                            label="Base URL",
-                            type="string",
-                            required=False,
-                            default_value="https://openrouter.ai/api/v1",
-                            placeholder="https://openrouter.ai/api/v1",
                         ),
                     ],
                 ),
