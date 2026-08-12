@@ -21,7 +21,7 @@ async def main() -> None:
 
     # 2. Inicjalizacja rejestru backendów i pobranie aktywnego dostawcy LLM
     backend_registry = BackendRegistry()
-    active_llm_provider = backend_registry.get_active_provider()
+    active_llm_provider = await backend_registry.get_active_provider()
 
     # 3. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM
     agent_engine = AgentEngine(llm_provider=active_llm_provider)

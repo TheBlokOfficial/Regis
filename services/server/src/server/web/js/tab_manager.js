@@ -69,20 +69,18 @@ export class TabManager {
       // Aktualizacja danych dla wyrenderowanego widoku
       if (tabId === 'dashboard') {
         this.views.dashboard.updateStatus(this.latestHealthData);
-      } else if (tabId === 'settings') {
-        await this.loadSettingsData();
+        await this.loadDashboardData();
       }
     }
   }
 
-  async loadSettingsData() {
+  async loadDashboardData() {
     if (!this.apiClient) return;
-    const settingsView = this.views.settings;
+    const dashboardView = this.views.dashboard;
     
-    // Pobranie dostawców LLM i wyrenderowanie kart
+    // Pobranie dostawców LLM i wyrenderowanie karty w Dashboardzie
     const data = await this.apiClient.getLLMProviders();
-    settingsView.renderProvidersList(data, this.apiClient, () => this.loadSettingsData());
-    settingsView.initForm(this.apiClient, () => this.loadSettingsData());
+    dashboardView.renderProvidersList(data, this.apiClient, () => this.loadDashboardData());
   }
 
   setHealthData(healthData) {

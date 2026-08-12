@@ -6,12 +6,11 @@ from shared import (
     LLMProviderDTO,
     LLMProviderListResponse,
     ProviderMetadataResponse,
-    ProviderOptionSpec,
-    ProviderTypeSpecDTO,
     SelectLLMProviderRequest,
 )
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry, ProviderType
+from server.agent.backend.factory import LLMFactory
 
 
 def create_api_router(
@@ -44,91 +43,7 @@ def create_api_router(
         tags=["LLM Providers"],
     )
     async def get_llm_provider_schemas() -> ProviderMetadataResponse:
-        schemas = [
-            ProviderTypeSpecDTO(
-                type="OLLAMA",
-                label="Lokalna Ollama",
-                options_schema=[
-                    ProviderOptionSpec(
-                        name="model",
-                        label="Model LLM",
-                        type="string",
-                        required=True,
-                        default_value="llama3",
-                        placeholder="llama3",
-                    ),
-                    ProviderOptionSpec(
-                        name="base_url",
-                        label="Base URL",
-                        type="string",
-                        required=True,
-                        default_value="http://localhost:11434",
-                        placeholder="http://localhost:11434",
-                    ),
-                ],
-            ),
-            ProviderTypeSpecDTO(
-                type="OPENROUTER",
-                label="OpenRouter (API)",
-                options_schema=[
-                    ProviderOptionSpec(
-                        name="model",
-                        label="Model LLM",
-                        type="string",
-                        required=True,
-                        default_value="anthropic/claude-3.5-sonnet",
-                        placeholder="anthropic/claude-3.5-sonnet",
-                    ),
-                    ProviderOptionSpec(
-                        name="api_key",
-                        label="Klucz API (API Key)",
-                        type="password",
-                        required=True,
-                        default_value="",
-                        placeholder="sk-or-v1-...",
-                    ),
-                    ProviderOptionSpec(
-                        name="base_url",
-                        label="Base URL",
-                        type="string",
-                        required=False,
-                        default_value="https://openrouter.ai/api/v1",
-                        placeholder="https://openrouter.ai/api/v1",
-                    ),
-                ],
-            ),
-            ProviderTypeSpecDTO(
-                type="OPENAI",
-                label="OpenAI (Official API)",
-                options_schema=[
-                    ProviderOptionSpec(
-                        name="model",
-                        label="Model LLM",
-                        type="string",
-                        required=True,
-                        default_value="gpt-4o",
-                        placeholder="gpt-4o",
-                    ),
-                    ProviderOptionSpec(
-                        name="api_key",
-                        label="Klucz API (API Key)",
-                        type="password",
-                        required=True,
-                        default_value="",
-                        placeholder="sk-...",
-                    ),
-                    ProviderOptionSpec(
-                        name="base_url",
-                        label="Base URL",
-                        type="string",
-                        required=False,
-                        default_value="https://api.openai.com/v1",
-                        placeholder="https://api.openai.com/v1",
-                    ),
-                ],
-            ),
-        ]
-        return ProviderMetadataResponse(provider_types=schemas)
+        return LLMFactory.get_all_schemas()
 
     # 3. GET /api/llm/providers
     @router.get(
@@ -138,8 +53,8 @@ def create_api_router(
         tags=["LLM Providers"],
     )
     async def get_llm_providers() -> LLMProviderListResponse:
-        instances = backend_registry.load_all_instances()
-        active_id = backend_registry.get_active_backend_id()
+        instances = await backend_registry.load_all_instances()
+        active_id = await backend_registry.get_active_backend_id()
 
         providers_dto = [
             LLMProviderDTO(
@@ -162,15 +77,15 @@ def create_api_router(
         tags=["LLM Providers"],
     )
     async def set_active_llm_provider(req: SelectLLMProviderRequest) -> LLMProviderListResponse:
-        all_instances = backend_registry.load_all_instances()
+        all_instances = await backend_registry.load_all_instances()
         if req.provider_id not in all_instances:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Dostawca LLM o ID '{req.provider_id}' nie istnieje.",
             )
 
-        backend_registry.set_active_backend_id(req.provider_id)
-        agent_engine.llm_provider = backend_registry.get_active_provider()
+        await backend_registry.set_active_backend_id(req.provider_id)
+        agent_engine.llm_provider = await backend_registry.get_active_provider()
 
         return await get_llm_providers()
 
@@ -186,19 +101,20 @@ def create_api_router(
         try:
             p_type = ProviderType(req.type.upper())
         except ValueError:
+            supported = ", ".join(t.value for t in ProviderType)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Niewspierany typ dostawcy LLM: '{req.type}'. Dozwolone: OLLAMA, OPENROUTER, OPENAI.",
+                detail=f"Niewspierany typ dostawcy LLM: '{req.type}'. Dozwolone: {supported}.",
             )
 
-        created_cfg = backend_registry.create_instance(
+        created_cfg = await backend_registry.create_instance(
             provider_type=p_type,
             name=req.name,
             options=req.options,
             custom_id=req.custom_id,
         )
 
-        active_id = backend_registry.get_active_backend_id()
+        active_id = await backend_registry.get_active_backend_id()
 
         return LLMProviderDTO(
             id=created_cfg.id,
@@ -216,7 +132,7 @@ def create_api_router(
     )
     async def delete_llm_provider(provider_id: str):
         try:
-            deleted = backend_registry.delete_instance(provider_id)
+            deleted = await backend_registry.delete_instance(provider_id)
             if not deleted:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
