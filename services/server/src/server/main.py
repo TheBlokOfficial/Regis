@@ -27,10 +27,14 @@ async def main() -> None:
     agent_engine = AgentEngine(llm_provider=active_llm_provider)
     await agent_engine.initialize()
 
-    # 3. Inicjalizacja bramki sieciowej dla satelitów z podpiętą magistralą zdarzeń
-    app = create_gateway_app(agent_engine=agent_engine, event_bus=event_bus)
+    # 4. Inicjalizacja bramki sieciowej z podpiętą magistralą zdarzeń i rejestrem backendów
+    app = create_gateway_app(
+        agent_engine=agent_engine,
+        event_bus=event_bus,
+        backend_registry=backend_registry,
+    )
 
-    # 4. Start serwera uvicorn
+    # 5. Start serwera uvicorn
     config = uvicorn.Config(
         app,
         host=settings.host,
@@ -40,7 +44,7 @@ async def main() -> None:
 
     server = uvicorn.Server(config)
 
-    logger.info(f"Bramka sieciowa gotowa na http://{settings.host}:{settings.port} oraz ws://{settings.host}:{settings.port}/ws/satellite/{{id}}")
+    logger.info(f"Bramka sieciowa gotowa na http://{settings.host}:{settings.port}")
     try:
         await server.serve()
     finally:

@@ -9,17 +9,84 @@
 </head>
 <body>
   <div id="app">
-    <main style="padding: 40px; text-align: center;">
-      <h1 id="app-title" style="font-weight: 600; color: var(--text-primary);">Regis Agent OS</h1>
-      <p style="color: var(--text-secondary); margin-top: 8px;">Embedded Control Console</p>
-      <div style="margin-top: 24px;">
-        <span class="status-badge" id="server-status">
-          <span class="status-dot" id="status-dot"></span>
-          <span id="status-text">Oczekiwanie na inicjalizację...</span>
-        </span>
+    <!-- PASEK BOCZNY (SIDEBAR) -->
+    <aside class="sidebar">
+      <div>
+        <div class="sidebar-header">
+          <div class="brand-box">
+            <div class="brand-logo" id="brand-logo-svg"></div>
+            <span class="brand-title">REGIS OS</span>
+            <span class="brand-tag">v0.1</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <div class="nav-group">
+            <div class="nav-group-title">Nawigacja</div>
+            <a href="#" class="nav-item active" data-tab="dashboard" id="nav-dashboard">
+              <span class="nav-icon" id="icon-nav-dashboard"></span>
+              <span>Dashboard</span>
+            </a>
+            <a href="#" class="nav-item disabled" data-tab="agents" id="nav-agents">
+              <span class="nav-icon" id="icon-nav-agents"></span>
+              <span>Agenty</span>
+              <span class="nav-badge">wkrótce</span>
+            </a>
+            <a href="#" class="nav-item disabled" data-tab="services" id="nav-services">
+              <span class="nav-icon" id="icon-nav-services"></span>
+              <span>Usługi</span>
+              <span class="nav-badge">wkrótce</span>
+            </a>
+            <a href="#" class="nav-item disabled" data-tab="logs" id="nav-logs">
+              <span class="nav-icon" id="icon-nav-logs"></span>
+              <span>Logi & Zdarzenia</span>
+              <span class="nav-badge">wkrótce</span>
+            </a>
+          </div>
+
+          <div class="nav-group">
+            <div class="nav-group-title">System</div>
+            <a href="#" class="nav-item" data-tab="settings" id="nav-settings">
+              <span class="nav-icon" id="icon-nav-settings"></span>
+              <span>Ustawienia</span>
+            </a>
+          </div>
+        </nav>
       </div>
-    </main>
+
+      <div class="sidebar-footer">
+        <div class="connection-status">
+          <span class="status-indicator-dot" id="sidebar-status-dot"></span>
+          <span id="sidebar-status-text">Łączenie...</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- OBSZAR ROBOCZY (WORKSPACE) -->
+    <div class="workspace">
+      <header class="workspace-header">
+        <div class="breadcrumbs">
+          <span class="breadcrumb-root">Regis OS</span>
+          <span id="breadcrumb-chevron"></span>
+          <span class="breadcrumb-active" id="breadcrumb-active-tab">Dashboard</span>
+        </div>
+
+        <div class="header-actions">
+          <button class="btn-icon" id="btn-refresh" title="Odśwież status połączenia"></button>
+        </div>
+      </header>
+
+      <main id="workspace-content" class="workspace-content">
+        <!-- Zawartość zakładki renderowana dynamicznie przez TabManager -->
+      </main>
+    </div>
   </div>
+
+  <!-- KONTENER NA MODALE / POP-UPY -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div id="modal-content" class="modal-content"></div>
+  </div>
+
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>

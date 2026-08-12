@@ -115,6 +115,24 @@ class BackendRegistry:
         self.active_store.save(ActiveBackendConfig(active_id=backend_id))
         logger.info(f"Zmieniono aktywną instancję backendu na: [{backend_id}]")
 
+    def delete_instance(self, backend_id: str) -> bool:
+        """Usuwa plik instancji backendu z data/backends/.
+
+        :param backend_id: ID instancji do usunięcia.
+        :return: True jeśli pomyślnie usunięto, False jeśli plik nie istniał.
+        :raises ValueError: Jeśli podjęto próbę usunięcia obecnie aktywnego backendu.
+        """
+        active_id = self.get_active_backend_id()
+        if backend_id == active_id:
+            raise ValueError(f"Nie można usunąć aktywnego backendu [{backend_id}]. Najpierw przełącz na inny backend.")
+
+        file_path = self.backends_dir / f"{backend_id}.json"
+        if file_path.exists():
+            file_path.unlink()
+            logger.info(f"Usunięto instancję backendu [{backend_id}] z dysku.")
+            return True
+        return False
+
     def get_active_provider(self) -> BaseLLMProvider:
         """Zwraca gotową instancję BaseLLMProvider dla obecnie aktywnego backendu.
 
