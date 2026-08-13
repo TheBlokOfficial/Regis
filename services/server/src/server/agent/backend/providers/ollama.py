@@ -45,6 +45,7 @@ class OllamaProvider(BaseLLMProvider):
         httpx_timeout = httpx.Timeout(timeout_val, connect=5.0)
 
         try:
+            in_thinking = False
             async with httpx.AsyncClient(timeout=httpx_timeout) as client:
                 async with client.stream("POST", url, json=payload) as response:
                     response.raise_for_status()
@@ -54,11 +55,28 @@ class OllamaProvider(BaseLLMProvider):
                         try:
                             data = json.loads(line)
                             message_data = data.get("message", {})
+                            reasoning = (
+                                message_data.get("reasoning_content")
+                                or message_data.get("thinking")
+                                or message_data.get("reasoning")
+                            )
                             content = message_data.get("content", "")
-                            if content:
+
+                            if reasoning:
+                                if not in_thinking:
+                                    yield "<think>\n"
+                                    in_thinking = True
+                                yield reasoning
+                            elif content:
+                                if in_thinking:
+                                    yield "\n</think>\n\n"
+                                    in_thinking = False
                                 yield content
                         except json.JSONDecodeError:
                             continue
+
+                    if in_thinking:
+                        yield "\n</think>\n\n"
         except httpx.ConnectError as e:
             logger.error(
                 f"Nie można połączyć się z serwerem Ollama pod adresem {self.base_url}. "

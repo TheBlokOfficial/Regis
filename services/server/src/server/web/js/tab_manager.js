@@ -1,5 +1,6 @@
 import { DashboardView } from './views/dashboard.js';
 import { SettingsView } from './views/settings.js';
+import { ChatView } from './views/chat.js';
 
 /**
  * Zarządza przełączaniem zakładek i renderowaniem widoków w obszarze roboczym.
@@ -14,6 +15,7 @@ export class TabManager {
     // Inicjalizacja instancji widoków
     this.views = {
       dashboard: new DashboardView(),
+      chat: new ChatView(),
       settings: new SettingsView(),
     };
 
@@ -57,6 +59,7 @@ export class TabManager {
     if (this.breadcrumb) {
       const titles = {
         dashboard: 'Dashboard',
+        chat: 'Czat z Agentem',
         settings: 'Ustawienia',
       };
       this.breadcrumb.textContent = titles[tabId] || tabId;
@@ -66,10 +69,12 @@ export class TabManager {
     if (this.container) {
       this.container.innerHTML = this.views[tabId].render();
       
-      // Aktualizacja danych dla wyrenderowanego widoku
+      // Inicjalizacja dynamiczna wyrenderowanego widoku
       if (tabId === 'dashboard') {
         this.views.dashboard.updateStatus(this.latestHealthData);
         await this.loadDashboardData();
+      } else if (tabId === 'chat') {
+        await this.views.chat.init(this.apiClient);
       }
     }
   }

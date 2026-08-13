@@ -2,6 +2,12 @@
 
 from shared.config import ConfigStore, get_service_root
 from shared.contracts import (
+    CancelChatApiRequest,
+    ChatMessageDTO,
+    ChatResponseDTO,
+    ChatSessionHistoryResponse,
+    ChatSessionListResponse,
+    ChatSessionSummaryDTO,
     CreateLLMProviderRequest,
     HealthResponse,
     LLMProviderDTO,
@@ -10,12 +16,19 @@ from shared.contracts import (
     ProviderOptionSpec,
     ProviderTypeSpecDTO,
     SelectLLMProviderRequest,
+    SendChatMessageRequest,
 )
 from shared.event_bus import Event, EventBus, EventHandler
 from shared.logging import get_logger, setup_logging
 
 __version__ = "0.1.0"
 __all__ = [
+    "CancelChatApiRequest",
+    "ChatMessageDTO",
+    "ChatResponseDTO",
+    "ChatSessionHistoryResponse",
+    "ChatSessionListResponse",
+    "ChatSessionSummaryDTO",
     "ConfigStore",
     "CreateLLMProviderRequest",
     "Event",
@@ -28,6 +41,7 @@ __all__ = [
     "ProviderOptionSpec",
     "ProviderTypeSpecDTO",
     "SelectLLMProviderRequest",
+    "SendChatMessageRequest",
     "get_logger",
     "get_service_root",
     "setup_logging",

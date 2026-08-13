@@ -54,6 +54,7 @@ class OpenRouterProvider(BaseLLMProvider):
         httpx_timeout = httpx.Timeout(timeout_val, connect=5.0)
 
         try:
+            in_thinking = False
             async with httpx.AsyncClient(timeout=httpx_timeout) as client:
                 async with client.stream("POST", url, json=payload, headers=headers) as response:
                     response.raise_for_status()
@@ -71,11 +72,28 @@ class OpenRouterProvider(BaseLLMProvider):
                             choices = data.get("choices", [])
                             if choices:
                                 delta = choices[0].get("delta", {})
+                                reasoning = (
+                                    delta.get("reasoning")
+                                    or delta.get("reasoning_content")
+                                    or delta.get("thinking")
+                                )
                                 content = delta.get("content", "")
-                                if content:
+
+                                if reasoning:
+                                    if not in_thinking:
+                                        yield "<think>\n"
+                                        in_thinking = True
+                                    yield reasoning
+                                elif content:
+                                    if in_thinking:
+                                        yield "\n</think>\n\n"
+                                        in_thinking = False
                                     yield content
                         except json.JSONDecodeError:
                             continue
+
+                    if in_thinking:
+                        yield "\n</think>\n\n"
         except httpx.HTTPStatusError as e:
             logger.error(f"Błąd HTTP OpenRouter API [{e.response.status_code}]: {e.response.text}")
             raise RuntimeError(f"Błąd OpenRouter API HTTP {e.response.status_code}: {e.response.text}") from e

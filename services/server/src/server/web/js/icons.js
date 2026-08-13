@@ -80,4 +80,51 @@ export const Icons = {
   ChevronRight: () => createSvg(`
     <polyline points="9 18 15 12 9 6"></polyline>
   `, "0 0 24 24", 'width="16" height="16"'),
+
+  ChevronDown: () => createSvg(`
+    <polyline points="6 9 12 15 18 9"></polyline>
+  `, "0 0 24 24", 'width="16" height="16"'),
+
+  // Czat i Komunikacja
+  MessageSquare: () => createSvg(`
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+  `),
+
+  Send: () => createSvg(`
+    <line x1="22" y1="2" x2="11" y2="13"></line>
+    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+  `),
+
+  Bot: () => createSvg(`
+    <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+    <circle cx="12" cy="5" r="2"></circle>
+    <path d="M12 7v4"></path>
+    <line x1="8" y1="16" x2="8.01" y2="16"></line>
+    <line x1="16" y1="16" x2="16.01" y2="16"></line>
+  `),
+
+  User: () => createSvg(`
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+    <circle cx="12" cy="7" r="4"></circle>
+  `),
+
+  Trash2: () => createSvg(`
+    <polyline points="3 6 5 6 21 6"></polyline>
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+    <line x1="10" y1="11" x2="10" y2="17"></line>
+    <line x1="14" y1="11" x2="14" y2="17"></line>
+  `),
+
+  Plus: () => createSvg(`
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  `),
+
+  Sparkles: () => createSvg(`
+    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path>
+  `),
+
+  Square: () => createSvg(`
+    <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+  `),
 };

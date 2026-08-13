@@ -1,23 +1,39 @@
+import json
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 import shared
 from shared import (
+    CancelChatApiRequest,
+    ChatResponseDTO,
+    ChatSessionHistoryResponse,
+    ChatSessionListResponse,
+    ChatSessionSummaryDTO,
     CreateLLMProviderRequest,
     HealthResponse,
     LLMProviderDTO,
     LLMProviderListResponse,
     ProviderMetadataResponse,
     SelectLLMProviderRequest,
+    SendChatMessageRequest,
 )
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry, ProviderType
 from server.agent.backend.factory import LLMFactory
 
 
+class CreateSessionApiRequest(BaseModel):
+    """Żądanie utrwalenia nowej sesji przez API."""
+
+    title: str = Field(default="Nowa konwersacja", description="Tytuł nowej sesji")
+    custom_id: str | None = Field(default=None, description="Opcjonalne własne ID sesji (np. session_custom)")
+
+
 def create_api_router(
     agent_engine: AgentEngine,
     backend_registry: BackendRegistry,
 ) -> APIRouter:
-    """Centralny rejestr używanych punktów końcowych REST API serwera Regis OS."""
+    """Centralny rejestr używanych punktów końcowych REST i SSE API serwera Regis OS."""
     router = APIRouter()
 
     # 1. GET /api/health
@@ -144,5 +160,130 @@ def create_api_router(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(err),
             )
+
+    # ==========================================================================
+    # CHAT & SESSIONS ENDPOINTS (AGENT OS MULTI-SESSION CONVERSATIONS)
+    # ==========================================================================
+
+    # 7. POST /api/chat
+    @router.post(
+        "/api/chat",
+        response_model=ChatResponseDTO,
+        summary="Wysyła wiadomość do Agenta i zwraca pełną odpowiedź w jednym żądaniu",
+        tags=["Chat & Sessions"],
+    )
+    async def chat_interact(req: SendChatMessageRequest) -> ChatResponseDTO:
+        if agent_engine.is_session_busy(req.session_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Sesja '{req.session_id}' przetwarza obecnie inne zapytanie. Odczekaj lub anuluj bieżące wywołanie.",
+            )
+        try:
+            return await agent_engine.interact(
+                session_id=req.session_id,
+                prompt=req.message,
+                system_prompt=req.system_prompt,
+            )
+        except Exception as err:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Błąd generowania odpowiedzi przez Agenta: {err}",
+            )
+
+    # 8. POST /api/chat/stream
+    @router.post(
+        "/api/chat/stream",
+        summary="Wysyła wiadomość do Agenta i strumieniuje odpowiedź w czasie rzeczywistym via SSE",
+        tags=["Chat & Sessions"],
+    )
+    async def chat_interact_stream(req: SendChatMessageRequest):
+        if agent_engine.is_session_busy(req.session_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Sesja '{req.session_id}' przetwarza obecnie inne zapytanie. Odczekaj lub anuluj bieżące wywołanie.",
+            )
+
+        async def event_generator():
+            try:
+                async for chunk in agent_engine.interact_stream(
+                    session_id=req.session_id,
+                    prompt=req.message,
+                    system_prompt=req.system_prompt,
+                ):
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                yield "data: [DONE]\n\n"
+            except Exception as err:
+                error_payload = json.dumps({"error": str(err)})
+                yield f"data: {error_payload}\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    # 8b. POST /api/chat/cancel
+    @router.post(
+        "/api/chat/cancel",
+        summary="Anuluje aktywne generowanie odpowiedzi dla podanej sesji (Web, Satelita, Cron)",
+        tags=["Chat & Sessions"],
+    )
+    async def cancel_chat_interact(req: CancelChatApiRequest):
+        cancelled = await agent_engine.cancel_interaction(req.session_id)
+        return {"success": cancelled, "session_id": req.session_id}
+
+    # 9. GET /api/chat/sessions
+    @router.get(
+        "/api/chat/sessions",
+        response_model=ChatSessionListResponse,
+        summary="Pobiera listę wszystkich aktywnych i zapisanych sesji konwersacji z backendu",
+        tags=["Chat & Sessions"],
+    )
+    async def get_chat_sessions() -> ChatSessionListResponse:
+        summaries = agent_engine.memory_manager.list_session_summaries()
+        return ChatSessionListResponse(sessions=summaries)
+
+    # 10. POST /api/chat/sessions
+    @router.post(
+        "/api/chat/sessions",
+        response_model=ChatSessionSummaryDTO,
+        status_code=status.HTTP_201_CREATED,
+        summary="Tworzy nową sesję konwersacji w pamięci i na dysku",
+        tags=["Chat & Sessions"],
+    )
+    async def create_chat_session(req: CreateSessionApiRequest) -> ChatSessionSummaryDTO:
+        session = agent_engine.memory_manager.create_session(
+            title=req.title,
+            custom_id=req.custom_id,
+        )
+        return session.to_summary()
+
+    # 11. GET /api/chat/sessions/{session_id}/history
+    @router.get(
+        "/api/chat/sessions/{session_id}/history",
+        response_model=ChatSessionHistoryResponse,
+        summary="Pobiera pełną historię wiadomości oraz metadane konkretnej sesji",
+        tags=["Chat & Sessions"],
+    )
+    async def get_chat_session_history(session_id: str) -> ChatSessionHistoryResponse:
+        session = agent_engine.memory_manager.get_or_create_session(session_id)
+        return ChatSessionHistoryResponse(
+            session_id=session.session_id,
+            title=session.title,
+            messages=session.get_history(),
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+
+    # 12. DELETE /api/chat/sessions/{session_id}
+    @router.delete(
+        "/api/chat/sessions/{session_id}",
+        summary="Usuwa historię i plik sesji z dysku serwera",
+        tags=["Chat & Sessions"],
+    )
+    async def delete_chat_session(session_id: str):
+        deleted = agent_engine.memory_manager.delete_session(session_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Sesja o ID '{session_id}' nie istnieje.",
+            )
+        return {"success": True, "deleted_id": session_id}
 
     return router

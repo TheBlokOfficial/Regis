@@ -21,3 +21,10 @@ members = [
     "services/*",
     "packages/*",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "services/server/src",
+    "packages/shared/src",
+]
+

@@ -1,3 +1,9 @@
-"""Podsystem pamięci krótkotrwałej i długotrwałej dla Agenta Regis (Placeholder)."""
+"""Podsystem pamięci krótkotrwałej i długotrwałej dla Agenta Regis OS."""
 
-__all__: list[str] = []
+from server.agent.memory.session import MemoryManager, Session, generate_session_id
+
+__all__ = [
+    "MemoryManager",
+    "Session",
+    "generate_session_id",
+]

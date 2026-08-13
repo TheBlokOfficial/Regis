@@ -75,3 +75,67 @@ class ProviderMetadataResponse(BaseModel):
     provider_types: list[ProviderTypeSpecDTO] = Field(
         default_factory=list, description="Lista wspieranych typów z ich schematami opcji"
     )
+
+
+# ==========================================================================
+# KONTRAKTY DLA CZATU I PAMIĘCI SESJI (AGENT OS CHAT & SESSION CONTRACTS)
+# ==========================================================================
+
+
+class ChatMessageDTO(BaseModel):
+    """Pojedyncza wiadomość w historii konwersacji."""
+
+    role: str = Field(..., description="Rola nadawcy: user, assistant, system")
+    content: str = Field(..., description="Treść wiadomości tekstowej")
+    timestamp: float = Field(..., description="Stempel czasowy wysłania wiadomości (Unix timestamp)")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Dodatkowe metadane wiadomości")
+
+
+class SendChatMessageRequest(BaseModel):
+    """Żądanie wysłania nowej wiadomości do Agenta."""
+
+    session_id: str = Field(default="default", description="Identyfikator sesji rozmowy w backendzie")
+    message: str = Field(..., description="Treść nowej wiadomości od użytkownika/satelity")
+    system_prompt: str | None = Field(default=None, description="Opcjonalny customowy system prompt")
+
+
+class ChatResponseDTO(BaseModel):
+    """Odpowiedź serwera po przetworzeniu wiadomości przez Agenta."""
+
+    session_id: str = Field(..., description="Identyfikator sesji")
+    message: ChatMessageDTO = Field(..., description="Wygenerowana wiadomość agenta")
+    model: str | None = Field(default=None, description="Nazwa wywołanego modelu LLM")
+
+
+class ChatSessionSummaryDTO(BaseModel):
+    """Podsumowanie sesji dla listy sesji w interfejsie."""
+
+    session_id: str = Field(..., description="Unikalny identyfikator techniczny sesji (np. session_a1b2c3d4)")
+    title: str = Field(..., description="Wyświetlana nazwa/tytuł sesji")
+    created_at: float = Field(..., description="Czas utworzenia sesji")
+    updated_at: float = Field(..., description="Czas ostatniej aktywności")
+    message_count: int = Field(..., description="Liczba wiadomości w sesji")
+
+
+class ChatSessionHistoryResponse(BaseModel):
+    """Odpowiedź z pełną historią i metadanymi konkretnej sesji konwersacji."""
+
+    session_id: str = Field(..., description="Identyfikator techniczny sesji")
+    title: str = Field(default="Nowa konwersacja", description="Wyświetlana nazwa sesji")
+    messages: list[ChatMessageDTO] = Field(default_factory=list, description="Lista wiadomości w sesji")
+    created_at: float = Field(..., description="Czas utworzenia sesji")
+    updated_at: float = Field(..., description="Czas ostatniej aktywności sesji")
+
+
+class ChatSessionListResponse(BaseModel):
+    """Odpowiedź zawierająca listę dostępnych sesji konwersacyjnych."""
+
+    sessions: list[ChatSessionSummaryDTO] = Field(default_factory=list, description="Lista podsumowań sesji")
+
+
+class CancelChatApiRequest(BaseModel):
+    """Żądanie anulowania generowania odpowiedzi dla sesji."""
+
+    session_id: str = Field(..., description="Identyfikator sesji do anulowania")
+
+
