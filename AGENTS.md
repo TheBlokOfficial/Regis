@@ -2,8 +2,10 @@
 
 ## Kontekst
 Architektura/decyzje projektowe: `docs/manifest.md`, `docs/onboarding.md`.
-Czytaj na żądanie, gdy zadanie tego wymaga — nie zakładaj z góry, że trzeba
-je wczytać przy każdej zmianie.
+Jeśli w pamięci projektu (auto memory) nie ma jeszcze notatek o
+architekturze: przeczytaj raz oba pliki i zapisz kluczowe fakty do pamięci.
+Jeśli notatki już tam są — korzystaj z nich zamiast wczytywać pliki od
+nowa; wróć do źródeł tylko przy realnej niejasności.
 
 ## Zasady pracy
 - Nie zgaduj: sprawdź realne ścieżki, nazwy funkcji, schematy danych zamiast
