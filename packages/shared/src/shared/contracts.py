@@ -115,6 +115,7 @@ class ChatSessionSummaryDTO(BaseModel):
     created_at: float = Field(..., description="Czas utworzenia sesji")
     updated_at: float = Field(..., description="Czas ostatniej aktywności")
     message_count: int = Field(..., description="Liczba wiadomości w sesji")
+    is_generating: bool = Field(default=False, description="Czy w sesji obecnie generowana jest odpowiedź w tle")
 
 
 class ChatSessionHistoryResponse(BaseModel):
@@ -125,6 +126,7 @@ class ChatSessionHistoryResponse(BaseModel):
     messages: list[ChatMessageDTO] = Field(default_factory=list, description="Lista wiadomości w sesji")
     created_at: float = Field(..., description="Czas utworzenia sesji")
     updated_at: float = Field(..., description="Czas ostatniej aktywności sesji")
+    is_generating: bool = Field(default=False, description="Czy w sesji obecnie generowana jest odpowiedź w tle")
 
 
 class ChatSessionListResponse(BaseModel):

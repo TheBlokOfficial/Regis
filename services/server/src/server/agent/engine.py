@@ -24,11 +24,27 @@ class AgentEngine:
         self.memory_manager: MemoryManager = memory_manager or MemoryManager()
         self.context_builder: ContextBuilder = context_builder or ContextBuilder()
         self._active_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._generation_buffers: dict[str, str] = {}
+        self._session_queues: dict[str, set[asyncio.Queue[Any]]] = {}
 
     def is_session_busy(self, session_id: str) -> bool:
         """Sprawdza, czy dla podanej sesji trwa obecnie przetwarzanie w tle."""
         task = self._active_tasks.get(session_id)
         return task is not None and not task.done()
+
+    def get_generation_buffer(self, session_id: str) -> str | None:
+        """Zwraca bufor obecnie generowanego tekstu dla danej sesji lub None, jeśli brak aktywnej generacji."""
+        if self.is_session_busy(session_id):
+            return self._generation_buffers.get(session_id, "")
+        return None
+
+    def get_session_generation_status(self, session_id: str) -> dict[str, Any]:
+        """Zwraca metadane określające status trwającej generacji w sesji."""
+        busy = self.is_session_busy(session_id)
+        return {
+            "is_generating": busy,
+            "buffer": self._generation_buffers.get(session_id, "") if busy else None,
+        }
 
     async def cancel_interaction(self, session_id: str) -> bool:
         """Anuluje aktywne zadanie generowania odpowiedzi dla podanej sesji (dla wszystkich interfejsów).
@@ -40,6 +56,10 @@ class AgentEngine:
         if task and not task.done():
             logger.info(f"Anulowanie aktywnego zadania dla sesji '{session_id}'...")
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
             return True
         return False
 
@@ -51,6 +71,70 @@ class AgentEngine:
     async def shutdown(self) -> None:
         """Bezpieczne zamknięcie rdzenia agenta."""
         logger.info("Zamykanie Agent Engine...")
+        for session_id in list(self._active_tasks.keys()):
+            await self.cancel_interaction(session_id)
+
+    async def _generate_in_background(
+        self,
+        session_id: str,
+        prompt: str,
+        system_prompt: str | None = None,
+    ) -> None:
+        """Wykonywane w tle zadanie generowania odpowiedzi LLM dla sesji."""
+        # 1. Rejestracja pytania użytkownika w pamięci sesji
+        self.memory_manager.add_message(session_id=session_id, role="user", content=prompt)
+
+        # 2. Pobranie aktualnej historii i zbudowanie kontekstu LLM
+        history = self.memory_manager.get_history(session_id=session_id)
+        llm_messages = self.context_builder.build_messages(
+            session_history=history,
+            system_prompt_override=system_prompt,
+        )
+
+        self._generation_buffers[session_id] = ""
+
+        try:
+            # 3. Strumieniowanie odpowiedzi oraz agregacja pełnego tekstu
+            async for chunk in self.llm_provider.generate_stream(llm_messages):
+                self._generation_buffers[session_id] = self._generation_buffers.get(session_id, "") + chunk
+                queues = self._session_queues.get(session_id, set())
+                for q in list(queues):
+                    await q.put(chunk)
+
+            # 4. Po zakończeniu strumienia, zapisujemy skompletowaną odpowiedź w sesji
+            full_assistant_text = self._generation_buffers.get(session_id, "")
+            self.memory_manager.add_message(
+                session_id=session_id,
+                role="assistant",
+                content=full_assistant_text,
+            )
+
+            queues = self._session_queues.get(session_id, set())
+            for q in list(queues):
+                await q.put(None)
+
+        except asyncio.CancelledError:
+            logger.info(f"Generowanie odpowiedzi dla sesji '{session_id}' zostało przerwane.")
+            partial_text = self._generation_buffers.get(session_id, "")
+            if partial_text.strip():
+                self.memory_manager.add_message(
+                    session_id=session_id,
+                    role="assistant",
+                    content=partial_text + " [Przerwano]",
+                )
+            queues = self._session_queues.get(session_id, set())
+            for q in list(queues):
+                await q.put(asyncio.CancelledError())
+            raise
+        except Exception as err:
+            logger.error(f"Błąd podczas generowania odpowiedzi dla sesji '{session_id}': {err}")
+            queues = self._session_queues.get(session_id, set())
+            for q in list(queues):
+                await q.put(err)
+            raise
+        finally:
+            self._active_tasks.pop(session_id, None)
+            self._generation_buffers.pop(session_id, None)
 
     async def interact_stream(
         self,
@@ -69,48 +153,36 @@ class AgentEngine:
             logger.warning(f"Sesja '{session_id}' jest zajęta. Odrzucono nakładające się zapytanie.")
             raise RuntimeError(f"Sesja '{session_id}' przetwarza obecnie inne zapytanie. Odczekaj lub anuluj bieżące wywołanie.")
 
-        current_task = asyncio.current_task()
-        if current_task:
-            self._active_tasks[session_id] = current_task
-
         logger.info(f"Strumieniowa interakcja [Sesja: '{session_id}']: '{prompt}'")
 
-        # 1. Rejestracja pytania użytkownika w pamięci sesji
-        self.memory_manager.add_message(session_id=session_id, role="user", content=prompt)
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        if session_id not in self._session_queues:
+            self._session_queues[session_id] = set()
+        self._session_queues[session_id].add(queue)
 
-        # 2. Pobranie aktualnej historii i zbudowanie kontekstu LLM
-        history = self.memory_manager.get_history(session_id=session_id)
-        llm_messages = self.context_builder.build_messages(
-            session_history=history,
-            system_prompt_override=system_prompt,
-        )
-
-        full_chunks: list[str] = []
-        try:
-            # 3. Strumieniowanie odpowiedzi oraz agregacja pełnego tekstu
-            async for chunk in self.llm_provider.generate_stream(llm_messages):
-                full_chunks.append(chunk)
-                yield chunk
-
-            # 4. Po zakończeniu strumienia, zapisujemy skompletowaną odpowiedź w sesji
-            full_assistant_text = "".join(full_chunks)
-            self.memory_manager.add_message(
+        bg_task = asyncio.create_task(
+            self._generate_in_background(
                 session_id=session_id,
-                role="assistant",
-                content=full_assistant_text,
+                prompt=prompt,
+                system_prompt=system_prompt,
             )
-        except asyncio.CancelledError:
-            logger.info(f"Generowanie odpowiedzi dla sesji '{session_id}' zostało przerwane.")
-            partial_text = "".join(full_chunks)
-            if partial_text.strip():
-                self.memory_manager.add_message(
-                    session_id=session_id,
-                    role="assistant",
-                    content=partial_text + " [Przerwano]",
-                )
-            raise
+        )
+        self._active_tasks[session_id] = bg_task
+
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                elif isinstance(item, Exception):
+                    raise item
+                else:
+                    yield item
         finally:
-            self._active_tasks.pop(session_id, None)
+            if session_id in self._session_queues:
+                self._session_queues[session_id].discard(queue)
+                if not self._session_queues[session_id]:
+                    self._session_queues.pop(session_id, None)
 
     async def interact(
         self,
@@ -125,7 +197,6 @@ class AgentEngine:
         :param system_prompt: Opcjonalne nadpisanie instrukcji systemowych.
         :return: Struktura ChatResponseDTO z wygenerowaną odpowiedzią i nazwą modelu.
         """
-        # Wywołanie głównej pętli strumieniowej i zgromadzenie fragmentów odpowiedzi
         _ = [chunk async for chunk in self.interact_stream(session_id=session_id, prompt=prompt, system_prompt=system_prompt)]
         
         session = self.memory_manager.get_or_create_session(session_id)

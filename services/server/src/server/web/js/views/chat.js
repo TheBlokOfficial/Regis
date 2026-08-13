@@ -13,6 +13,8 @@ export class ChatView {
     this.currentAssistantMessageEl = null;
     this.currentAssistantTextEl = null;
     this.accumulatedText = '';
+    this.userHasScrolledUp = false;
+    this.pollInterval = null;
   }
 
   render() {
@@ -114,6 +116,15 @@ export class ChatView {
     const triggerBtn = document.getElementById('chat-session-trigger');
     const popover = document.getElementById('chat-session-popover');
     const btnPopoverNew = document.getElementById('btn-popover-new-chat');
+    const container = document.getElementById('chat-messages-container');
+
+    if (container) {
+      container.addEventListener('scroll', () => {
+        const threshold = 60;
+        const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
+        this.userHasScrolledUp = !isAtBottom;
+      });
+    }
 
     if (textarea) {
       textarea.addEventListener('input', () => {
@@ -290,18 +301,29 @@ export class ChatView {
             btn.addEventListener('click', async (e) => {
               e.stopPropagation();
               const sid = btn.getAttribute('data-session-id');
+              const row = btn.closest('.popover-session-row');
 
-              await this.apiClient.deleteChatSession(sid);
-              if (this.activeSessionId === sid) {
-                const remaining = this.sessions.filter((s) => s.session_id !== sid);
-                if (remaining.length > 0) {
-                  this.activeSessionId = remaining[0].session_id;
+              try {
+                if (sid !== this.activeSessionId) {
+                  await this.apiClient.deleteChatSession(sid);
+                  if (row) row.remove();
+                  this.sessions = this.sessions.filter((s) => s.session_id !== sid);
+                  const countBadgeEl = document.getElementById('popover-session-count');
+                  if (countBadgeEl) countBadgeEl.textContent = this.sessions.length;
                 } else {
-                  this.activeSessionId = 'session_default';
+                  await this.apiClient.deleteChatSession(sid);
+                  this.sessions = this.sessions.filter((s) => s.session_id !== sid);
+                  if (this.sessions.length > 0) {
+                    this.activeSessionId = this.sessions[0].session_id;
+                  } else {
+                    this.activeSessionId = 'session_default';
+                  }
+                  await this.loadSessionsList();
+                  await this.loadSessionHistory(this.activeSessionId);
                 }
+              } catch (err) {
+                console.error('[ChatView] Błąd usuwania sesji:', err);
               }
-              await this.loadSessionsList();
-              await this.loadSessionHistory(this.activeSessionId);
             });
           });
         }
@@ -327,8 +349,52 @@ export class ChatView {
     return `${day}.${month}, ${hours}:${minutes}`;
   }
 
+  stopPolling() {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+  }
+
+  startPolling(sessionId) {
+    this.stopPolling();
+    this.pollInterval = setInterval(async () => {
+      if (this.activeSessionId !== sessionId || !this.isGenerating) {
+        this.stopPolling();
+        return;
+      }
+
+      try {
+        const res = await this.apiClient.getChatHistory(sessionId);
+        if (!res || this.activeSessionId !== sessionId) {
+          this.stopPolling();
+          return;
+        }
+
+        const messages = res.messages || [];
+        const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+
+        if (lastMsg && lastMsg.role === 'assistant') {
+          this.accumulatedText = lastMsg.content || '';
+          if (this.currentAssistantTextEl) {
+            this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText, res.is_generating);
+          }
+          this.scrollToBottom();
+        }
+
+        if (!res.is_generating) {
+          this.stopPolling();
+          this.finishStreaming();
+        }
+      } catch (err) {
+        console.error('[ChatView] Błąd w pollingu historii:', err);
+      }
+    }, 1500);
+  }
 
   async loadSessionHistory(sessionId) {
+    this.stopPolling();
+    this.userHasScrolledUp = false;
     const container = document.getElementById('chat-messages-container');
     if (!container || !this.apiClient) return;
 
@@ -344,14 +410,44 @@ export class ChatView {
             <div class="empty-state-desc">Jestem Agentem Regis OS. O co chcesz zapytać?</div>
           </div>
         `;
+        if (res && res.is_generating) {
+          this.setGeneratingState(true);
+          this.startPolling(sessionId);
+        } else {
+          this.setGeneratingState(false);
+        }
         return;
       }
 
-      res.messages.forEach((msg) => {
-        this.appendMessageElement(msg.role, msg.content, msg.timestamp);
+      let lastAssistantRow = null;
+      let lastAssistantContent = '';
+
+      res.messages.forEach((msg, idx) => {
+        const isLast = idx === res.messages.length - 1;
+        const isStreamingMsg = isLast && res.is_generating && msg.role === 'assistant';
+        const row = this.appendMessageElement(msg.role, msg.content, msg.timestamp, isStreamingMsg);
+        if (msg.role === 'assistant') {
+          lastAssistantRow = row;
+          lastAssistantContent = msg.content || '';
+        }
       });
 
-      this.scrollToBottom();
+      this.scrollToBottom(true);
+
+      if (res.is_generating) {
+        this.setGeneratingState(true);
+        const lastMsg = res.messages[res.messages.length - 1];
+        if (!lastAssistantRow || lastMsg.role !== 'assistant') {
+          lastAssistantRow = this.appendMessageElement('assistant', '', Date.now() / 1000, true);
+          lastAssistantContent = '';
+        }
+        this.currentAssistantMessageEl = lastAssistantRow;
+        this.currentAssistantTextEl = lastAssistantRow ? lastAssistantRow.querySelector('.message-text') : null;
+        this.accumulatedText = lastAssistantContent;
+        this.startPolling(sessionId);
+      } else {
+        this.setGeneratingState(false);
+      }
     } catch (err) {
       console.error('[ChatView] Błąd wczytywania historii sesji:', err);
     }
@@ -369,6 +465,8 @@ export class ChatView {
     const message = textarea.value.trim();
     if (!message) return;
 
+    this.stopPolling();
+
     // Usunięcie empty state jeśli istnieje
     const emptyState = document.getElementById('chat-empty-state');
     if (emptyState) emptyState.remove();
@@ -378,7 +476,8 @@ export class ChatView {
     textarea.value = '';
     textarea.style.height = 'auto';
 
-    this.scrollToBottom();
+    this.userHasScrolledUp = false;
+    this.scrollToBottom(true);
 
     // 2. Przygotowanie stanu strumieniowania odpowiedzi Agenta
     this.setGeneratingState(true);
@@ -396,14 +495,14 @@ export class ChatView {
       (chunk) => {
         this.accumulatedText += chunk;
         if (this.currentAssistantTextEl) {
-          this.currentAssistantTextEl.innerHTML = this.formatMessageText(this.accumulatedText) + '<span class="streaming-cursor"></span>';
+          this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText, true);
         }
         this.scrollToBottom();
       },
       (error) => {
         console.error('[ChatView] Błąd strumieniowania:', error);
         if (this.currentAssistantTextEl) {
-          this.currentAssistantTextEl.innerHTML = this.formatMessageText(this.accumulatedText + `\n\n[Błąd: ${error.message}]`);
+          this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText + `\n\n[Błąd: ${error.message}]`, false);
         }
         this.finishStreaming();
       },
@@ -415,14 +514,112 @@ export class ChatView {
   }
 
   finishStreaming() {
+    this.stopPolling();
     if (this.currentAssistantTextEl) {
-      this.currentAssistantTextEl.innerHTML = this.formatMessageText(this.accumulatedText);
+      this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText, false);
     }
     this.setGeneratingState(false);
     this.loadSessionsList();
   }
 
+  updateAssistantStreamingText(element, text, isStreaming = false) {
+    if (!element) return;
+
+    const thinkStart = text.indexOf('<think>');
+    let thinkHtml = '';
+    let restText = text;
+
+    if (thinkStart !== -1) {
+      const thinkEnd = text.indexOf('</think>');
+      let rawThink = '';
+      if (thinkEnd !== -1) {
+        rawThink = text.substring(thinkStart + 7, thinkEnd);
+        restText = text.substring(thinkEnd + 8);
+      } else {
+        rawThink = text.substring(thinkStart + 7);
+        restText = '';
+      }
+
+      const escapedThink = this.escapeHtml(rawThink.trim()).replace(/\n/g, '<br/>');
+      const isThinkingDone = thinkEnd !== -1;
+      const statusTitle = !isThinkingDone ? 'Regis myśli...' : 'Przemyślenia Agenta';
+
+      const existingBlock = element.querySelector('.chat-thinking-block');
+      if (existingBlock) {
+        const contentEl = existingBlock.querySelector('.thinking-content');
+        const titleEl = existingBlock.querySelector('.thinking-title-text');
+
+        if (contentEl && contentEl.innerHTML !== escapedThink) {
+          contentEl.innerHTML = escapedThink;
+        }
+        if (titleEl && titleEl.textContent !== statusTitle) {
+          titleEl.textContent = statusTitle;
+        }
+      } else {
+        thinkHtml = `<details class="chat-thinking-block"><summary class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></summary><div class="thinking-content">${escapedThink}</div></details>`;
+      }
+    }
+
+    const formattedRest = this.formatRestContent(restText);
+    const cursorHtml = isStreaming ? '<span class="streaming-cursor"></span>' : '';
+
+    const existingBlock = element.querySelector('.chat-thinking-block');
+    if (existingBlock) {
+      let restContainer = element.querySelector('.message-rest-content');
+      if (!restContainer) {
+        restContainer = document.createElement('div');
+        restContainer.className = 'message-rest-content';
+        element.appendChild(restContainer);
+      }
+      restContainer.innerHTML = formattedRest + cursorHtml;
+    } else {
+      element.innerHTML = thinkHtml + `<div class="message-rest-content">${formattedRest}${cursorHtml}</div>`;
+    }
+  }
+
+  formatRestContent(restText) {
+    if (!restText) return '';
+    const escapedContent = this.escapeHtml(restText.trim()).replace(/\n/g, '<br/>');
+    return escapedContent
+      .replace(/```([\s\S]*?)```/g, '<pre class="chat-code-block"><code>$1</code></pre>')
+      .replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>');
+  }
+
+  formatMessageText(text) {
+    if (!text) return '';
+
+    let content = text;
+    let thinkHtml = '';
+
+    // Sprawdzamy czy w tekście znajduje się tag <think>
+    const thinkStart = content.indexOf('<think>');
+    if (thinkStart !== -1) {
+      const thinkEnd = content.indexOf('</think>');
+      let rawThink = '';
+      let restText = '';
+
+      if (thinkEnd !== -1) {
+        rawThink = content.substring(thinkStart + 7, thinkEnd);
+        restText = content.substring(thinkEnd + 8);
+      } else {
+        rawThink = content.substring(thinkStart + 7);
+        restText = '';
+      }
+
+      const escapedThink = this.escapeHtml(rawThink.trim()).replace(/\n/g, '<br/>');
+      const isThinkingDone = thinkEnd !== -1;
+      const statusTitle = !isThinkingDone ? 'Regis myśli...' : 'Przemyślenia Agenta';
+
+      thinkHtml = `<details class="chat-thinking-block"><summary class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></summary><div class="thinking-content">${escapedThink}</div></details>`;
+      content = restText;
+    }
+
+    const formattedRest = this.formatRestContent(content);
+    return thinkHtml + `<div class="message-rest-content">${formattedRest}</div>`;
+  }
+
   async stopGeneration() {
+    this.stopPolling();
     if (this.abortController) {
       this.abortController.abort();
     }
@@ -511,9 +708,9 @@ export class ChatView {
 
       const escapedThink = this.escapeHtml(rawThink.trim()).replace(/\n/g, '<br/>');
       const isStreaming = thinkEnd === -1;
-      const statusTitle = isStreaming ? '🧠 Proces myślowy w toku...' : '🧠 Przemyślenia Agenta (Chain of Thought)';
+      const statusTitle = isStreaming ? 'Regis myśli...' : 'Przemyślenia Agenta';
 
-      thinkHtml = `<details class="chat-thinking-block" ${isStreaming ? 'open' : ''}><summary class="thinking-summary">${statusTitle}</summary><div class="thinking-content">${escapedThink}</div></details>`;
+      thinkHtml = `<details class="chat-thinking-block" ${isStreaming ? 'open' : ''}><summary class="thinking-summary">${Icons.Sparkles()}<span>${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronDown()}</span></summary><div class="thinking-content">${escapedThink}</div></details>`;
       content = restText;
     }
 
@@ -525,10 +722,12 @@ export class ChatView {
     return thinkHtml + formattedContent;
   }
 
-  scrollToBottom() {
-    const container = document.getElementById('chat-messages-container');
-    if (container) {
-      container.scrollTop = container.scrollHeight;
+  scrollToBottom(force = false) {
+    if (force || !this.userHasScrolledUp) {
+      const container = document.getElementById('chat-messages-container');
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
     }
   }
 

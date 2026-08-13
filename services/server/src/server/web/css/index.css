@@ -1622,29 +1622,31 @@ html, body {
 
 /* Styling dla Bloku Myślenia (Chain of Thought) */
 .chat-thinking-block {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
-  margin-bottom: 12px;
-  font-size: 0.86rem;
-  overflow: hidden;
-  transition: all var(--transition-fast);
+  background: transparent;
+  border: none;
+  margin: 6px 0 10px 0;
+  font-size: 0.88rem;
 }
 
-.chat-thinking-block[open] {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.12);
+summary::-webkit-details-marker {
+  display: none;
+}
+
+summary {
+  list-style: none;
 }
 
 .thinking-summary {
-  padding: 8px 12px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-muted);
   cursor: pointer;
   user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-weight: 500;
+  padding: 4px 0;
+  width: fit-content;
+  max-width: 100%;
   transition: color var(--transition-fast);
 }
 
@@ -1652,14 +1654,31 @@ html, body {
   color: var(--text-secondary);
 }
 
-.thinking-content {
-  padding: 10px 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  line-height: 1.5;
-  background: rgba(0, 0, 0, 0.2);
+.thinking-chevron {
+  transition: transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  flex-shrink: 0;
 }
+
+.chat-thinking-block[open] .thinking-chevron {
+  transform: rotate(90deg);
+}
+
+.thinking-content {
+  margin-top: 6px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  background: transparent;
+  font-family: var(--font-mono, monospace);
+}
+
 
 

@@ -144,3 +144,108 @@ def test_cancel_chat_api(test_client):
     assert cancel_data["success"] is False
     assert cancel_data["session_id"] == "session_default"
 
+
+class SlowMockLLMProvider(BaseLLMProvider):
+    """Mock z opóźnieniem do testowania stanu generacji w tle."""
+
+    async def generate(self, messages: List[LLMMessage]) -> LLMResponse:
+        return LLMResponse(content="Slow response", model="slow-mock")
+
+    async def generate_stream(self, messages: List[LLMMessage]) -> AsyncIterator[str]:
+        import asyncio
+        words = ["Słowo1", "Słowo2", "Słowo3"]
+        for word in words:
+            await asyncio.sleep(0.05)
+            yield f" {word}"
+
+    async def check_health(self) -> bool:
+        return True
+
+
+@pytest.mark.anyio
+async def test_async_background_generation_and_status():
+    import asyncio
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        memory_manager = MemoryManager(data_dir=tmp_path / "sessions")
+        slow_provider = SlowMockLLMProvider()
+        engine = AgentEngine(llm_provider=slow_provider, memory_manager=memory_manager)
+        backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
+        app = create_gateway_app(agent_engine=engine, event_bus=None, backend_registry=backend_registry)
+
+        with TestClient(app) as client:
+            # Rozpoczynamy generowanie strumieniowe w tle przez engine
+            stream_gen = engine.interact_stream(session_id="session_default", prompt="Długie pytanie")
+            
+            # Pobieramy pierwszy element (co rozpoczyna zadanie w tle)
+            token = await anext(stream_gen)
+            assert token is not None
+            assert engine.is_session_busy("session_default") is True
+
+            # Sprawdzamy GET history gdy generowanie trwa
+            res_hist = client.get("/api/v1/chat/sessions/session_default/history")
+            assert res_hist.status_code == 200
+            data_hist = res_hist.json()
+            assert data_hist["is_generating"] is True
+            # Historia powinna mieć co najmniej wiadomość użytkownika oraz częściową odpowiedź asystenta
+            assert len(data_hist["messages"]) >= 2
+            partial_msg = data_hist["messages"][-1]
+            assert partial_msg["role"] == "assistant"
+            assert partial_msg["metadata"].get("is_partial") is True
+
+            # Sprawdzamy listę sesji
+            res_list = client.get("/api/v1/chat/sessions")
+            assert res_list.status_code == 200
+            sessions_data = res_list.json()["sessions"]
+            default_sess = next(s for s in sessions_data if s["session_id"] == "session_default")
+            assert default_sess["is_generating"] is True
+
+            # Dokańczamy pobieranie strumienia
+            async for _ in stream_gen:
+                pass
+
+            # Po zakończeniu sesja nie jest już zajęta
+            assert engine.is_session_busy("session_default") is False
+
+            # Sprawdzamy ponownie historię po zakończeniu
+            res_hist_done = client.get("/api/v1/chat/sessions/session_default/history")
+            assert res_hist_done.json()["is_generating"] is False
+
+
+@pytest.mark.anyio
+async def test_disconnect_does_not_cancel_background_task():
+    import asyncio
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        memory_manager = MemoryManager(data_dir=tmp_path / "sessions")
+        slow_provider = SlowMockLLMProvider()
+        engine = AgentEngine(llm_provider=slow_provider, memory_manager=memory_manager)
+        backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
+        app = create_gateway_app(agent_engine=engine, event_bus=None, backend_registry=backend_registry)
+
+        # 1. Rozpoczynamy interakcję strumieniową
+        stream_gen = engine.interact_stream(session_id="session_default", prompt="Test rozłączenia klienta")
+        first_token = await anext(stream_gen)
+        assert first_token is not None
+        assert engine.is_session_busy("session_default") is True
+
+        # 2. Symulujemy rozłączenie klienta SSE (anulowanie korutyny strumieniowej)
+        await stream_gen.aclose()
+
+        # Zadanie w tle POWINNO nadal trwać bez przerywania
+        assert engine.is_session_busy("session_default") is True
+
+        # ODczekujemy chwilę, by zadanie w tle mogło zakończyć swoją pracę
+        await asyncio.sleep(0.3)
+
+        # Po zakończeniu zadanie powinno się zwolnić, a odpowiedź utrwalić w historii
+        assert engine.is_session_busy("session_default") is False
+        history = memory_manager.get_history("session_default")
+        assert len(history) == 2
+        assert history[0].role == "user"
+        assert history[1].role == "assistant"
+        assert "[Przerwano]" not in history[1].content
+        assert "Słowo1 Słowo2 Słowo3" in history[1].content
+
+
+

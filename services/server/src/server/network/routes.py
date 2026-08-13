@@ -1,10 +1,12 @@
 import json
+import time
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import shared
 from shared import (
     CancelChatApiRequest,
+    ChatMessageDTO,
     ChatResponseDTO,
     ChatSessionHistoryResponse,
     ChatSessionListResponse,
@@ -237,6 +239,9 @@ def create_api_router(
     )
     async def get_chat_sessions() -> ChatSessionListResponse:
         summaries = agent_engine.memory_manager.list_session_summaries()
+        for summary in summaries:
+            if agent_engine.is_session_busy(summary.session_id):
+                summary.is_generating = True
         return ChatSessionListResponse(sessions=summaries)
 
     # 10. POST /api/v1/chat/sessions
@@ -263,12 +268,27 @@ def create_api_router(
     )
     async def get_chat_session_history(session_id: str) -> ChatSessionHistoryResponse:
         session = agent_engine.memory_manager.get_or_create_session(session_id)
+        messages = list(session.get_history())
+        is_generating = agent_engine.is_session_busy(session_id)
+        if is_generating:
+            buf = agent_engine.get_generation_buffer(session_id)
+            if buf is not None:
+                messages.append(
+                    ChatMessageDTO(
+                        role="assistant",
+                        content=buf,
+                        timestamp=time.time(),
+                        metadata={"is_partial": True},
+                    )
+                )
+
         return ChatSessionHistoryResponse(
             session_id=session.session_id,
             title=session.title,
-            messages=session.get_history(),
+            messages=messages,
             created_at=session.created_at,
             updated_at=session.updated_at,
+            is_generating=is_generating,
         )
 
     # 12. DELETE /api/v1/chat/sessions/{session_id}
