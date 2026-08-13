@@ -28,11 +28,12 @@ export class AgentsView {
         <div class="agents-panel-list">
           <div class="agents-panel-header">
             <span class="agents-panel-title">Prompty</span>
-            <button class="btn btn-sm btn-subtle" id="agents-btn-new">+ Nowy</button>
+            <button class="btn btn-sm btn-primary" id="agents-btn-new">${Icons.Plus()} Nowy</button>
           </div>
           <div class="agents-list" id="agents-list">
             <div class="agents-list-loading">Ładowanie...</div>
           </div>
+          <div class="agents-panel-footer" id="agents-panel-footer"></div>
         </div>
         <div class="agents-panel-editor" id="agents-panel-editor">
           <div class="agents-editor-empty">
@@ -82,14 +83,24 @@ export class AgentsView {
   _renderListError() {
     const list = document.getElementById('agents-list');
     if (list) list.innerHTML = `<div class="agents-list-error">Błąd ładowania listy promptów.</div>`;
+    const footer = document.getElementById('agents-panel-footer');
+    if (footer) footer.innerHTML = '';
   }
 
   _renderList() {
     const list = document.getElementById('agents-list');
+    const footer = document.getElementById('agents-panel-footer');
     if (!list) return;
 
     if (this.prompts.length === 0) {
-      list.innerHTML = `<div class="agents-list-empty">Brak zapisanych promptów.</div>`;
+      list.innerHTML = `
+        <div class="agents-list-empty">
+          <p>Brak zapisanych promptów.</p>
+          <button class="btn btn-sm btn-subtle" id="agents-btn-empty-new">+ Utwórz pierwszy prompt</button>
+        </div>
+      `;
+      document.getElementById('agents-btn-empty-new')?.addEventListener('click', () => this._enterNewMode());
+      if (footer) footer.innerHTML = '';
       return;
     }
 
@@ -119,6 +130,11 @@ export class AgentsView {
         }
       });
     });
+
+    if (footer) {
+      const count = this.prompts.length;
+      footer.textContent = count === 1 ? '1 zapisany prompt' : `${count} zapisanych promptów`;
+    }
   }
 
   _confirmDiscard() {
@@ -170,8 +186,19 @@ export class AgentsView {
     panel.innerHTML = `
       <div class="agents-editor">
         <div class="agents-editor-header">
-          <span class="badge-muted" title="Wewnętrzny identyfikator promptu">ID: ${escapeHtml(prompt.id)}</span>
-          ${isActive ? '<span class="agents-badge-active">Aktywny prompt systemowy</span>' : ''}
+          <div class="agents-editor-header-left">
+            <span class="badge-muted" title="Wewnętrzny identyfikator promptu">ID: ${escapeHtml(prompt.id)}</span>
+            <button class="agents-btn-copy-id" id="agents-btn-copy-id" title="Skopiuj ID promptu" aria-label="Skopiuj ID promptu">${Icons.Copy()}</button>
+            <span class="agents-dirty-badge hidden" id="agents-dirty-badge">● Niezapisane zmiany</span>
+          </div>
+          <button
+            class="agents-toggle-active ${isActive ? 'is-on' : ''}"
+            id="agents-btn-activate"
+            ${isActive ? 'disabled title="To jest aktywny prompt systemowy"' : 'title="Ustaw jako aktywny prompt systemowy"'}
+          >
+            <span class="agents-toggle-track"><span class="agents-toggle-thumb"></span></span>
+            <span>${isActive ? 'Aktywny' : 'Nieaktywny'}</span>
+          </button>
         </div>
         <div class="agents-editor-fields">
           <div class="form-group agents-field-compact">
@@ -184,13 +211,18 @@ export class AgentsView {
           </div>
           <div class="form-group agents-editor-content-group">
             <label for="agents-input-content">Treść</label>
-            <textarea id="agents-input-content" class="form-control agents-editor-textarea">${escapeHtml(prompt.content)}</textarea>
+            <div class="agents-editor-content-wrap">
+              <div class="agents-line-gutter" id="agents-line-gutter">1</div>
+              <textarea id="agents-input-content" class="form-control agents-editor-textarea">${escapeHtml(prompt.content)}</textarea>
+            </div>
+            <div class="agents-content-meta">
+              <span class="agents-char-count" id="agents-char-count">0 znaków</span>
+            </div>
           </div>
         </div>
         <div class="agents-editor-actions">
           <div class="agents-editor-actions-left">
             <button class="btn btn-primary" id="agents-btn-save">Zapisz</button>
-            <button class="btn" id="agents-btn-activate" ${isActive ? 'disabled' : ''}>Aktywuj</button>
           </div>
           <div class="agents-editor-actions-right" id="agents-delete-zone">
             <button class="btn agents-btn-delete" id="agents-btn-delete" ${isActive ? 'disabled title="Nie można usunąć aktywnego promptu"' : ''}>Usuń</button>
@@ -200,11 +232,13 @@ export class AgentsView {
     `;
 
     document.getElementById('agents-btn-save')?.addEventListener('click', () => this._handleSave(prompt.id));
-    document.getElementById('agents-btn-activate')?.addEventListener('click', () => this._handleActivate(prompt.id));
     if (!isActive) {
+      document.getElementById('agents-btn-activate')?.addEventListener('click', () => this._handleActivate(prompt.id));
       document.getElementById('agents-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(prompt.id));
     }
+    document.getElementById('agents-btn-copy-id')?.addEventListener('click', () => this._handleCopyId(prompt.id));
     this._bindDirtyTracking();
+    this._bindContentEditorExtras();
   }
 
   _renderNewEditor() {
@@ -215,7 +249,10 @@ export class AgentsView {
     panel.innerHTML = `
       <div class="agents-editor">
         <div class="agents-editor-header">
-          <span class="badge-muted">Nowy prompt</span>
+          <div class="agents-editor-header-left">
+            <span class="badge-muted">Nowy prompt</span>
+            <span class="agents-dirty-badge hidden" id="agents-dirty-badge">● Niezapisane zmiany</span>
+          </div>
         </div>
         <div class="agents-editor-fields">
           <div class="form-group agents-field-compact">
@@ -228,7 +265,13 @@ export class AgentsView {
           </div>
           <div class="form-group agents-editor-content-group">
             <label for="agents-input-content">Treść</label>
-            <textarea id="agents-input-content" class="form-control agents-editor-textarea" placeholder="Treść instrukcji systemowej..."></textarea>
+            <div class="agents-editor-content-wrap">
+              <div class="agents-line-gutter" id="agents-line-gutter">1</div>
+              <textarea id="agents-input-content" class="form-control agents-editor-textarea" placeholder="Treść instrukcji systemowej..."></textarea>
+            </div>
+            <div class="agents-content-meta">
+              <span class="agents-char-count" id="agents-char-count">0 znaków</span>
+            </div>
           </div>
         </div>
         <div class="agents-editor-actions">
@@ -253,6 +296,7 @@ export class AgentsView {
       else this._renderEmptyEditor();
     });
     this._bindDirtyTracking();
+    this._bindContentEditorExtras();
 
     document.getElementById('agents-input-name')?.focus();
   }
@@ -263,8 +307,33 @@ export class AgentsView {
       document.getElementById(id)?.addEventListener('input', (e) => {
         this.isDirty = true;
         e.target.classList.remove('is-invalid');
+        document.getElementById('agents-dirty-badge')?.classList.remove('hidden');
       });
     });
+  }
+
+  /** Numeracja linii (zsynchronizowana ze scrollem) i licznik znaków dla pola Treść. */
+  _bindContentEditorExtras() {
+    const textarea = document.getElementById('agents-input-content');
+    const gutter = document.getElementById('agents-line-gutter');
+    const charCount = document.getElementById('agents-char-count');
+    if (!textarea) return;
+
+    const update = () => {
+      const lineCount = textarea.value.split('\n').length;
+      if (gutter) {
+        gutter.innerHTML = Array.from({ length: lineCount }, (_, i) => i + 1).join('<br>');
+      }
+      if (charCount) {
+        charCount.textContent = `${textarea.value.length} znaków`;
+      }
+    };
+
+    textarea.addEventListener('input', update);
+    textarea.addEventListener('scroll', () => {
+      if (gutter) gutter.scrollTop = textarea.scrollTop;
+    });
+    update();
   }
 
   // --------------------------------------------------------------------------
@@ -333,6 +402,15 @@ export class AgentsView {
       await this._loadAndRender(promptId);
     } catch (error) {
       this._showToast(error.message || 'Błąd aktywacji promptu.', 'error');
+    }
+  }
+
+  async _handleCopyId(promptId) {
+    try {
+      await navigator.clipboard.writeText(promptId);
+      this._showToast('Skopiowano ID promptu.', 'success');
+    } catch (error) {
+      this._showToast('Nie udało się skopiować ID.', 'error');
     }
   }
 

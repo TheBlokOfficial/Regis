@@ -108,8 +108,9 @@
 }
 
 .nav-item.disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .nav-item.disabled:hover {
@@ -131,7 +132,7 @@
 /* Stopka Sidebaru */
 .sidebar-footer {
   padding: 18px 20px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-medium);
   background-color: rgba(0, 0, 0, 0.18);
 }
 

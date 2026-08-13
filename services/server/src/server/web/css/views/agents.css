@@ -57,8 +57,24 @@
 .agents-list-error {
   padding: 20px 12px;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--text-muted-aa);
   font-size: 0.86rem;
+}
+
+.agents-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.agents-panel-footer {
+  flex-shrink: 0;
+  padding: 10px 18px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted-aa);
+  font-size: 0.78rem;
+  text-align: center;
 }
 
 .agents-list-item {
@@ -123,7 +139,7 @@
 
 .agents-list-item-desc {
   font-size: 0.78rem;
-  color: var(--text-muted);
+  color: var(--text-muted-aa);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -192,6 +208,101 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.agents-editor-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agents-btn-copy-id {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted-aa);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.agents-btn-copy-id svg {
+  width: 14px;
+  height: 14px;
+}
+
+.agents-btn-copy-id:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-subtle);
+}
+
+.agents-dirty-badge {
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: #f0b429;
+}
+
+/* --------------------------------------------------------------------------
+   Toggle aktywności — jedyny mechanizm sygnalizacji/zmiany statusu aktywnego promptu
+   -------------------------------------------------------------------------- */
+.agents-toggle-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted-aa);
+  cursor: pointer;
+}
+
+.agents-toggle-active:disabled {
+  cursor: default;
+}
+
+.agents-toggle-active.is-on {
+  color: var(--accent-success);
+}
+
+.agents-toggle-track {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 10px;
+  background-color: var(--bg-surface-hover);
+  border: 1px solid var(--border-medium);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.agents-toggle-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background-color: var(--text-secondary);
+  transition: transform var(--transition-fast), background-color var(--transition-fast);
+}
+
+.agents-toggle-active.is-on .agents-toggle-track {
+  background-color: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.agents-toggle-active.is-on .agents-toggle-thumb {
+  transform: translateX(13px);
+  background-color: var(--accent-success);
+}
+
 .agents-editor-fields {
   display: flex;
   flex-direction: column;
@@ -218,19 +329,70 @@
   flex-direction: column;
 }
 
-.agents-editor-textarea {
+.agents-editor-content-wrap {
   flex: 1;
   min-height: 240px;
+  display: flex;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background-color: var(--bg-base);
+}
+
+.agents-editor-content-wrap:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.agents-line-gutter {
+  flex-shrink: 0;
+  width: 42px;
+  padding: 10px 8px;
+  overflow: hidden;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+  background-color: var(--bg-surface);
+  border-right: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.agents-editor-textarea {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
   resize: none;
+  border: none;
+  border-radius: 0;
   font-family: var(--font-mono);
   font-size: 0.88rem;
   line-height: 1.6;
 }
 
+.agents-editor-textarea:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.agents-content-meta {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 6px;
+  flex-shrink: 0;
+}
+
+.agents-char-count {
+  font-size: 0.76rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted-aa);
+}
+
 .agents-editor-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--border-subtle);
@@ -243,28 +405,29 @@
   gap: 10px;
 }
 
-/* Usuń zostaje przy pozostałych akcjach (nie ucieka na drugi kraniec szerokiego
-   panelu), ale odznacza się od nich cienkim separatorem — sygnalizuje, że to
-   inna kategoria akcji, bez izolowania go na krańcu ekranu. */
+/* Usuń wyrównany do prawej krawędzi tej samej szerokości co pole Treść —
+   grupuje akcje destrukcyjne osobno od głównej akcji (Zapisz), zamiast
+   zbijać obie grupy przy lewej krawędzi. */
 .agents-editor-actions-right {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: 12px;
-  padding-left: 16px;
-  border-left: 1px solid var(--border-subtle);
 }
 
-/* Usuń: widoczny w spoczynku (nie ginie na tle), czerwony dopiero na hover —
-   subtelniejszy niż wypełniony przycisk, ale nie niewidzialny. */
+/* Usuń: czytelnie destrukcyjny już w spoczynku (subtelny czerwony obrys/tekst),
+   nie tylko po najechaniu — hierarchia ważności widoczna bez interakcji. */
 .agents-btn-delete {
   background: transparent;
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--accent-danger);
 }
 
 .agents-btn-delete:hover:not(:disabled) {
-  color: var(--accent-danger);
-  background-color: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.3);
+  background-color: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.agents-btn-delete:disabled {
+  color: var(--text-muted);
+  border-color: var(--border-subtle);
 }

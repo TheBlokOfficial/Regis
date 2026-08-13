@@ -32,6 +32,7 @@ export class TabManager {
   bindEvents() {
     const navItems = document.querySelectorAll('.nav-item[data-tab]');
     navItems.forEach((item) => {
+      if (item.classList.contains('disabled')) return;
       item.addEventListener('click', (e) => {
         e.preventDefault();
         const tabId = item.getAttribute('data-tab');
