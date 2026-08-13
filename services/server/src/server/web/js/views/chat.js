@@ -124,6 +124,39 @@ export class ChatView {
         const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
         this.userHasScrolledUp = !isAtBottom;
       });
+
+      container.addEventListener('click', (e) => {
+        const summary = e.target.closest('.thinking-summary');
+        if (!summary) return;
+
+        const details = summary.closest('.chat-thinking-block');
+        if (!details) return;
+
+        if (details.open) {
+          e.preventDefault();
+
+          if (details._closingTimer) {
+            clearTimeout(details._closingTimer);
+            details._closingTimer = null;
+          }
+
+          if (details.classList.contains('is-closing')) {
+            details.classList.remove('is-closing');
+            return;
+          }
+
+          details.classList.add('is-closing');
+          details._closingTimer = setTimeout(() => {
+            details.removeAttribute('open');
+            details.classList.remove('is-closing');
+            details._closingTimer = null;
+          }, 300);
+        } else {
+          if (details.classList.contains('is-closing')) {
+            details.classList.remove('is-closing');
+          }
+        }
+      });
     }
 
     if (textarea) {
@@ -556,7 +589,7 @@ export class ChatView {
           titleEl.textContent = statusTitle;
         }
       } else {
-        thinkHtml = `<details class="chat-thinking-block"><summary class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></summary><div class="thinking-content">${escapedThink}</div></details>`;
+        thinkHtml = `<details class="chat-thinking-block" ${!isThinkingDone ? 'open' : ''}><summary class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></summary><div class="thinking-wrapper"><div class="thinking-content">${escapedThink}</div></div></details>`;
       }
     }
 
@@ -585,38 +618,6 @@ export class ChatView {
       .replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>');
   }
 
-  formatMessageText(text) {
-    if (!text) return '';
-
-    let content = text;
-    let thinkHtml = '';
-
-    // Sprawdzamy czy w tekście znajduje się tag <think>
-    const thinkStart = content.indexOf('<think>');
-    if (thinkStart !== -1) {
-      const thinkEnd = content.indexOf('</think>');
-      let rawThink = '';
-      let restText = '';
-
-      if (thinkEnd !== -1) {
-        rawThink = content.substring(thinkStart + 7, thinkEnd);
-        restText = content.substring(thinkEnd + 8);
-      } else {
-        rawThink = content.substring(thinkStart + 7);
-        restText = '';
-      }
-
-      const escapedThink = this.escapeHtml(rawThink.trim()).replace(/\n/g, '<br/>');
-      const isThinkingDone = thinkEnd !== -1;
-      const statusTitle = !isThinkingDone ? 'Regis myśli...' : 'Przemyślenia Agenta';
-
-      thinkHtml = `<details class="chat-thinking-block"><summary class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></summary><div class="thinking-content">${escapedThink}</div></details>`;
-      content = restText;
-    }
-
-    const formattedRest = this.formatRestContent(content);
-    return thinkHtml + `<div class="message-rest-content">${formattedRest}</div>`;
-  }
 
   async stopGeneration() {
     this.stopPolling();
@@ -710,16 +711,12 @@ export class ChatView {
       const isStreaming = thinkEnd === -1;
       const statusTitle = isStreaming ? 'Regis myśli...' : 'Przemyślenia Agenta';
 
-      thinkHtml = `<details class="chat-thinking-block" ${isStreaming ? 'open' : ''}><summary class="thinking-summary">${Icons.Sparkles()}<span>${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronDown()}</span></summary><div class="thinking-content">${escapedThink}</div></details>`;
+      thinkHtml = `<details class="chat-thinking-block" ${isStreaming ? 'open' : ''}><summary class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></summary><div class="thinking-wrapper"><div class="thinking-content">${escapedThink}</div></div></details>`;
       content = restText;
     }
 
-    const escapedContent = this.escapeHtml(content.trim()).replace(/\n/g, '<br/>');
-    const formattedContent = escapedContent
-      .replace(/```([\s\S]*?)```/g, '<pre class="chat-code-block"><code>$1</code></pre>')
-      .replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>');
-
-    return thinkHtml + formattedContent;
+    const formattedRest = this.formatRestContent(content);
+    return thinkHtml + `<div class="message-rest-content">${formattedRest}</div>`;
   }
 
   scrollToBottom(force = false) {
