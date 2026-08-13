@@ -1,0 +1,71 @@
+/* ==========================================================================
+   KARTY I USTAWIENIA (STONOWANY STYLE ANTIGRAVITY - ANTI-VIBE-CODING)
+   ========================================================================== */
+.card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 26px;
+  position: relative;
+}
+
+.card-hero {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.card-hero-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hero-title {
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 6px;
+}
+
+.hero-description {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin-top: 8px;
+  max-width: 720px;
+}
+
+.hero-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-hover);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.hero-icon-box-sm {
+  width: 36px;
+  height: 36px;
+}
+
+.card-sm {
+  padding: 20px;
+}
+
+/* Sekcja Ustawień */
+.section-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}

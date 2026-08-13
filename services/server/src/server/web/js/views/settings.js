@@ -8,27 +8,27 @@ export class SettingsView {
     return `
       <div class="dashboard-grid">
         <!-- Minimalistyczny Nagłówek Ustawień -->
-        <div class="page-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+        <div class="page-header">
           <div>
-            <h2 style="font-size: 1.35rem; font-weight: 600; color: var(--text-primary); letter-spacing: -0.01em;">Ustawienia Systemowe</h2>
-            <p style="font-size: 0.88rem; color: var(--text-secondary); margin-top: 4px;">Konfiguracja wdrożenia, parametrów sieciowych oraz instancji Regis OS.</p>
+            <h2 class="page-header-title">Ustawienia Systemowe</h2>
+            <p class="page-header-desc">Konfiguracja wdrożenia, parametrów sieciowych oraz instancji Regis OS.</p>
           </div>
           <span class="badge-muted">v0.1.0-alpha</span>
         </div>
 
         <!-- Sekcja 1: Informacje o Instancji i Węźle -->
-        <div class="section-header-bar" style="margin-top: 4px;">
+        <div class="section-header-bar">
           <h3 class="section-title">Informacje o Instancji</h3>
         </div>
 
-        <div class="card">
-          <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
-            <div class="hero-icon-box" style="width: 36px; height: 36px;">
+        <div class="settings-section">
+          <div class="settings-row-header">
+            <div class="hero-icon-box hero-icon-box-sm">
               ${Icons.Server()}
             </div>
             <div>
-              <div style="font-size: 0.95rem; font-weight: 500; color: var(--text-primary);">Węzeł Centralny Regis Agent OS</div>
-              <div style="font-size: 0.82rem; color: var(--text-secondary);">Lokalna instancja produkcyjna / deweloperska</div>
+              <div class="settings-row-title">Węzeł Centralny Regis Agent OS</div>
+              <div class="settings-row-desc">Lokalna instancja produkcyjna / deweloperska</div>
             </div>
           </div>
 
@@ -49,12 +49,12 @@ export class SettingsView {
         </div>
 
         <!-- Sekcja 2: Parametry Sieciowe & Bramka WebSocket -->
-        <div class="section-header-bar" style="margin-top: 12px;">
+        <div class="section-header-bar">
           <h3 class="section-title">Parametry Sieciowe & WebSocket</h3>
         </div>
 
-        <div class="card">
-          <div class="provider-meta-grid" style="border-top: none; margin-top: 0; padding-top: 0;">
+        <div class="settings-section">
+          <div class="provider-meta-grid provider-meta-grid-flush">
             <div class="provider-meta-item">
               <span class="provider-meta-label">Bramka HTTP / REST</span>
               <span class="provider-meta-value">http://127.0.0.1:8000/</span>

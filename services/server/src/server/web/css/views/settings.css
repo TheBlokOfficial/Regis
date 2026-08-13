@@ -1,0 +1,29 @@
+/* Sekcja Ustawień — bez ramek, rytm przez whitespace (jak Chat) */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-row-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.settings-row-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-row-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.provider-meta-grid-flush {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}

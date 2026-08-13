@@ -1,0 +1,198 @@
+/* Lista Dostawców LLM (Surowa, Elegancka Stonowana Skala) */
+.providers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.provider-card {
+  transition: all var(--transition-fast);
+  border-left: 3px solid transparent;
+}
+
+.active-provider-card {
+  border: 1px solid var(--border-medium);
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-md);
+}
+
+.provider-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.provider-info-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.provider-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.provider-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.provider-meta-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1.4fr 0.8fr;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.provider-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; /* Zapewnia poprawne przycinanie w CSS Grid */
+}
+
+.provider-meta-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.provider-meta-value {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  color: var(--text-primary);
+  background-color: var(--bg-base);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.text-active-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--accent-primary);
+}
+
+/* Nagłówek listy dostawców w modalu "Zarządzaj Dostawcami" */
+.modal-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.modal-list-header-label {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+/* Modal Provider Row Items (Czysta Elegancja bez Nakładania Paneli) */
+.modal-provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-provider-item {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.modal-provider-item:hover {
+  border-color: var(--border-medium);
+}
+
+.modal-provider-item.active {
+  border-color: var(--border-medium);
+  border-left: 3px solid var(--accent-success);
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.modal-provider-main-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-provider-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-provider-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-provider-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+/* Etykieta meta-danych (klucz: wartość) w listach dostawców */
+.meta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.80rem;
+  color: var(--text-muted);
+}
+
+.meta-tag code {
+  font-family: var(--font-mono);
+  font-size: 0.80rem;
+  color: var(--text-secondary);
+  background-color: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 7px;
+  letter-spacing: 0;
+}
+
+/* Etykieta sekcji (uppercase muted) nad nazwą dostawcy w karcie */
+.provider-section-label {
+  font-size: 0.70rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}

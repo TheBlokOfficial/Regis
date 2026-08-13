@@ -8,27 +8,20 @@ export class DashboardView {
     return `
       <div class="dashboard-grid">
         <!-- Minimalistyczny Nagłówek Strony -->
-        <div class="page-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+        <div class="page-header">
           <div>
-            <h2 style="font-size: 1.35rem; font-weight: 600; color: var(--text-primary); letter-spacing: -0.01em;">System Przeglądu</h2>
-            <p style="font-size: 0.88rem; color: var(--text-secondary); margin-top: 4px;">Monitorowanie i konfiguracja aktywnej instancji dostawcy LLM.</p>
+            <h2 class="page-header-title">System Przeglądu</h2>
+            <p class="page-header-desc">Monitorowanie i konfiguracja aktywnej instancji dostawcy LLM.</p>
           </div>
           <span class="badge-muted">v0.1.0</span>
         </div>
 
-        <!-- Karta Bento Wyrównana do Lewej (col-8 / 66% Szerokości) -->
-        <div class="bento-grid">
-          <div id="active-provider-container" class="col-8">
-            <div class="bento-card" style="padding: 36px 40px; min-height: 280px;">
-              <div>
-                <div class="bento-card-header">
-                  <span class="bento-card-title" style="font-size: 1.15rem;">Aktywny Dostawca LLM</span>
-                  <span class="badge badge-chip">ŁADOWANIE</span>
-                </div>
-                <div style="color: var(--text-secondary); font-size: 0.88rem;">Pobieranie danych o dostawcach...</div>
-              </div>
-            </div>
+        <div id="active-provider-container">
+          <div class="section-header-bar">
+            <h3 class="section-title">Aktywny Dostawca LLM</h3>
+            <span class="badge badge-chip">ŁADOWANIE</span>
           </div>
+          <p class="dashboard-loading-text">Pobieranie danych o dostawcach...</p>
         </div>
       </div>
     `;
@@ -43,15 +36,13 @@ export class DashboardView {
 
     if (!data || !data.providers || data.providers.length === 0) {
       container.innerHTML = `
-        <div class="bento-card" style="padding: 36px 40px; min-height: 280px;">
-          <div class="bento-card-header">
-            <span class="bento-card-title" style="font-size: 1.15rem;">Aktywny Dostawca LLM</span>
-          </div>
-          <p style="color: var(--text-secondary); margin-bottom: 16px;">Brak skonfigurowanych dostawców LLM.</p>
-          <button class="btn btn-primary" id="btn-open-manage-modal" style="width: auto; padding: 10px 20px;">
-            + Dodaj Dostawcę
-          </button>
+        <div class="section-header-bar">
+          <h3 class="section-title">Aktywny Dostawca LLM</h3>
         </div>
+        <p class="dashboard-empty-desc">Brak skonfigurowanych dostawców LLM.</p>
+        <button class="btn btn-primary" id="btn-open-manage-modal">
+          + Dodaj Dostawcę
+        </button>
       `;
       this.attachMainViewEvents(container, apiClient, refreshCallback);
       return;
@@ -62,47 +53,33 @@ export class DashboardView {
     const baseUrl = activeProvider.options?.base_url || (activeProvider.type === 'OPENROUTER' ? 'https://openrouter.ai/api/v1' : 'N/A');
 
     container.innerHTML = `
-      <div class="bento-card" style="padding: 36px 40px; min-height: 280px; justify-content: space-between;">
+      <div class="dashboard-hero-top">
         <div>
-          <!-- Górny Wiersz: Etykieta sekcji + Para Plakietek po prawej -->
-          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px;">
-            <div>
-              <div class="provider-section-label">Aktywny Dostawca LLM</div>
-              <div style="font-size: 1.85rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; line-height: 1.2; white-space: nowrap;">
-                ${escapeHtml(activeProvider.name)}
-              </div>
-              <div style="font-size: 0.85rem; font-weight: 400; color: var(--text-muted); font-family: var(--font-mono); margin-top: 8px;">
-                ${escapeHtml(modelName)}
-              </div>
-            </div>
-
-            <!-- Prawa Grupa Plakietek -->
-            <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-top: 4px;">
-              <span class="badge badge-status" style="height: 30px; font-size: 0.84rem; padding: 0 14px;">
-                ${escapeHtml((activeProvider.type || 'LLM').toUpperCase())}
-              </span>
-              <span class="badge badge-status" style="height: 30px; font-size: 0.84rem; padding: 0 14px;">
-                <span class="status-dot-pulse"></span>Aktywny
-              </span>
-            </div>
-          </div>
-
-          <!-- Środkowy Wiersz: Base URL -->
-          <div style="margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border-subtle);">
-            <div style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.06em; margin-bottom: 8px;">Punkt Końcowy (Base URL)</div>
-            <div style="font-size: 0.88rem; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-base); padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: inline-block;">
-              ${escapeHtml(baseUrl)}
-            </div>
-          </div>
+          <div class="provider-section-label">Aktywny Dostawca LLM</div>
+          <div class="dashboard-hero-name">${escapeHtml(activeProvider.name)}</div>
+          <div class="dashboard-hero-model">${escapeHtml(modelName)}</div>
         </div>
 
-        <!-- Stopka: Przycisk Akcji -->
-        <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end;">
-          <button class="btn btn-primary" id="btn-open-manage-modal" style="padding: 10px 22px; font-weight: 500; gap: 10px;">
-            <span>Zarządzaj Dostawcami</span>
-            <span style="opacity: 0.55;">→</span>
-          </button>
+        <div class="dashboard-hero-badges">
+          <span class="badge badge-status">
+            ${escapeHtml((activeProvider.type || 'LLM').toUpperCase())}
+          </span>
+          <span class="badge badge-status">
+            <span class="status-dot-pulse"></span>Aktywny
+          </span>
         </div>
+      </div>
+
+      <div class="dashboard-hero-endpoint">
+        <div class="dashboard-hero-endpoint-label">Punkt Końcowy (Base URL)</div>
+        <div class="dashboard-hero-endpoint-value">${escapeHtml(baseUrl)}</div>
+      </div>
+
+      <div class="dashboard-hero-footer">
+        <button class="btn btn-primary" id="btn-open-manage-modal">
+          <span>Zarządzaj Dostawcami</span>
+          <span class="dashboard-hero-arrow">→</span>
+        </button>
       </div>
     `;
 
@@ -132,19 +109,19 @@ export class DashboardView {
         <button class="btn-close-corner" id="btn-close-modal" title="Zamknij (Esc)">✕</button>
       </div>
 
-      <div class="section-header-bar" style="margin-bottom: 16px;">
-        <span style="font-size: 0.95rem; color: var(--text-secondary);">Skonfigurowane dostawce</span>
+      <div class="modal-list-header">
+        <span class="modal-list-header-label">Skonfigurowane dostawce</span>
         <button class="btn btn-primary btn-sm" id="modal-btn-toggle-add-form">
           + Dodaj Dostawcę
         </button>
       </div>
 
       <!-- Formularz Dodawania (Ukryty domyślnie) -->
-      <div class="card form-card hidden" id="modal-card-add-provider-form" style="margin-bottom: 20px; border: 1px solid var(--border-medium);">
+      <div class="card form-card hidden" id="modal-card-add-provider-form">
         <button class="btn-close-corner" id="modal-btn-close-form" title="Zamknij formularz">✕</button>
-        
-        <div style="margin-bottom: 16px;">
-          <span style="font-size: 1rem; font-weight: 600;">Nowa Instancja Dostawcy LLM</span>
+
+        <div class="form-card-title-row">
+          <span class="form-card-title">Nowa Instancja Dostawcy LLM</span>
         </div>
 
         <form id="modal-form-create-provider">
@@ -162,7 +139,7 @@ export class DashboardView {
             </div>
           </div>
 
-          <div class="form-row" id="modal-dynamic-options-container" style="flex-wrap: wrap;"></div>
+          <div class="form-row form-row-wrap" id="modal-dynamic-options-container"></div>
 
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">Zapisz Instancję</button>
@@ -215,7 +192,7 @@ export class DashboardView {
 
     const data = await apiClient.getLLMProviders();
     if (!data || !data.providers || data.providers.length === 0) {
-      listContainer.innerHTML = `<div class="card" style="padding: 20px;">Brak skonfigurowanych dostawców LLM.</div>`;
+      listContainer.innerHTML = `<div class="card card-sm">Brak skonfigurowanych dostawców LLM.</div>`;
     } else {
       listContainer.innerHTML = `
         <div class="modal-provider-list">
@@ -227,19 +204,19 @@ export class DashboardView {
             return `
               <div class="modal-provider-item ${isActive ? 'active' : ''}">
                 <div class="modal-provider-main-row">
-                  <div style="display: flex; align-items: center; gap: 12px;">
-                    <span style="font-size: 1.05rem; font-weight: 600; color: var(--text-primary);">${escapeHtml(p.name)}</span>
+                  <div class="modal-provider-title-group">
+                    <span class="modal-provider-name">${escapeHtml(p.name)}</span>
                     <span class="badge badge-chip">${escapeHtml((p.type || 'LLM').toUpperCase())}</span>
                     ${
                       isActive
-                        ? `<span class="badge badge-status" style="height: 26px; font-size: 0.78rem; padding: 0 10px;">
+                        ? `<span class="badge badge-status badge-status-sm">
                              <span class="status-dot-pulse"></span>Aktywny
                            </span>`
                         : ''
                     }
                   </div>
 
-                  <div style="display: flex; align-items: center; gap: 8px;">
+                  <div class="modal-provider-actions">
                     ${
                       !isActive
                         ? `<button class="btn btn-subtle btn-sm modal-btn-activate" data-id="${p.id}">
@@ -248,7 +225,7 @@ export class DashboardView {
                            <button class="btn btn-ghost-danger btn-sm modal-btn-delete" data-id="${p.id}" title="Usuń z dysku">
                              Usuń
                            </button>`
-                        : `<span style="font-size: 0.84rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                        : `<span class="text-active-indicator">
                              ${Icons.CheckCircle2()} Wybrany
                            </span>`
                     }
@@ -270,16 +247,12 @@ export class DashboardView {
           const id = e.currentTarget.getAttribute('data-id');
           try {
             btn.disabled = true;
-            btn.style.opacity = '0.5';
-            btn.style.pointerEvents = 'none';
             await apiClient.setActiveLLMProvider(id);
             if (refreshCallback) refreshCallback();
             await this.refreshModalContent(apiClient, refreshCallback);
           } catch (err) {
             this.showToast(`Błąd aktywacji: ${err.message}`, 'error');
             btn.disabled = false;
-            btn.style.opacity = '1';
-            btn.style.pointerEvents = 'auto';
           }
         });
       });
@@ -292,9 +265,9 @@ export class DashboardView {
 
           actionsBox.innerHTML = `
             <div class="delete-confirm-inline">
-              <span style="font-size: 0.82rem; color: #fca5a5; font-weight: 500;">Usunąć instancję?</span>
-              <button class="btn-confirm-yes" style="background: #ef4444; color: #fff; border: none; padding: 4px 10px; font-size: 0.78rem; border-radius: var(--radius-sm); cursor: pointer; font-weight: 600;">Tak</button>
-              <button class="btn-confirm-no" style="background: transparent; color: var(--text-secondary); border: 1px solid var(--border-subtle); padding: 4px 8px; font-size: 0.78rem; border-radius: var(--radius-sm); cursor: pointer;">Nie</button>
+              <span class="delete-confirm-text">Usunąć instancję?</span>
+              <button class="btn-confirm-yes">Tak</button>
+              <button class="btn-confirm-no">Nie</button>
             </div>
           `;
 
@@ -344,7 +317,7 @@ export class DashboardView {
     toastContainer.appendChild(toast);
 
     setTimeout(() => {
-      toast.style.opacity = '0';
+      toast.classList.add('toast-leaving');
       setTimeout(() => toast.remove(), 200);
     }, 3200);
   }
@@ -355,7 +328,7 @@ export class DashboardView {
     const closeBtn = document.getElementById('modal-btn-close-form');
     const cancelBtn = document.getElementById('modal-btn-cancel-form');
     const form = document.getElementById('modal-form-create-provider');
-    
+
     const typeSelect = document.getElementById('modal-provider-type');
     const nameInput = document.getElementById('modal-provider-name');
     const optionsContainer = document.getElementById('modal-dynamic-options-container');
@@ -387,7 +360,7 @@ export class DashboardView {
       }
 
       optionsContainer.innerHTML = selectedSpec.options_schema.map((opt) => `
-        <div class="form-group" style="min-width: 240px;">
+        <div class="form-group form-group-min240">
           <label for="modal-opt-${opt.name}">${escapeHtml(opt.label)}</label>
           <input
             type="${opt.type === 'password' ? 'password' : 'text'}"
@@ -428,7 +401,7 @@ export class DashboardView {
 
       const type = typeSelect.value;
       const name = nameInput.value;
-      
+
       const options = {};
       optionsContainer.querySelectorAll('.modal-dynamic-opt-input').forEach((input) => {
         const optName = input.getAttribute('data-opt-name');

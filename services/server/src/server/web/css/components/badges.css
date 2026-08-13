@@ -1,0 +1,90 @@
+/* 3-Poziomowy System Plakietek (Badge Design System - Wyrazista Biel & 28-30px) */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.80rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  background-color: var(--bg-surface-hover);
+  color: #e4e4e7;
+  border: 1px solid var(--border-medium);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.badge-status {
+  height: 28px;
+  padding: 0 14px;
+  background-color: var(--bg-base);
+  color: #e4e4e7;
+  border: 1px solid var(--border-medium);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.badge-status-sm {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+}
+
+.badge-chip {
+  height: 23px;
+  padding: 0 8px;
+  font-size: 0.70rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: var(--bg-base);
+  color: #a0a0ab;
+  border: 1px solid var(--border-medium);
+}
+
+.badge-muted {
+  height: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* Pulsująca Dioda Statusu (CSS Animated Status Dot) */
+.status-dot-pulse {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--accent-success);
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  animation: pulse-green 2s infinite;
+  margin-right: 7px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+@keyframes pulse-green {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.hidden {
+  display: none !important;
+}
+
+.icon-svg {
+  vertical-align: middle;
+}
