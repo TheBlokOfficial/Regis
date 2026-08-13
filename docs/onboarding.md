@@ -43,7 +43,11 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 
 Grupy urządzeń przechowywane są analogicznie w `services/server/data/addons/smart_home/groups/*.json`.
 
-Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), a nie ręczna edycja plików JSON. Integracje na razie konfiguruje się wyłącznie przez REST (`/api/v1/integrations`) — dedykowana zakładka w Web UI jest zaplanowana.
+### Prompty systemowe (`services/server/data/prompts/*.json`, zarządzane przez `PromptStore`):
+- Treść instrukcji systemowej faktycznie wysyłanej do LLM. Aktywny prompt wskazuje `services/server/data/active_prompt.json`.
+- **Uwaga**: `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` jest wyłącznie **fallbackiem i szablonem pierwszego uruchomienia**. `PromptStore.ensure_defaults()` tworzy plik tylko wtedy, gdy katalog `data/prompts/` jest pusty — późniejsza zmiana stałej w kodzie **nie zmienia** promptu, którego używa działający agent. Po rozszerzeniu możliwości agenta (np. włączeniu tool callingu) zaktualizuj aktywny prompt w zakładce **Prompty** w Web UI, inaczej model dalej będzie działał wg starych instrukcji.
+
+Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), a promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), a nie ręczna edycja plików JSON. Integracje na razie konfiguruje się wyłącznie przez REST (`/api/v1/integrations`) — dedykowana zakładka w Web UI jest zaplanowana.
 
 ---
 
@@ -73,8 +77,16 @@ Praktycznie:
 
 ### Uruchomienie serwera deweloperskiego:
 ```bash
-python -m uv run --package server uvicorn server.main:app --reload
+python -m uv run --package server python -m server.main
 ```
+
+> **Znane ograniczenie**: `server.main` nie eksportuje modułowego obiektu ASGI —
+> aplikacja FastAPI powstaje wewnątrz asynchronicznej funkcji `main()`, po
+> wcześniejszej inicjalizacji rejestru backendów, `PromptStore` i addonów.
+> Dlatego `uvicorn server.main:app --reload` kończy się błędem
+> *"Attribute 'app' not found in module 'server.main'"*, a tryb hot-reload nie
+> jest dostępny. Odblokowanie go wymaga zmiany w kodzie (fabryka aplikacji
+> + `lifespan`), nie w dokumentacji.
 
 ### Dostępne punkty końcowe REST, SSE i Web UI:
 - **Interaktywna dokumentacja Swagger UI**: `http://127.0.0.1:8000/docs`
@@ -96,7 +108,9 @@ python -m uv run --package server uvicorn server.main:app --reload
 | | `GET /api/v1/chat/sessions/{id}/history` | Pełna historia i metadane wybranej sesji |
 | | `DELETE /api/v1/chat/sessions/{id}` | Trwałe usunięcie pliku i historii podanej sesji |
 | **Prompts** | `GET/POST /api/v1/agent/prompts` | Lista i tworzenie promptów systemowych |
-| | `PUT/DELETE /api/v1/agent/prompts/{id}` | Edycja i usunięcie promptu |
+| | `GET /api/v1/agent/prompts/{id}` | Pobranie pojedynczego promptu |
+| | `PUT/DELETE /api/v1/agent/prompts/{id}` | Edycja i usunięcie promptu (usunięcie aktywnego jest zablokowane) |
+| | `PUT /api/v1/agent/prompts/{id}/activate` | Ustawienie promptu jako aktywnego systemowego |
 | **Integrations** | `GET /api/v1/integrations/schemas` | Schematy pól opcji zarejestrowanych typów integracji |
 | | `GET /api/v1/integrations` | Lista skonfigurowanych integracji (sekrety maskowane) |
 | | `POST /api/v1/integrations` | Utworzenie nowej instancji integracji |
@@ -104,29 +118,35 @@ python -m uv run --package server uvicorn server.main:app --reload
 | | `DELETE /api/v1/integrations/{id}` | Usunięcie instancji integracji |
 | **Device Groups** | `GET/POST /api/v1/integrations/groups` | Lista i tworzenie grup urządzeń |
 | | `PUT/DELETE /api/v1/integrations/groups/{id}` | Edycja i usunięcie grupy |
-- **Bramka WebSocket**: `ws://127.0.0.1:8000/ws` *(Planowana dla komunikacji rozproszonej)*
+
+> **Planowane, jeszcze nieistniejące**: bramka WebSocket (`ws://127.0.0.1:8000/ws`)
+> dla komunikacji rozproszonej. W kodzie nie ma dziś żadnego endpointu WS —
+> `gateway.py` rejestruje wyłącznie router REST/SSE i montuje SPA.
 
 ### Uruchomienie testów:
-Przed zgłoszeniem zmian obowiązkowo uruchom pełny zestaw testów:
+Przed zgłoszeniem zmian obowiązkowo uruchom pełny zestaw testów (`services/server/tests/`):
 ```bash
-python -m pytest
+python -m uv run python -m pytest -q
 ```
 
-> **Uwaga**: `pytest` nie jest obecnie zadeklarowany jako zależność w żadnym `pyproject.toml`, mimo że testy istnieją w `services/server/tests/`. Do czasu naprawy tego braku uruchamiaj zestaw efemerycznie:
-> ```bash
-> python -m uv run --with pytest --with anyio --with pytest-asyncio python -m pytest -q
-> ```
+`pytest` oraz `anyio` są zadeklarowane w grupie `dev` głównego `pyproject.toml`
+(PEP 735) i instalują się automatycznie przy `uv sync`. Testy asynchroniczne
+używają markera `@pytest.mark.anyio` obsługiwanego przez wtyczkę pytest wbudowaną
+w `anyio` — `pytest-asyncio` nie jest potrzebny.
+
+> **Uwaga**: uruchamiaj testy przez `uv run`, a nie gołym `python -m pytest` —
+> tylko wtedy masz gwarancję, że używasz środowiska workspace, a nie
+> przypadkowego interpretera systemowego.
 
 ---
 
 ## 5. Standardy Jakości Kodu i Dobre Praktyki
 
-Wszystkie zasady inżynierii oprogramowania oraz standardy jakości obowiązujące w projekcie są szczegółowo zdefiniowane w pliku [**`AGENTS.md`**](../AGENTS.md). 
-
-Najważniejsze filary:
-1. **Zasady SOLID, DRY, KISS, POLA & Boy Scout Rule**: Twórz kod modułowy, czytelny i bez niepotrzebnego powielania logiki.
-2. **Ścisłe Typowanie (Strict Type Hints)**: Wszystkie sygnatury funkcji i metod muszą posiadać pełne adnotacje typów Python.
-3. **Ujednolicone Logowanie**: Używaj ustandaryzowanego logera: `logger = get_logger("regis.nazwa_modułu")`.
+Obowiązujące zasady inżynierii i standardy jakości są zdefiniowane w jednym
+miejscu — w pliku [**`AGENTS.md`**](../AGENTS.md) w korzeniu repozytorium
+(SOLID/DRY/KISS/YAGNI/Boy Scout Rule, ścisłe typowanie, konwencja logowania
+`get_logger("regis.nazwa_modułu")` oraz kierunek zależności warstw). Ten
+dokument ich nie powiela — jeśli zasady mają się zmienić, zmieniaj `AGENTS.md`.
 
 ---
 
@@ -134,8 +154,8 @@ Najważniejsze filary:
 
 Podczas prac nad projektem należy bezwzględnie stosować ustandaryzowany cykl działań:
 
-1. **Analiza i weryfikacja faktów (Chain of Thought)**:
-   - Przed modyfikacją kodu sprawdź rzeczywisty stan plików, sygnatury i mechanizmy. Wykonaj pełną analizę COT zgodnie z wytycznymi z [`AGENTS.md`](file:///d:/Projekty/Regis/AGENTS.md).
+1. **Analiza i weryfikacja faktów**:
+   - Przed modyfikacją kodu sprawdź rzeczywisty stan plików, sygnatury i mechanizmy — nie zgaduj (zasada z [`AGENTS.md`](../AGENTS.md)). Dotyczy to również dokumentacji: każde zdanie w `docs/` traktuj jako hipotezę do potwierdzenia w kodzie.
 2. **Implementacja i Spójność Kontraktów**:
    - Zmiany w strukturach komunikacyjnych dodawaj w `packages/shared/src/shared/contracts.py`.
    - **Respektuj kierunek zależności warstw** (sekcja 3): kernel nie może importować z `addons/` ani `integrations/`, a addon nie może importować z `integrations/`. Weryfikacja:
@@ -144,8 +164,8 @@ Podczas prac nad projektem należy bezwzględnie stosować ustandaryzowany cykl 
      ```
      (poprawny wynik: brak trafień)
 3. **Automatyczna Weryfikacja**:
-   - Uruchom `python -m pytest` i upewnij się, że wszystkie testy przechodzą bez błędów.
+   - Uruchom `python -m uv run python -m pytest -q` i upewnij się, że wszystkie testy przechodzą bez błędów.
 4. **Procedura Zakończenia prac**:
    - Sprawdź zmodyfikowane pliki (`git status`).
    - Stwórz czytelny, zwięzły commit z opisem wykonanych zmian.
-   - Wykonaj wysyłkę zmian do repozytorium GitHub (`git push origin master`).
+   - **Zapytaj o zgodę przed** `git push origin master` — wysyłka nigdy nie jest automatyczna.

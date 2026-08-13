@@ -5,9 +5,10 @@
 **System Regis** to modularna platforma usług rozproszonych komunikujących się w sieci lokalnej, przeznaczona do orkiestracji i wykonywania zadań przez inteligentnych agentów AI.
 
 Kluczowe założenia architektoniczne Systemu Regis:
-- **Lokalność i Rozproszenie**: Usługi działają wydajnie w sieci lokalnej z pełną kontrolą nad prywatnością danych i przepływem informacji.
+- **Lokalność i Rozproszenie**: Usługi działają wydajnie w sieci lokalnej z pełną kontrolą nad prywatnością danych i przepływem informacji. *(Dziś: jedna usługa `services/server`; wielousługowość to kierunek, nie stan obecny — patrz sekcja 5.)*
 - **Hybrydowość modeli LLM**: Przezroczysta obsługa lokalnych modeli językowych (np. Ollama) oraz modeli chmurowych (np. OpenRouter).
-- **Czas Rzeczywisty**: Dwukierunkowa, strumieniowa komunikacja oparta o WebSockets oraz asynchroniczną magistralę zdarzeń (`EventBus`).
+- **Ogólny agent, doklejane możliwości**: Rdzeń nie zna żadnej konkretnej domeny; możliwości (dziś: smart home) dochodzą jako addony i integracje rejestrowane w kompozycji aplikacji.
+- **Czas Rzeczywisty**: Strumieniowanie odpowiedzi w czasie rzeczywistym przez **SSE** oraz asynchroniczną magistralę zdarzeń (`EventBus`). Dwukierunkowe **WebSockets** są **planowane** — w kodzie nie ma dziś żadnego endpointu WS.
 - **Niezawodność i Kontrola**: Wbudowany mechanizm kontroli zadań, natychmiastowe anulowanie generowania odpowiedzi oraz izolacja sesji użytkowników.
 
 ---
@@ -24,8 +25,8 @@ Regis/
 ├── packages/         # Wspólne pakiety kodowe
 │   └── shared/       # Paczka shared (ConfigStore, EventBus, DTO, logging)
 ├── services/         # Niezależne usługi sieciowe
-│   └── server/       # Główna usługa serwera Regis (bramka REST/WS, engine, addony, integracje)
-├── pyproject.toml    # Główna konfiguracja workspace oraz pytest
+│   └── server/       # Główna usługa serwera Regis (bramka REST/SSE, kernel, addony, integracje, Web UI)
+├── pyproject.toml    # Główna konfiguracja workspace, grupy dev (pytest, anyio) oraz pytest
 └── README.md         # Wprowadzenie do projektu
 ```
 
@@ -133,16 +134,18 @@ może użyć* — nie integralną częścią tego, czym agent jest.
   - **`routes/providers.py`**: Konfiguracja i zarządzenie dostawcami LLM (`GET/POST/PUT/DELETE /api/v1/llm/providers/*`, schemas).
   - **`routes/chat.py`**: Interakcje synchroniczne, strumieniowanie SSE i anulowanie (`POST /api/v1/chat/*`).
   - **`routes/sessions.py`**: Zarządzanie i historia sesji konwersacji (`GET/POST/DELETE /api/v1/chat/sessions/*`).
-  - **`routes/prompts.py`**: CRUD promptów systemowych (`GET/POST/PUT/DELETE /api/v1/agent/prompts/*`).
+  - **`routes/prompts.py`**: CRUD promptów systemowych wraz z aktywacją (`GET/POST/PUT/DELETE /api/v1/agent/prompts/*`, `PUT /{id}/activate`).
   - **`routes/integrations.py`**: Konfiguracja integracji i grup urządzeń (`GET/POST/PUT/DELETE /api/v1/integrations/*` oraz `/api/v1/integrations/groups/*`).
-- **Gateway (`gateway.py`)**: Serwuje wbudowaną konsolę WWW (SPA) oraz rejestruje centralny router API v1 (`create_api_router`). W modelu pojedynczej usługi strumieniowanie tokenów do konsoli realizowane jest przez protokół **SSE**. Dwukierunkowa bramka **WebSockets** (`ws://127.0.0.1:8000/ws`) jest zaplanowana jako punkt komunikacji w architekturze rozproszonej z wieloma usługami satelitarnymi.
+- **Gateway (`gateway.py`)**: Serwuje wbudowaną konsolę WWW (SPA) oraz rejestruje centralny router API v1 (`create_api_router`). W modelu pojedynczej usługi strumieniowanie tokenów do konsoli realizowane jest przez protokół **SSE**. Dwukierunkowa bramka **WebSockets** (`ws://127.0.0.1:8000/ws`) jest wyłącznie **zaplanowana** jako punkt komunikacji w architekturze rozproszonej z wieloma usługami satelitarnymi — `gateway.py` nie rejestruje dziś żadnego endpointu WS.
+- **Kompozycja aplikacji**: Instancja FastAPI powstaje w `create_gateway_app()`, wołanym z asynchronicznej funkcji `main()` po inicjalizacji rejestru backendów, `PromptStore` i addonów. Moduł `server.main` **nie eksportuje** modułowego obiektu `app`, więc uruchomienie przez `uvicorn server.main:app --reload` nie jest możliwe (patrz `docs/onboarding.md`, sekcja 4).
 
 ### 3.2 Warstwa 0 — Kernel Agenta (`services/server/src/server/agent`)
 - **`AgentEngine` (`engine.py`)**: Serce orkiestracji Systemu Regis. Realizuje **pełną pętlę agentyczną (ReAct)** — jeśli LLM zażąda wywołania narzędzia, wynik wraca do niego jako kolejna wiadomość i generacja jest kontynuowana, aż model zwróci odpowiedź finalną lub zostanie przekroczony `max_tool_iterations` (domyślnie 8). Kontroluje aktywne zadania konwersacyjne (`_active_tasks`), zarządza cyklem życia sesji oraz udostępnia metody `interact_stream` i `cancel_interaction`.
 - **`addon_contract.py`**: Definicja `AddonProvider` (`typing.Protocol`) i `ToolDispatch` — **jedyna wiedza kernela o istnieniu addonów**. `AgentEngine._build_aggregated_tools()` scala narzędzia ze wszystkich wpiętych addonów; przy kolizji nazw narzędzie późniejszego addonu jest logowane jako błąd i pomijane (bez cichego nadpisania).
 - **`MemoryManager` (`memory/session.py`)**: Odpowiada za utrwalanie historii rozmów per sesja na dysku (`data/sessions/*.json`). Do pamięci trafia **wyłącznie finalny tekst odpowiedzi** — pośrednie wiadomości `assistant`/`tool` z pętli ReAct żyją tylko w pamięci na czas jednej interakcji.
 - **`ContextBuilder` (`context/builder.py`)**: Komponuje ostateczny prompt dla LLM, łącząc instrukcje systemowe z historią sesji. Przycina historię do `max_history_messages` najnowszych wiadomości (domyślnie 40, konfigurowalne w `settings.json`), by uniknąć przekroczenia limitu kontekstu modelu w długich konwersacjach. Przycinanie działa na podstawie liczby wiadomości, nie realnego zliczania tokenów. Parametr `tools_available` warunkowo dokleja jedno neutralne zdanie o dostępności narzędzi — nigdy nie wymienia ich nazw ani pochodzenia.
-- **`PromptStore` (`prompts/store.py`)**: Magazyn promptów systemowych (`data/prompts/*.json`) z wyborem aktywnego promptu.
+- **`PromptStore` (`prompts/store.py`)**: Magazyn promptów systemowych (`data/prompts/*.json`) z wyborem aktywnego promptu (`data/active_prompt.json`). Usunięcie aktywnego promptu jest zablokowane; gdy nie da się wczytać żadnego, `ContextBuilder` używa `DEFAULT_SYSTEM_PROMPT` jako fallbacku.
+  > **Pułapka**: `ensure_defaults()` tworzy domyślny prompt **tylko gdy katalog `data/prompts/` jest pusty**. Późniejsza zmiana `DEFAULT_SYSTEM_PROMPT` w kodzie **nie aktualizuje** już zapisanego pliku — treść, którą faktycznie dostaje LLM, żyje na dysku i zmienia się wyłącznie przez UI/REST. Przy zmianach możliwości agenta (np. włączeniu tool callingu) trzeba zaktualizować aktywny prompt osobno.
 
 ### 3.3 Warstwa Dostawców LLM (`services/server/src/server/agent/backend`)
 - **`BaseLLMProvider` (`providers/base.py`)**: Interfejs abstrakcyjny definiujący metodę `generate_stream(messages, tools)`, która yielduje `str` (fragment tekstu) **albo** `ToolCallRequest` (kompletne żądanie wywołania narzędzia). Cała złożoność formatu API konkretnego dostawcy (OpenRouter: akumulacja fragmentarycznych `delta.tool_calls` z SSE; Ollama: kompletne `tool_calls` w jednym komunikacie) jest ukryta wewnątrz providera — kernel operuje wyłącznie na abstrakcyjnych typach. Oba dostępne backendy wspierają tool calling.
@@ -162,7 +165,12 @@ może użyć* — nie integralną częścią tego, czym agent jest.
 ### 3.6 Warstwa Wspólna (`packages/shared/src/shared`)
 - **`ConfigStore` (`config.py`)**: Centralny zarządca persystentnej konfiguracji w formacie JSON z automatyczną walidacją i domyślnymi wartościami.
 - **`EventBus` (`event_bus.py`)**: Asynchroniczna magistrala zdarzeń pub/sub (`subscribe`/`publish`). **W pełni wpięta w przepływ strumieniowania** — `AgentEngine` publikuje zdarzenia `ServerEventType.CHAT_CHUNK/DONE/ERROR/CANCELLED`, a `interact_stream` subskrybuje je i tłumaczy z powrotem na strumień tokenów dla wywołującego. Dzięki temu rdzeń nie zna bezpośrednio odbiorców (SSE dziś, WebSockets satelitów w przyszłości).
-- **`contracts.py`**: Definicje obiektów transferu danych (DTO), m.in. `ChatMessageDTO`, `ChatResponseDTO`, `SendChatMessageRequest`, `IntegrationDTO`, `DeviceGroupDTO` oraz struktury odpowiedzi API.
+- **`contracts.py`**: Definicje obiektów transferu danych (DTO) współdzielonych przez serwer i konsolę WWW:
+  - **System**: `HealthResponse`.
+  - **Dostawcy LLM**: `LLMProviderDTO`, `LLMProviderListResponse`, `SelectLLMProviderRequest`, `CreateLLMProviderRequest` oraz generyczna specyfikacja opcji (`ProviderOptionSpec`, `ProviderTypeSpecDTO`, `ProviderMetadataResponse`) — ta sama, której używają też typy integracji.
+  - **Czat i sesje**: `ChatMessageDTO`, `SendChatMessageRequest`, `ChatResponseDTO`, `ChatSessionSummaryDTO`, `ChatSessionHistoryResponse`, `ChatSessionListResponse`, `CancelChatApiRequest`.
+  - **Prompty systemowe**: `PromptDTO`, `PromptListResponse`, `CreatePromptRequest`, `UpdatePromptRequest`.
+  - **Integracje i grupy urządzeń**: `IntegrationDTO`, `IntegrationListResponse`, `CreateIntegrationRequest`, `UpdateIntegrationRequest`, `DeviceGroupDTO`, `DeviceGroupListResponse`, `CreateDeviceGroupRequest`, `UpdateDeviceGroupRequest`.
 - **`logging.py`**: Jednolita konfiguracja logów dla całego monorepo z ustandaryzowanymi nazwami kategorii (`regis.main`, `regis.agent`, itp.).
 
 ---
@@ -234,7 +242,9 @@ Klient (Web UI)        REST Gateway            AgentEngine         Task (Asyncio
 
 - **Brak rdzennego pojęcia "pokoju" (`Room`)**: Narzucałoby kernelowi/addonowi założenie „świat = dom z pokojami”, podczas gdy smart home jest tylko jedną z możliwych domen agenta. `Device.area` pozostaje luźnym tagiem bez rejestru. Świadomość przestrzenna będzie własnością przyszłego systemu satelitów (satelita deklaruje swoją lokalizację), a skorelowanie jej z urządzeniami należy do LLM, nie do sztywnej logiki serwera.
 - **`DeviceGroup` należy do addonu, nie do kernela**: Model grupowania jest ściśle związany z `invoke`/capability tej konkretnej domeny; generalizacja bez drugiego przypadku użycia byłaby przedwczesna.
+- **Integracje żyją w `server/integrations/`, nie wewnątrz addonu**: Zagnieżdżenie (`addons/smart_home/integrations/home_assistant.py`) sugerowałoby, że integracja jest częścią addonu i należy do niego jako implementacja. Tymczasem zależność biegnie w drugą stronę: to integracja zna kontrakt addonu (`DeviceIntegration`), a addon nie zna żadnej integracji. Katalog najwyższego poziomu utrzymuje tę asymetrię widoczną w strukturze plików i zostawia miejsce na integracje obsługujące kontrakty kilku addonów naraz.
 - **Brak potwierdzeń dla akcji z efektami ubocznymi**: Narzędzia wykonują się automatycznie w pętli ReAct.
+- **Zapis decyzji: ta sekcja zamiast osobnych ADR-ów**: Uzasadnienia mieszkają tam, gdzie i tak czyta się architekturę. Osobny katalog `docs/adr/` duplikowałby te treści i rozjeżdżał się z manifestem — w projekcie jednoosobowym to koszt bez odbiorcy. Zmieniasz jedną z powyższych decyzji? Zaktualizuj wpis, nie dopisuj nowego dokumentu obok.
 
 ### Zaplanowane, jeszcze niezaimplementowane
 

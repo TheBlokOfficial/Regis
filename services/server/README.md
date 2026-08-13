@@ -1,5 +1,20 @@
 # server
 
-Główny serwer w architekturze rozproszonej Regis oparty na FastAPI (REST API v1, streaming SSE) z docelową obsługą połączeń WebSocket oraz wbudowanym Web UI (`src/server/web`).
+Główny serwer Systemu Regis oparty na FastAPI: REST API v1, strumieniowanie odpowiedzi przez SSE oraz wbudowana konsola Web UI (`src/server/web`). Bramka WebSocket dla architektury rozproszonej jest **planowana** — dziś nie istnieje w kodzie.
 
-Pełny opis architektury i przepływów danych: [`docs/manifest.md`](../../docs/manifest.md). Instrukcje uruchomienia i konfiguracji: [`docs/onboarding.md`](../../docs/onboarding.md).
+Usługa dzieli się na trzy warstwy, w których żadna nie zna z góry implementacji warstwy poniżej (rejestracja jawna w `src/server/main.py`):
+
+| Warstwa | Katalog | Zawartość |
+| :--- | :--- | :--- |
+| **0 — Kernel** | `src/server/agent/` | `AgentEngine` (pętla ReAct/tool calling), `MemoryManager`, `ContextBuilder`, `PromptStore`, dostawcy LLM (`backend/`) |
+| **1 — Addony** | `src/server/addons/` | `BaseTool` + `SmartHomeAddon` (urządzenia, grupy, narzędzia LLM) |
+| **2 — Integracje** | `src/server/integrations/` | `HomeAssistantIntegration` |
+
+Poza nimi: `network/` (bramka FastAPI i routery REST/SSE), `web/` (SPA), `config.py`, `events.py`, `main.py` (kompozycja aplikacji).
+
+Uruchomienie:
+```bash
+python -m uv run --package server python -m server.main
+```
+
+Pełny opis architektury i przepływów danych: [`docs/manifest.md`](../../docs/manifest.md). Konfiguracja, mapa endpointów i cykl pracy: [`docs/onboarding.md`](../../docs/onboarding.md).

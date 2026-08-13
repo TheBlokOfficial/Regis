@@ -9,6 +9,15 @@ dependencies = [
     "server",
 ]
 
+[dependency-groups]
+# Zależności deweloperskie instalowane domyślnie przez `uv sync`.
+# `anyio` dostarcza wtyczkę pytest obsługującą marker `@pytest.mark.anyio`,
+# którego używa cały zestaw testów (nie jest potrzebny `pytest-asyncio`).
+dev = [
+    "pytest>=8.0",
+    "anyio>=4.0",
+]
+
 [tool.uv]
 package = false
 

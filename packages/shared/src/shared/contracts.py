@@ -15,7 +15,7 @@ class LLMProviderDTO(BaseModel):
     """Reprezentacja instancji dostawcy LLM dla API."""
 
     id: str = Field(..., description="Unikalne ID instancji backendu (np. bk_ollama_local)")
-    type: str = Field(..., description="Typ dostawcy (OLLAMA, OPENROUTER, OPENAI)")
+    type: str = Field(..., description="Typ dostawcy (OLLAMA, OPENROUTER)")
     name: str = Field(..., description="Wyświetlana nazwa")
     options: dict[str, Any] = Field(default_factory=dict, description="Opcje konfiguracyjne")
     is_active: bool = Field(default=False, description="Czy ten dostawca jest obecnie aktywny")
@@ -37,7 +37,7 @@ class SelectLLMProviderRequest(BaseModel):
 class CreateLLMProviderRequest(BaseModel):
     """Żądanie dla POST /api/v1/llm/providers."""
 
-    type: str = Field(..., description="Typ dostawcy (OLLAMA, OPENROUTER, OPENAI)")
+    type: str = Field(..., description="Typ dostawcy (OLLAMA, OPENROUTER)")
     name: str = Field(..., description="Wyświetlana nazwa")
     options: dict[str, Any] = Field(default_factory=dict, description="Opcje konfiguracyjne")
     custom_id: str | None = Field(default=None, description="Opcjonalne własne ID")
@@ -53,7 +53,7 @@ class ProviderOptionSpec(BaseModel):
 
     name: str = Field(..., description="Klucz pola w dict options (np. model, base_url, api_key)")
     label: str = Field(..., description="Etykieta wyświetlana w interfejsie")
-    type: str = Field(default="string", description="Typ pola HTML (string, password)")
+    type: str = Field(default="string", description="Typ pola HTML (string, password, number)")
     required: bool = Field(default=True, description="Czy pole jest wymagane")
     default_value: str | None = Field(default=None, description="Domyślna wartość")
     placeholder: str | None = Field(default=None, description="Tekst zastępczy (placeholder)")
@@ -62,7 +62,7 @@ class ProviderOptionSpec(BaseModel):
 class ProviderTypeSpecDTO(BaseModel):
     """Specyfikacja typu dostawcy LLM zawierająca zestaw jego wymaganych opcji."""
 
-    type: str = Field(..., description="Identyfikator typu (OLLAMA, OPENROUTER, OPENAI)")
+    type: str = Field(..., description="Identyfikator typu (np. OLLAMA, OPENROUTER dla LLM, HOME_ASSISTANT dla integracji)")
     label: str = Field(..., description="Wyświetlana nazwa typu")
     options_schema: list[ProviderOptionSpec] = Field(
         default_factory=list, description="Lista specyfikacji pól konfiguracyjnych"

@@ -17,8 +17,37 @@ nowa; wróć do źródeł tylko przy realnej niejasności.
 - Widzisz lukę w pomyśle albo lepsze rozwiązanie? Zgłoś to zamiast wdrażać
   bezrefleksyjnie.
 
+## Architektura: kierunek zależności (najłatwiejsza do złamania reguła)
+Serwer ma trzy warstwy i **żadna nie zna z góry implementacji warstwy poniżej**
+— te rejestrują się same, jawnie, w kompozycji aplikacji (`main.py`):
+
+| Warstwa | Katalog | Wie o warstwie niżej tylko tyle |
+| :--- | :--- | :--- |
+| 0 — Kernel | `server/agent/` | protokół `AddonProvider` |
+| 1 — Addony | `server/addons/` | własny kontrakt (np. `DeviceIntegration`) |
+| 2 — Integracje | `server/integrations/` | — |
+
+Konkretnie: kernel nie importuje z `addons/` ani `integrations/`, addon nie
+importuje z `integrations/` i nie zna nazwy żadnej integracji. Nowy addon czy
+integracja **nigdy** nie wymaga zmiany kernela. Weryfikacja (poprawny wynik: brak trafień):
+
+```bash
+grep -rn "from server.addons\|from server.integrations" services/server/src/server/agent/
+```
+
+Uzasadnienie i konsekwencje: `docs/manifest.md`, sekcje 3 i 5.
+
 ## Jakość kodu
-SOLID, DRY, KISS, YAGNI, Boy Scout Rule.
+- SOLID, DRY, KISS, YAGNI, Boy Scout Rule.
+- Ścisłe typowanie: pełne adnotacje typów w sygnaturach funkcji i metod.
+- Logowanie przez wspólny helper: `logger = get_logger("regis.nazwa_modułu")`.
+- Testy: `python -m uv run python -m pytest -q`.
+
+## Dokumentacja
+Zmieniasz architekturę, warstwy, endpointy albo sposób uruchamiania? Zaktualizuj
+`docs/manifest.md` i `docs/onboarding.md` w tym samym commicie. Nie duplikuj
+treści między dokumentami — README linkuje do `docs/`, nie kopiuje. Rzeczy
+planowane opisuj jednoznacznie jako planowane.
 
 ## Koniec sesji
 1. `git status`
