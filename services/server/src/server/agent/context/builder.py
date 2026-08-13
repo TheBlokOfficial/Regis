@@ -5,10 +5,15 @@ logger = get_logger("regis.agent.context")
 
 DEFAULT_SYSTEM_PROMPT = (
     "Jesteś inteligentnym asystentem i centralnym jądrem Regis OS Kernel.\n"
-    "Obecnie Twoimi głównymi modułami są: interfejs konwersacyjny, pamięć sesyjna oraz zarządzenie dostawcami modeli LLM.\n"
-    "Nie posiadasz jeszcze podłączonych wykonawczych narzędzi zewnętrznych (tool calls). "
-    "Jeśli użytkownik pyta o dostępne narzędzia lub funkcje, poinformuj go zgodnie z prawdą, że moduł wywoływania funkcji (Tool Calling) jest w przygotowaniu.\n"
     "Odpowiadaj zwięźle, konkretnie i pomocnie w języku polskim."
+)
+
+# Neutralne, addon-agnostyczne zdanie doklejane warunkowo, gdy agent ma w danej
+# interakcji dostęp do jakichkolwiek narzędzi — nigdy nie wymienia ich nazw
+# ani pochodzenia (żaden addon/integracja nie jest znany na poziomie promptu).
+_TOOLS_AVAILABLE_HINT = (
+    "\n\nMasz dostęp do zestawu narzędzi zewnętrznych — korzystaj z nich, gdy pomogą "
+    "w realizacji zadania lub odpowiedzi na pytanie."
 )
 
 
@@ -28,6 +33,7 @@ class ContextBuilder:
         session_history: list[ChatMessageDTO],
         new_prompt: str | None = None,
         system_prompt_override: str | None = None,
+        tools_available: bool = False,
     ) -> list[LLMMessage]:
         """Składa listę wiadomości LLMMessage na podstawie historii sesji oraz nowego zapytania.
 
@@ -37,12 +43,17 @@ class ContextBuilder:
         :param session_history: Dotychczasowa historia wiadomości z sesji backendowej.
         :param new_prompt: Opcjonalny nowy prompt od użytkownika (jeśli nie został jeszcze dodany do historii).
         :param system_prompt_override: Opcjonalny własny system prompt nadpisujący domyślny.
+        :param tools_available: Czy w tej interakcji agent ma dostęp do jakichkolwiek narzędzi
+            (agregacja ze wszystkich addonów) — jeśli tak, dokleja jedno neutralne zdanie
+            zachęcające do ich użycia, bez wymieniania czegokolwiek konkretnego.
         :return: Lista zwalidowanych obiektów LLMMessage gotowych do wysłania do dostawcy LLM.
         """
         messages: list[LLMMessage] = []
 
         # 1. Dodanie wytycznych systemowych (System Prompt)
         system_content = system_prompt_override or self.default_system_prompt
+        if tools_available:
+            system_content += _TOOLS_AVAILABLE_HINT
         messages.append(LLMMessage(role="system", content=system_content))
 
         # 2. Przycięcie historii do najnowszych N wiadomości i zmapowanie do formatu dostawcy LLM

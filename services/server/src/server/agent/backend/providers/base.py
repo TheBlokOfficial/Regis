@@ -4,11 +4,50 @@ from typing import Any, AsyncIterator, Literal
 
 
 @dataclass
+class ToolCallRequest:
+    """Kompletne żądanie wywołania narzędzia wygenerowane przez LLM.
+
+    Providerzy buforują wewnętrznie fragmentaryczny format swojego API (np. SSE
+    delty OpenAI-compatible) i yieldują tę strukturę dopiero w całości —
+    warstwa agenta nigdy nie zna surowego formatu konkretnego dostawcy.
+    """
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass
+class ToolDefinition:
+    """Specyfikacja narzędzia udostępnianego LLM (JSON Schema parametrów)."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+@dataclass
+class ToolResult:
+    """Wynik wykonania narzędzia zwracany do LLM w kolejnej turze pętli agentycznej.
+
+    Symetryczny odpowiednik `ToolCallRequest` — razem tworzą "język" w jakim
+    kernel rozmawia o narzędziach z LLM, niezależnie od tego, jaki addon
+    faktycznie wykonał narzędzie.
+    """
+
+    content: str
+    is_error: bool = False
+
+
+@dataclass
 class LLMMessage:
     """Struktura pojedynczej wiadomości w konwersacji z dostawcą LLM."""
 
-    role: Literal["system", "user", "assistant"]
+    role: Literal["system", "user", "assistant", "tool"]
     content: str
+    tool_calls: list[ToolCallRequest] | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
 
 
 @dataclass
@@ -37,30 +76,35 @@ class BaseLLMProvider(ABC):
     def generate_stream(
         self,
         messages: list[LLMMessage],
+        tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str]:
-        """Strumieniuje wygenerowane fragmenty tekstu (tokeny/słowa) w czasie rzeczywistym.
+    ) -> AsyncIterator[str | ToolCallRequest]:
+        """Strumieniuje wygenerowane fragmenty tekstu oraz żądania wywołania narzędzi.
 
         :param messages: Lista wiadomości stanowiących kontekst konwersacji.
+        :param tools: Opcjonalna lista narzędzi udostępnionych LLM do wywołania.
         :param kwargs: Dodatkowe opcjonalne parametry generacji.
-        :yields: Kolejne fragmenty tekstu (chunks/tokens) generowane przez dostawcę.
+        :yields: Fragmenty tekstu (`str`) lub kompletne żądania wywołania narzędzia (`ToolCallRequest`).
         """
         pass
 
     async def generate(
         self,
         messages: list[LLMMessage],
+        tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """Generuje pełną odpowiedź z dostawcy LLM, sklejając tokeny ze strumienia.
 
         :param messages: Lista wiadomości stanowiących kontekst konwersacji.
+        :param tools: Opcjonalna lista narzędzi udostępnionych LLM do wywołania.
         :param kwargs: Dodatkowe opcjonalne parametry generacji.
         :return: Wygenerowana obiektowo odpowiedź typu LLMResponse.
         """
         chunks: list[str] = []
-        async for chunk in self.generate_stream(messages, **kwargs):
-            chunks.append(chunk)
+        async for event in self.generate_stream(messages, tools=tools, **kwargs):
+            if isinstance(event, str):
+                chunks.append(event)
 
         full_content = "".join(chunks)
         model_name = getattr(self, "model", "unknown")

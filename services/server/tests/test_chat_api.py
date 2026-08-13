@@ -25,7 +25,7 @@ class MockLLMProvider(BaseLLMProvider):
             model=self._model,
         )
 
-    async def generate_stream(self, messages: List[LLMMessage]) -> AsyncIterator[str]:
+    async def generate_stream(self, messages: List[LLMMessage], tools=None, **kwargs) -> AsyncIterator[str]:
         last_msg = messages[-1].content if messages else ""
         words = ["Echo:", last_msg]
         for word in words:
@@ -154,7 +154,7 @@ class SlowMockLLMProvider(BaseLLMProvider):
     async def generate(self, messages: List[LLMMessage]) -> LLMResponse:
         return LLMResponse(content="Slow response", model="slow-mock")
 
-    async def generate_stream(self, messages: List[LLMMessage]) -> AsyncIterator[str]:
+    async def generate_stream(self, messages: List[LLMMessage], tools=None, **kwargs) -> AsyncIterator[str]:
         import asyncio
         words = ["Słowo1", "Słowo2", "Słowo3"]
         for word in words:

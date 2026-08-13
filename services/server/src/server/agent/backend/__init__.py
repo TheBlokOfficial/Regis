@@ -2,7 +2,16 @@
 
 from server.agent.backend.factory import LLMFactory
 from server.agent.backend.models import ActiveBackendConfig, BackendFileContent, BackendInstanceConfig, ProviderType
-from server.agent.backend.providers import BaseLLMProvider, LLMMessage, LLMResponse, OllamaProvider, OpenRouterProvider
+from server.agent.backend.providers import (
+    BaseLLMProvider,
+    LLMMessage,
+    LLMResponse,
+    OllamaProvider,
+    OpenRouterProvider,
+    ToolCallRequest,
+    ToolDefinition,
+    ToolResult,
+)
 from server.agent.backend.registry import BackendRegistry
 
 __all__ = [
@@ -17,4 +26,7 @@ __all__ = [
     "OllamaProvider",
     "OpenRouterProvider",
     "ProviderType",
+    "ToolCallRequest",
+    "ToolDefinition",
+    "ToolResult",
 ]

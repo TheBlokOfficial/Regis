@@ -14,6 +14,7 @@ class Settings(BaseModel):
     llm_timeout: float = Field(default=30.0, description="Globalny limit czasu zapytań do LLM w sekundach")
     llm_default_max_tokens: int = Field(default=4096, description="Domyślna maksymalna liczba tokenów wyjściowych dla modeli LLM")
     max_history_messages: int = Field(default=40, description="Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM")
+    max_tool_iterations: int = Field(default=8, description="Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej, zanim agent zakończy z tym co wygenerował")
 
 
 # Automatyczne odnajdywanie korzenia usługi (services/server)

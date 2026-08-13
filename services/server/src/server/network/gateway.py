@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
 from server.agent.prompts import PromptStore
+from server.addons.smart_home import SmartHomeAddon
 from server.network.routes import create_api_router
 
 
@@ -11,6 +12,7 @@ def create_gateway_app(
     agent_engine: AgentEngine,
     backend_registry: BackendRegistry,
     prompt_store: PromptStore,
+    smart_home_addon: SmartHomeAddon | None = None,
 ) -> FastAPI:
     """Tworzy i konfiguruje bramkę sieciową FastAPI z wbudowaną konsolą WWW i punktami końcowymi."""
     app = FastAPI(
@@ -24,6 +26,7 @@ def create_gateway_app(
         agent_engine=agent_engine,
         backend_registry=backend_registry,
         prompt_store=prompt_store,
+        smart_home_addon=smart_home_addon or SmartHomeAddon(),
     )
     app.include_router(api_router)
 

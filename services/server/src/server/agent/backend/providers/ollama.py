@@ -1,12 +1,43 @@
 import json
+import uuid
 from typing import Any, AsyncIterator
 import httpx
 from shared import get_logger
 
 from server.config import load_settings
-from server.agent.backend.providers.base import BaseLLMProvider, LLMMessage
+from server.agent.backend.providers.base import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition
 
 logger = get_logger("regis.agent.providers.ollama")
+
+
+def _messages_to_ollama_payload(messages: list[LLMMessage]) -> list[dict[str, Any]]:
+    """Mapuje LLMMessage na format wiadomości Ollama /api/chat (w tym rolę 'tool')."""
+    payload_messages: list[dict[str, Any]] = []
+    for m in messages:
+        entry: dict[str, Any] = {"role": m.role, "content": m.content}
+        if m.role == "assistant" and m.tool_calls:
+            entry["tool_calls"] = [
+                {"function": {"name": call.name, "arguments": call.arguments}} for call in m.tool_calls
+            ]
+        if m.role == "tool" and m.tool_name:
+            entry["tool_name"] = m.tool_name
+        payload_messages.append(entry)
+    return payload_messages
+
+
+def _tools_to_ollama_payload(tools: list[ToolDefinition]) -> list[dict[str, Any]]:
+    """Mapuje ToolDefinition na format 'tools' Ollamy (identyczny kształt co OpenAI-compatible)."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
+            },
+        }
+        for tool in tools
+    ]
 
 
 class OllamaProvider(BaseLLMProvider):
@@ -33,14 +64,18 @@ class OllamaProvider(BaseLLMProvider):
     async def generate_stream(
         self,
         messages: list[LLMMessage],
+        tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[str | ToolCallRequest]:
         url = f"{self.base_url}/api/chat"
-        payload = {
+        payload: dict[str, Any] = {
             "model": kwargs.get("model", self._model),
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "messages": _messages_to_ollama_payload(messages),
             "stream": True,
         }
+
+        if tools:
+            payload["tools"] = _tools_to_ollama_payload(tools)
 
         options = dict(kwargs.get("options", {}))
         max_t = kwargs.get("max_tokens", self._max_tokens)
@@ -72,6 +107,7 @@ class OllamaProvider(BaseLLMProvider):
                                 or message_data.get("reasoning")
                             )
                             content = message_data.get("content", "")
+                            raw_tool_calls = message_data.get("tool_calls")
 
                             if reasoning:
                                 if not in_thinking:
@@ -83,6 +119,17 @@ class OllamaProvider(BaseLLMProvider):
                                     yield "\n</think>\n\n"
                                     in_thinking = False
                                 yield content
+
+                            if raw_tool_calls:
+                                # Ollama nie fragmentuje tool_calls w streamie — przychodzą kompletne
+                                # w jednym komunikacie message, bez potrzeby buforowania.
+                                for call in raw_tool_calls:
+                                    function_data = call.get("function", {})
+                                    yield ToolCallRequest(
+                                        id=call.get("id") or f"call_{uuid.uuid4().hex[:12]}",
+                                        name=function_data.get("name", ""),
+                                        arguments=function_data.get("arguments", {}) or {},
+                                    )
                         except json.JSONDecodeError:
                             continue
 

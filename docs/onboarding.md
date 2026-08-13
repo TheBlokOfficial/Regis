@@ -30,12 +30,20 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`llm_timeout`**: Globalny limit czasu zapytań do LLM w sekundach (domyślnie: `30.0`).
 - **`llm_default_max_tokens`**: Domyślna maksymalna liczba tokenów wyjściowych (domyślnie: `4096`).
 - **`max_history_messages`**: Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM (domyślnie: `40`).
+- **`max_tool_iterations`**: Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej (domyślnie: `8`).
 
 ### Parametry dostawców LLM (`services/server/data/backends/*.json`, zarządzane przez `BackendRegistry`):
 - **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
 - **`options.base_url`**: Adres serwera Ollama (domyślnie: `http://localhost:11434`).
 
-Najwygodniejszy sposób edycji obu grup ustawień to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), a nie ręczna edycja plików JSON.
+### Parametry integracji (`services/server/data/addons/smart_home/integrations/*.json`, zarządzane przez `SmartHomeAddon`):
+- **`type`**: Identyfikator zarejestrowanego typu integracji (np. `HOME_ASSISTANT`).
+- **`enabled`**: Czy integracja aktywnie dostarcza urządzenia agentowi (wiele integracji może być włączonych jednocześnie).
+- **`options.base_url`** / **`options.access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token).
+
+Grupy urządzeń przechowywane są analogicznie w `services/server/data/addons/smart_home/groups/*.json`.
+
+Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), a nie ręczna edycja plików JSON. Integracje na razie konfiguruje się wyłącznie przez REST (`/api/v1/integrations`) — dedykowana zakładka w Web UI jest zaplanowana.
 
 ---
 
@@ -44,6 +52,20 @@ Najwygodniejszy sposób edycji obu grup ustawień to zakładka **Ustawienia** w 
 Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](manifest.md). Struktura monorepo podzielona jest na:
 - **Paczka `packages/shared`**: Dostarcza niezależne abstrakcje infrastrukturalne (logowanie `logging.py`, magistralę zdarzeń `event_bus.py`, persystencję `config.py` oraz struktury danych DTO `contracts.py`).
 - **Usługa `services/server`**: Główny serwer integrujący komponenty z `shared`, udostępniający REST API v1, strumieniowanie SSE dla konsoli Web UI oraz docelową bramkę WebSockets dla architektury rozproszonej.
+
+### Trzy warstwy wewnątrz `services/server` (kluczowe dla rozbudowy):
+
+| Warstwa | Katalog | Odpowiedzialność | Co wie o warstwie niżej |
+| :--- | :--- | :--- | :--- |
+| **0 — Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct | Tylko protokół `AddonProvider` |
+| **1 — Addony** | `server/addons/` | Domena możliwości (dziś: smart home), deklaracja narzędzi | Tylko własny kontrakt (np. `DeviceIntegration`) |
+| **2 — Integracje** | `server/integrations/` | Konkretne implementacje (dziś: Home Assistant) | — |
+
+**Zasada nadrzędna**: żadna warstwa nie zna z góry implementacji warstwy poniżej — te rejestrują się same, jawnie, w `main.py`. Dodanie nowej integracji albo nowego addonu **nie wymaga zmiany kernela**.
+
+Praktycznie:
+- **Nowy addon**: klasa z metodą `async def build_tools() -> (list[ToolDefinition], dispatch)` w `server/addons/`, dopisana do `AgentEngine(addons=[...])` w `main.py`.
+- **Nowa integracja**: implementacja kontraktu addonu (np. `DeviceIntegration`) w `server/integrations/`, eksportująca `TYPE_NAME`, `SCHEMA` i `create()`, zarejestrowana przez `addon.register_integration_type(...)` w `main.py`.
 
 ---
 
@@ -73,6 +95,15 @@ python -m uv run --package server uvicorn server.main:app --reload
 | | `POST /api/v1/chat/sessions` | Utworzenie nowej sesji konwersacji |
 | | `GET /api/v1/chat/sessions/{id}/history` | Pełna historia i metadane wybranej sesji |
 | | `DELETE /api/v1/chat/sessions/{id}` | Trwałe usunięcie pliku i historii podanej sesji |
+| **Prompts** | `GET/POST /api/v1/agent/prompts` | Lista i tworzenie promptów systemowych |
+| | `PUT/DELETE /api/v1/agent/prompts/{id}` | Edycja i usunięcie promptu |
+| **Integrations** | `GET /api/v1/integrations/schemas` | Schematy pól opcji zarejestrowanych typów integracji |
+| | `GET /api/v1/integrations` | Lista skonfigurowanych integracji (sekrety maskowane) |
+| | `POST /api/v1/integrations` | Utworzenie nowej instancji integracji |
+| | `PUT /api/v1/integrations/{id}` | Edycja instancji (w tym włączenie/wyłączenie) |
+| | `DELETE /api/v1/integrations/{id}` | Usunięcie instancji integracji |
+| **Device Groups** | `GET/POST /api/v1/integrations/groups` | Lista i tworzenie grup urządzeń |
+| | `PUT/DELETE /api/v1/integrations/groups/{id}` | Edycja i usunięcie grupy |
 - **Bramka WebSocket**: `ws://127.0.0.1:8000/ws` *(Planowana dla komunikacji rozproszonej)*
 
 ### Uruchomienie testów:
@@ -80,6 +111,11 @@ Przed zgłoszeniem zmian obowiązkowo uruchom pełny zestaw testów:
 ```bash
 python -m pytest
 ```
+
+> **Uwaga**: `pytest` nie jest obecnie zadeklarowany jako zależność w żadnym `pyproject.toml`, mimo że testy istnieją w `services/server/tests/`. Do czasu naprawy tego braku uruchamiaj zestaw efemerycznie:
+> ```bash
+> python -m uv run --with pytest --with anyio --with pytest-asyncio python -m pytest -q
+> ```
 
 ---
 
@@ -102,6 +138,11 @@ Podczas prac nad projektem należy bezwzględnie stosować ustandaryzowany cykl 
    - Przed modyfikacją kodu sprawdź rzeczywisty stan plików, sygnatury i mechanizmy. Wykonaj pełną analizę COT zgodnie z wytycznymi z [`AGENTS.md`](file:///d:/Projekty/Regis/AGENTS.md).
 2. **Implementacja i Spójność Kontraktów**:
    - Zmiany w strukturach komunikacyjnych dodawaj w `packages/shared/src/shared/contracts.py`.
+   - **Respektuj kierunek zależności warstw** (sekcja 3): kernel nie może importować z `addons/` ani `integrations/`, a addon nie może importować z `integrations/`. Weryfikacja:
+     ```bash
+     grep -rn "from server.addons\|from server.integrations" services/server/src/server/agent/
+     ```
+     (poprawny wynik: brak trafień)
 3. **Automatyczna Weryfikacja**:
    - Uruchom `python -m pytest` i upewnij się, że wszystkie testy przechodzą bez błędów.
 4. **Procedura Zakończenia prac**:
