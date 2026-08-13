@@ -54,12 +54,25 @@ Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](mani
 python -m uv run --package server uvicorn server.main:app --reload
 ```
 
-### Dostępne punkty końcowe API v1:
+### Dostępne punkty końcowe REST, SSE i Web UI:
+- **Interaktywna dokumentacja Swagger UI**: `http://127.0.0.1:8000/docs`
 - **Lokalny Interfejs Web UI**: `http://127.0.0.1:8000/`
-- **REST API Chat**: `POST http://127.0.0.1:8000/api/v1/chat`
-- **SSE Streaming Chat**: `POST http://127.0.0.1:8000/api/v1/chat/stream`
-- **Anulowanie aktywnego zapytania**: `POST http://127.0.0.1:8000/api/v1/chat/cancel`
-- **Lista i historia sesji**: `GET http://127.0.0.1:8000/api/v1/chat/sessions`
+
+| Moduł | Metoda & Ścieżka API v1 | Opis |
+| :--- | :--- | :--- |
+| **System** | `GET /api/v1/health` | Status zdrowia serwera i wdrożonych modułów |
+| **LLM Providers** | `GET /api/v1/llm/providers/schemas` | Specyfikacje parametrów konfiguracji dostawców |
+| | `GET /api/v1/llm/providers` | Lista skonfigurowanych dostawców LLM i aktywnego ID |
+| | `PUT /api/v1/llm/providers/active` | Wybór/przełączenie aktywnego dostawcy LLM |
+| | `POST /api/v1/llm/providers` | Utworzenie nowej instancji dostawcy (zapis JSON) |
+| | `DELETE /api/v1/llm/providers/{id}` | Usunięcie konfiguracji dostawcy LLM z dysku |
+| **Chat Engine** | `POST /api/v1/chat` | Synchroniczna odpowiedź Agenta w jednym zapytaniu |
+| | `POST /api/v1/chat/stream` | Strumieniowanie tokenów w czasie rzeczywistym (SSE) |
+| | `POST /api/v1/chat/cancel` | Anulowanie aktywnego generowania dla podanej sesji |
+| **Sessions** | `GET /api/v1/chat/sessions` | Pobranie podsumowań wszystkich zapisanych sesji |
+| | `POST /api/v1/chat/sessions` | Utworzenie nowej sesji konwersacji |
+| | `GET /api/v1/chat/sessions/{id}/history` | Pełna historia i metadane wybranej sesji |
+| | `DELETE /api/v1/chat/sessions/{id}` | Trwałe usunięcie pliku i historii podanej sesji |
 - **Bramka WebSocket**: `ws://127.0.0.1:8000/ws` *(Planowana dla komunikacji rozproszonej)*
 
 ### Uruchomienie testów:

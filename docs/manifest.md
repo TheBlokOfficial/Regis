@@ -68,17 +68,12 @@ Regis/
 ```
 
 ### 3.1 Warstwa Sieciowa (`services/server/src/server/network`)
-- **FastAPI Router (`routes.py`)**: Obsługuje punkty końcowe REST i SSE API v1:
-  - `GET /api/v1/health` – Status zdrowia bramki i modułów.
-  - `GET /api/v1/llm/providers/schemas` – Specyfikacje pól opcji dla dostępnych typów dostawców LLM.
-  - `GET /api/v1/llm/providers` & `PUT /api/v1/llm/providers/active` – Listowanie i przełączanie aktywnego dostawcy LLM.
-  - `POST /api/v1/llm/providers` & `DELETE /api/v1/llm/providers/{provider_id}` – Tworzenie i usuwanie instancji dostawców LLM.
-  - `POST /api/v1/chat` – Jednorazowa interakcja synchroniczna z Agentem.
-  - `POST /api/v1/chat/stream` – Strumieniowa interakcja w czasie rzeczywistym via Server-Sent Events (SSE).
-  - `POST /api/v1/chat/cancel` – Natychmiastowe przerwanie przetwarzania dla podanej sesji.
-  - `GET /api/v1/chat/sessions` & `POST /api/v1/chat/sessions` – Listowanie i tworzenie sesji konwersacji.
-  - `GET /api/v1/chat/sessions/{session_id}/history` & `DELETE /api/v1/chat/sessions/{session_id}` – Historia i usuwanie konkretnej sesji.
-- **Gateway (`gateway.py`)**: Serwuje wbudowaną konsolę WWW (SPA) oraz rejestruje centralny router API v1. W modelu pojedynczej usługi strumieniowanie tokenów do konsoli realizowane jest przez protokół **SSE**. Dwukierunkowa bramka **WebSockets** (`ws://127.0.0.1:8000/ws`) jest zaplanowana jako punkt komunikacji w architekturze rozproszonej z wieloma usługami satelitarnymi.
+- **FastAPI Gateway (`gateway.py`) i zmodularyzowane routery (`routes/`)**: Obsługują punkty końcowe REST i SSE API v1 z podziałem na dedykowane pod-routery:
+  - **`routes/health.py`**: Status zdrowia bramki i modułów (`GET /api/v1/health`).
+  - **`routes/providers.py`**: Konfiguracja i zarządzenie dostawcami LLM (`GET/POST/PUT/DELETE /api/v1/llm/providers/*`, schemas).
+  - **`routes/chat.py`**: Interakcje synchroniczne, strumieniowanie SSE i anulowanie (`POST /api/v1/chat/*`).
+  - **`routes/sessions.py`**: Zarządzanie i historia sesji konwersacji (`GET/POST/DELETE /api/v1/chat/sessions/*`).
+- **Gateway (`gateway.py`)**: Serwuje wbudowaną konsolę WWW (SPA) oraz rejestruje centralny router API v1 (`create_api_router`). W modelu pojedynczej usługi strumieniowanie tokenów do konsoli realizowane jest przez protokół **SSE**. Dwukierunkowa bramka **WebSockets** (`ws://127.0.0.1:8000/ws`) jest zaplanowana jako punkt komunikacji w architekturze rozproszonej z wieloma usługami satelitarnymi.
 
 ### 3.2 Warstwa Rdzenia Agenta (`services/server/src/server/agent`)
 - **`AgentEngine` (`engine.py`)**: Serce orkiestracji Systemu Regis. Kontroluje aktywne zadania konwersacyjne (`_active_tasks`), zarządza cyklem życia sesji oraz udostępnia metody `interact_stream` i `cancel_interaction`.
