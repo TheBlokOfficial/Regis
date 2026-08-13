@@ -1,316 +1,270 @@
 /* ==========================================================================
-   AGENTS VIEW — Split Layout dla zarządzania promptami systemowymi
+   WIDOK AGENTY — Split Layout dla zarządzania promptami systemowymi
    ========================================================================== */
 
-/* Modifier na workspace-content aplikowany przez TabManager przy aktywacji zakładki */
+/* Modifier na #workspace-content aplikowany przez TabManager przy aktywacji zakładki */
 .workspace-content--full {
   padding: 0 !important;
   overflow: hidden !important;
 }
 
-/* Ukryty element */
-.hidden {
-  display: none !important;
-}
-
-/* --------------------------------------------------------------------------
-   Root split layout
-   -------------------------------------------------------------------------- */
 .agents-layout {
   display: flex;
   height: 100%;
-  overflow: hidden;
+  max-height: calc(100vh - 100px);
 }
 
 /* --------------------------------------------------------------------------
-   Panel lewy — lista promptów
+   Panel lewy: lista promptów
    -------------------------------------------------------------------------- */
 .agents-panel-list {
-  width: 256px;
-  min-width: 256px;
+  width: 300px;
+  min-width: 240px;
+  flex-shrink: 1;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-subtle);
-  overflow: hidden;
   background-color: var(--bg-sidebar);
+  overflow: hidden;
 }
 
 .agents-panel-header {
-  padding: 18px 14px 14px;
-  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
 .agents-panel-title {
-  font-size: 0.73rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 .agents-list {
   flex: 1;
   overflow-y: auto;
-  padding: 6px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
 
-.agents-list-loading {
+.agents-list-loading,
+.agents-list-empty,
+.agents-list-error {
   padding: 20px 12px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
   text-align: center;
+  color: var(--text-muted);
+  font-size: 0.86rem;
 }
 
 .agents-list-item {
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background-color var(--transition-fast);
-  border: 1px solid transparent;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
 .agents-list-item:hover {
   background-color: var(--bg-surface-hover);
 }
 
-.agents-list-item.selected {
-  background-color: var(--bg-active);
-  border-color: var(--border-focus);
+.agents-list-item:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
 }
 
-.agents-item-name {
-  font-size: 0.88rem;
-  font-weight: 500;
-  color: var(--text-primary);
+.agents-list-item.selected {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-medium);
+  border-left: 3px solid var(--text-primary);
+  padding-left: 9px;
+}
+
+.agents-list-item.is-active:not(.selected) {
+  background-color: rgba(34, 197, 94, 0.05);
+}
+
+.agents-list-item-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  overflow: hidden;
 }
 
-.agents-item-name-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.agents-item-desc {
-  font-size: 0.76rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding-left: 15px; /* wcięcie pod kropkę */
-}
-
-.agents-active-dot {
+.agents-list-item-dot {
   width: 7px;
   height: 7px;
   min-width: 7px;
   border-radius: 50%;
+  background-color: transparent;
+}
+
+.agents-list-item.is-active .agents-list-item-dot {
   background-color: var(--accent-success);
-  box-shadow: 0 0 7px rgba(34, 197, 94, 0.55);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+.agents-list-item-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.agents-list-item-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 15px;
+}
+
+.agents-badge-active {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent-success);
+  background-color: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  padding: 1px 7px;
+  border-radius: 10px;
+  flex-shrink: 0;
 }
 
 /* --------------------------------------------------------------------------
-   Panel prawy — edytor
+   Panel prawy: edytor
    -------------------------------------------------------------------------- */
 .agents-panel-editor {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background-color: var(--bg-base);
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .agents-editor-empty {
-  flex: 1;
+  margin: auto;
+  text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
+  gap: 10px;
   color: var(--text-muted);
 }
 
 .agents-editor-empty-icon {
-  font-size: 2.2rem;
-  opacity: 0.2;
-  line-height: 1;
+  font-size: 2rem;
+  color: var(--text-secondary);
 }
 
-.agents-editor-empty p {
-  font-size: 0.9rem;
-  opacity: 0.7;
+.agents-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 480px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 32px;
+  gap: 16px;
+  overflow: hidden;
 }
 
-/* Nagłówek edytora */
 .agents-editor-header {
-  padding: 18px 28px 16px;
-  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   flex-shrink: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.agents-editor-fields {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-}
-
-.agents-editor-title-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.agents-editor-prompt-name {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Ciało edytora (scrollowalne) */
-.agents-editor-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 22px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
 }
 
-.agents-editor-row {
-  display: flex;
-  gap: 18px;
+.agents-editor-fields > .form-group {
+  margin-bottom: 0;
 }
 
-.agents-editor-field {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+/* Pola Nazwa/Opis mają stałą, jednowierszową wysokość — nie powinny konkurować
+   o przestrzeń flex z polem Treść, inaczej rozciągają się w pustkę. */
+.agents-field-compact {
+  flex: 0 0 auto;
+}
+
+.agents-editor-content-group {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.agents-editor-field label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-
-.agents-editor-field .form-control {
-  width: 100%;
-}
-
-/* Textarea treści promptu */
-.agents-content-textarea {
-  width: 100%;
+.agents-editor-textarea {
+  flex: 1;
   min-height: 240px;
-  resize: vertical;
+  resize: none;
   font-family: var(--font-mono);
-  font-size: 0.875rem;
-  line-height: 1.7;
-  background-color: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  padding: 14px 16px;
-  border-radius: var(--radius-sm);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-  tab-size: 2;
+  font-size: 0.88rem;
+  line-height: 1.6;
 }
 
-.agents-content-textarea:focus {
-  border-color: var(--border-focus);
-  outline: none;
-  box-shadow: 0 0 0 2px var(--accent-glow);
-}
-
-/* Stopka edytora */
-.agents-editor-footer {
-  padding: 14px 28px;
+.agents-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.agents-editor-actions-left {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-shrink: 0;
-  background-color: var(--bg-sidebar);
 }
 
-.agents-editor-footer-spacer {
-  flex: 1;
-}
-
-.agents-dirty-indicator {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  font-style: italic;
-  opacity: 0.8;
-}
-
-/* --------------------------------------------------------------------------
-   Odznaki statusu
-   -------------------------------------------------------------------------- */
-.badge-active {
-  display: inline-flex;
+/* Usuń zostaje przy pozostałych akcjach (nie ucieka na drugi kraniec szerokiego
+   panelu), ale odznacza się od nich cienkim separatorem — sygnalizuje, że to
+   inna kategoria akcji, bez izolowania go na krańcu ekranu. */
+.agents-editor-actions-right {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.73rem;
-  font-weight: 600;
-  color: var(--accent-success);
-  background-color: rgba(34, 197, 94, 0.09);
-  border: 1px solid rgba(34, 197, 94, 0.22);
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  flex-shrink: 0;
-  letter-spacing: 0.02em;
+  gap: 10px;
+  margin-left: 12px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border-subtle);
 }
 
-.badge-active-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--accent-success);
-  flex-shrink: 0;
-}
-
-.badge-inactive {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.73rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  background-color: var(--bg-surface-hover);
+/* Usuń: widoczny w spoczynku (nie ginie na tle), czerwony dopiero na hover —
+   subtelniejszy niż wypełniony przycisk, ale nie niewidzialny. */
+.agents-btn-delete {
+  background: transparent;
   border: 1px solid var(--border-subtle);
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  flex-shrink: 0;
+  color: var(--text-secondary);
 }
 
-.badge-draft {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.73rem;
-  font-weight: 500;
-  color: #f59e0b;
-  background-color: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.2);
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  flex-shrink: 0;
+.agents-btn-delete:hover:not(:disabled) {
+  color: var(--accent-danger);
+  background-color: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
 }

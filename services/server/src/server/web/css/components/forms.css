@@ -79,6 +79,15 @@
   box-shadow: 0 0 0 2px var(--accent-glow);
 }
 
+.form-control.is-invalid {
+  border-color: var(--accent-danger);
+}
+
+.form-control.is-invalid:focus {
+  border-color: var(--accent-danger);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.18);
+}
+
 .form-actions {
   display: flex;
   align-items: center;

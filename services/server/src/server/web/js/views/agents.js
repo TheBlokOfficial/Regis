@@ -1,5 +1,8 @@
+import { Icons } from '../icons.js';
+
 /**
- * Widok zarządzania promptami systemowymi Agenta — split layout (lista + edytor inline).
+ * Widok zarządzania promptami systemowymi Agenta — lista promptów (lewa kolumna)
+ * i edytor inline (prawa kolumna).
  */
 export class AgentsView {
   constructor() {
@@ -9,13 +12,19 @@ export class AgentsView {
     this.prompts = [];
     this.activeId = null;
     this.selectedId = null;
-    this._isNewMode = false;
+    this.isNewMode = false;
+    /** Czy edytor ma niezapisane zmiany od ostatniego renderu/zapisu. */
+    this.isDirty = false;
+  }
+
+  /** Wywoływane przez TabManager przed opuszczeniem zakładki — chroni przed utratą edycji. */
+  hasUnsavedChanges() {
+    return this.isDirty;
   }
 
   render() {
     return `
       <div class="agents-layout" id="agents-layout">
-        <!-- Panel lewy: lista promptów -->
         <div class="agents-panel-list">
           <div class="agents-panel-header">
             <span class="agents-panel-title">Prompty</span>
@@ -25,11 +34,9 @@ export class AgentsView {
             <div class="agents-list-loading">Ładowanie...</div>
           </div>
         </div>
-
-        <!-- Panel prawy: edytor -->
         <div class="agents-panel-editor" id="agents-panel-editor">
           <div class="agents-editor-empty">
-            <div class="agents-editor-empty-icon">◈</div>
+            <div class="agents-editor-empty-icon">${Icons.Cpu()}</div>
             <p>Wybierz prompt z listy lub utwórz nowy.</p>
           </div>
         </div>
@@ -39,13 +46,13 @@ export class AgentsView {
 
   async init(apiClient) {
     this.apiClient = apiClient;
+    document.getElementById('agents-btn-new')?.addEventListener('click', () => this._enterNewMode());
     await this._loadAndRender();
-    this._bindPanelEvents();
   }
 
-  // ---------------------------------------------------------------------------
-  // Ładowanie danych
-  // ---------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
+  // Ładowanie i renderowanie listy
+  // --------------------------------------------------------------------------
 
   async _loadAndRender(selectId = null) {
     const data = await this.apiClient.getPrompts();
@@ -55,448 +62,341 @@ export class AgentsView {
     }
     this.prompts = data.prompts || [];
     this.activeId = data.active_id;
+    this.isNewMode = false;
 
-    // Ustal ID do zaznaczenia
-    if (selectId && this.prompts.find((p) => p.id === selectId)) {
+    if (selectId && this.prompts.some((p) => p.id === selectId)) {
       this.selectedId = selectId;
-    } else if (!this.selectedId || !this.prompts.find((p) => p.id === this.selectedId)) {
+    } else if (!this.selectedId || !this.prompts.some((p) => p.id === this.selectedId)) {
       this.selectedId = this.activeId || (this.prompts[0]?.id ?? null);
     }
 
-    this._isNewMode = false;
     this._renderList();
-
-    if (this.selectedId) {
-      const prompt = this.prompts.find((p) => p.id === this.selectedId);
-      if (prompt) this._renderEditor(prompt);
+    const selected = this.prompts.find((p) => p.id === this.selectedId);
+    if (selected) {
+      this._renderEditor(selected);
+    } else {
+      this._renderEmptyEditor();
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Renderowanie listy
-  // ---------------------------------------------------------------------------
+  _renderListError() {
+    const list = document.getElementById('agents-list');
+    if (list) list.innerHTML = `<div class="agents-list-error">Błąd ładowania listy promptów.</div>`;
+  }
 
   _renderList() {
     const list = document.getElementById('agents-list');
     if (!list) return;
 
     if (this.prompts.length === 0) {
-      list.innerHTML = `<div class="agents-list-loading">Brak promptów. Utwórz pierwszy.</div>`;
+      list.innerHTML = `<div class="agents-list-empty">Brak zapisanych promptów.</div>`;
       return;
     }
 
     list.innerHTML = this.prompts
-      .map(
-        (p) => `
-        <div
-          class="agents-list-item${p.id === this.selectedId ? ' selected' : ''}"
-          data-id="${escHtml(p.id)}"
-        >
-          <div class="agents-item-name">
-            ${p.is_active ? '<span class="agents-active-dot" title="Aktywny"></span>' : '<span style="width:7px;min-width:7px"></span>'}
-            <span class="agents-item-name-text">${escHtml(p.name)}</span>
+      .map((p) => {
+        const isActive = p.id === this.activeId;
+        const isSelected = !this.isNewMode && p.id === this.selectedId;
+        return `
+          <div class="agents-list-item ${isSelected ? 'selected' : ''} ${isActive ? 'is-active' : ''}" data-id="${escapeHtml(p.id)}" role="button" tabindex="0" ${isSelected ? 'aria-current="true"' : ''}>
+            <div class="agents-list-item-row">
+              <span class="agents-list-item-dot"></span>
+              <span class="agents-list-item-name" title="${escapeAttr(p.name)}">${escapeHtml(p.name)}</span>
+              ${isActive ? '<span class="agents-badge-active">Aktywny</span>' : ''}
+            </div>
+            ${p.description ? `<span class="agents-list-item-desc" title="${escapeAttr(p.description)}">${escapeHtml(p.description)}</span>` : ''}
           </div>
-          ${p.description ? `<div class="agents-item-desc">${escHtml(p.description)}</div>` : ''}
-        </div>
-      `
-      )
+        `;
+      })
       .join('');
 
-    list.querySelectorAll('.agents-list-item').forEach((item) => {
-      item.addEventListener('click', () => {
-        if (this._isNewMode) {
-          // Wyjście z trybu nowego bez zapisywania
-          this._isNewMode = false;
+    list.querySelectorAll('.agents-list-item').forEach((el) => {
+      el.addEventListener('click', () => this._selectPrompt(el.getAttribute('data-id')));
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          this._selectPrompt(el.getAttribute('data-id'));
         }
-        this.selectedId = item.getAttribute('data-id');
-        this._renderList();
-        const prompt = this.prompts.find((p) => p.id === this.selectedId);
-        if (prompt) this._renderEditor(prompt);
       });
     });
   }
 
-  _renderListError() {
-    const list = document.getElementById('agents-list');
-    if (list) {
-      list.innerHTML = `<div class="agents-list-loading" style="color:var(--accent-danger)">Błąd ładowania.</div>`;
-    }
+  _confirmDiscard() {
+    if (!this.isDirty) return true;
+    return window.confirm('Masz niezapisane zmiany w edytorze, które zostaną utracone. Kontynuować?');
   }
 
-  // ---------------------------------------------------------------------------
-  // Renderowanie edytora (istniejący prompt)
-  // ---------------------------------------------------------------------------
+  _selectPrompt(id) {
+    if (id === this.selectedId && !this.isNewMode) return;
+    if (!this._confirmDiscard()) return;
+    this.isNewMode = false;
+    this.selectedId = id;
+    this._renderList();
+    const prompt = this.prompts.find((p) => p.id === id);
+    if (prompt) this._renderEditor(prompt);
+    else this._renderEmptyEditor();
+  }
+
+  _enterNewMode() {
+    if (this.isNewMode) return;
+    if (!this._confirmDiscard()) return;
+    this.isNewMode = true;
+    this.selectedId = null;
+    this._renderList();
+    this._renderNewEditor();
+  }
+
+  // --------------------------------------------------------------------------
+  // Renderowanie edytora
+  // --------------------------------------------------------------------------
+
+  _renderEmptyEditor() {
+    const panel = document.getElementById('agents-panel-editor');
+    if (!panel) return;
+    panel.innerHTML = `
+      <div class="agents-editor-empty">
+        <div class="agents-editor-empty-icon">${Icons.Cpu()}</div>
+        <p>Wybierz prompt z listy lub utwórz nowy.</p>
+      </div>
+    `;
+  }
 
   _renderEditor(prompt) {
     const panel = document.getElementById('agents-panel-editor');
     if (!panel) return;
-
+    this.isDirty = false;
     const isActive = prompt.id === this.activeId;
 
     panel.innerHTML = `
-      <div class="agents-editor-header">
-        <div class="agents-editor-title-group">
-          <span class="agents-editor-prompt-name">${escHtml(prompt.name)}</span>
-          ${
-            isActive
-              ? `<span class="badge-active"><span class="badge-active-dot"></span>Aktywny</span>`
-              : `<span class="badge-inactive">Nieaktywny</span>`
-          }
+      <div class="agents-editor">
+        <div class="agents-editor-header">
+          <span class="badge-muted" title="Wewnętrzny identyfikator promptu">ID: ${escapeHtml(prompt.id)}</span>
+          ${isActive ? '<span class="agents-badge-active">Aktywny prompt systemowy</span>' : ''}
         </div>
-        <span class="agents-dirty-indicator hidden" id="agents-dirty-label">● niezapisane zmiany</span>
-      </div>
-
-      <div class="agents-editor-body">
-        <div class="agents-editor-row">
-          <div class="agents-editor-field">
+        <div class="agents-editor-fields">
+          <div class="form-group agents-field-compact">
             <label for="agents-input-name">Nazwa</label>
-            <input
-              type="text"
-              id="agents-input-name"
-              class="form-control"
-              value="${escHtml(prompt.name)}"
-              placeholder="Nazwa promptu"
-            />
+            <input type="text" id="agents-input-name" class="form-control" value="${escapeAttr(prompt.name)}" />
           </div>
-          <div class="agents-editor-field">
-            <label for="agents-input-desc">
-              Opis <span style="opacity:.45;font-weight:400;text-transform:none">(opcjonalny)</span>
-            </label>
-            <input
-              type="text"
-              id="agents-input-desc"
-              class="form-control"
-              value="${escHtml(prompt.description || '')}"
-              placeholder="Krótki opis przeznaczenia"
-            />
+          <div class="form-group agents-field-compact">
+            <label for="agents-input-desc">Opis (opcjonalny)</label>
+            <input type="text" id="agents-input-desc" class="form-control" value="${escapeAttr(prompt.description || '')}" />
+          </div>
+          <div class="form-group agents-editor-content-group">
+            <label for="agents-input-content">Treść</label>
+            <textarea id="agents-input-content" class="form-control agents-editor-textarea">${escapeHtml(prompt.content)}</textarea>
           </div>
         </div>
-
-        <div class="agents-editor-field">
-          <label for="agents-input-content">Treść instrukcji systemowej</label>
-          <textarea
-            id="agents-input-content"
-            class="agents-content-textarea"
-            placeholder="Wpisz lub wklej treść instrukcji systemowej..."
-            spellcheck="false"
-          >${escHtml(prompt.content)}</textarea>
+        <div class="agents-editor-actions">
+          <div class="agents-editor-actions-left">
+            <button class="btn btn-primary" id="agents-btn-save">Zapisz</button>
+            <button class="btn" id="agents-btn-activate" ${isActive ? 'disabled' : ''}>Aktywuj</button>
+          </div>
+          <div class="agents-editor-actions-right" id="agents-delete-zone">
+            <button class="btn agents-btn-delete" id="agents-btn-delete" ${isActive ? 'disabled title="Nie można usunąć aktywnego promptu"' : ''}>Usuń</button>
+          </div>
         </div>
-      </div>
-
-      <div class="agents-editor-footer">
-        <button
-          class="btn btn-subtle btn-sm"
-          id="agents-btn-activate"
-          ${isActive ? 'disabled' : ''}
-          title="${isActive ? 'Ten prompt jest już aktywny' : 'Ustaw jako aktywny prompt systemowy Agenta'}"
-        >
-          ${isActive ? '✓ Aktywny' : 'Aktywuj'}
-        </button>
-
-        <div class="agents-editor-footer-spacer"></div>
-
-        <button
-          class="btn btn-ghost-danger btn-sm"
-          id="agents-btn-delete"
-          ${isActive ? 'disabled' : ''}
-          title="${isActive ? 'Nie można usunąć aktywnego promptu' : 'Usuń prompt'}"
-        >
-          Usuń
-        </button>
-
-        <button class="btn btn-primary btn-sm" id="agents-btn-save">
-          Zapisz zmiany
-        </button>
       </div>
     `;
 
-    this._bindEditorEvents(prompt);
+    document.getElementById('agents-btn-save')?.addEventListener('click', () => this._handleSave(prompt.id));
+    document.getElementById('agents-btn-activate')?.addEventListener('click', () => this._handleActivate(prompt.id));
+    if (!isActive) {
+      document.getElementById('agents-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(prompt.id));
+    }
+    this._bindDirtyTracking();
   }
-
-  // ---------------------------------------------------------------------------
-  // Renderowanie edytora (nowy prompt)
-  // ---------------------------------------------------------------------------
 
   _renderNewEditor() {
     const panel = document.getElementById('agents-panel-editor');
     if (!panel) return;
+    this.isDirty = false;
 
     panel.innerHTML = `
-      <div class="agents-editor-header">
-        <div class="agents-editor-title-group">
-          <span class="agents-editor-prompt-name">Nowy Prompt</span>
-          <span class="badge-draft">Roboczy</span>
+      <div class="agents-editor">
+        <div class="agents-editor-header">
+          <span class="badge-muted">Nowy prompt</span>
         </div>
-      </div>
-
-      <div class="agents-editor-body">
-        <div class="agents-editor-row">
-          <div class="agents-editor-field">
+        <div class="agents-editor-fields">
+          <div class="form-group agents-field-compact">
             <label for="agents-input-name">Nazwa</label>
-            <input
-              type="text"
-              id="agents-input-name"
-              class="form-control"
-              value=""
-              placeholder="Nazwa promptu"
-              autofocus
-            />
+            <input type="text" id="agents-input-name" class="form-control" placeholder="np. Prompt Asystenta Kodu" />
           </div>
-          <div class="agents-editor-field">
-            <label for="agents-input-desc">
-              Opis <span style="opacity:.45;font-weight:400;text-transform:none">(opcjonalny)</span>
-            </label>
-            <input
-              type="text"
-              id="agents-input-desc"
-              class="form-control"
-              value=""
-              placeholder="Krótki opis przeznaczenia"
-            />
+          <div class="form-group agents-field-compact">
+            <label for="agents-input-desc">Opis (opcjonalny)</label>
+            <input type="text" id="agents-input-desc" class="form-control" placeholder="Krótki opis przeznaczenia promptu" />
+          </div>
+          <div class="form-group agents-editor-content-group">
+            <label for="agents-input-content">Treść</label>
+            <textarea id="agents-input-content" class="form-control agents-editor-textarea" placeholder="Treść instrukcji systemowej..."></textarea>
           </div>
         </div>
-
-        <div class="agents-editor-field">
-          <label for="agents-input-content">Treść instrukcji systemowej</label>
-          <textarea
-            id="agents-input-content"
-            class="agents-content-textarea"
-            placeholder="Wpisz lub wklej treść instrukcji systemowej..."
-            spellcheck="false"
-          ></textarea>
+        <div class="agents-editor-actions">
+          <div class="agents-editor-actions-left">
+            <button class="btn btn-primary" id="agents-btn-save">Zapisz</button>
+          </div>
+          <div class="agents-editor-actions-right">
+            <button class="btn btn-ghost" id="agents-btn-cancel-new">Anuluj</button>
+          </div>
         </div>
-      </div>
-
-      <div class="agents-editor-footer">
-        <button class="btn btn-subtle btn-sm" id="agents-btn-discard">
-          Odrzuć
-        </button>
-        <div class="agents-editor-footer-spacer"></div>
-        <button class="btn btn-primary btn-sm" id="agents-btn-create">
-          Utwórz Prompt
-        </button>
       </div>
     `;
 
-    this._bindNewEditorEvents();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Powiązanie eventów — panel statyczny
-  // ---------------------------------------------------------------------------
-
-  _bindPanelEvents() {
-    const btnNew = document.getElementById('agents-btn-new');
-    if (btnNew) {
-      btnNew.addEventListener('click', () => {
-        this._isNewMode = true;
-        this.selectedId = null;
-        this._renderList();
-        this._renderNewEditor();
-      });
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Powiązanie eventów — edytor istniejącego promptu
-  // ---------------------------------------------------------------------------
-
-  _bindEditorEvents(prompt) {
-    const inputName    = document.getElementById('agents-input-name');
-    const inputDesc    = document.getElementById('agents-input-desc');
-    const inputContent = document.getElementById('agents-input-content');
-    const dirtyLabel   = document.getElementById('agents-dirty-label');
-    const btnSave      = document.getElementById('agents-btn-save');
-    const btnActivate  = document.getElementById('agents-btn-activate');
-    const btnDelete    = document.getElementById('agents-btn-delete');
-
-    // Śledzenie niezapisanych zmian
-    const markDirty = () => {
-      if (dirtyLabel) dirtyLabel.classList.remove('hidden');
-    };
-    [inputName, inputDesc, inputContent].forEach((el) => {
-      if (el) el.addEventListener('input', markDirty);
+    document.getElementById('agents-btn-save')?.addEventListener('click', () => this._handleCreate());
+    document.getElementById('agents-btn-cancel-new')?.addEventListener('click', () => {
+      this.isDirty = false;
+      this.isNewMode = false;
+      this.selectedId = this.activeId || (this.prompts[0]?.id ?? null);
+      this._renderList();
+      const prompt = this.prompts.find((p) => p.id === this.selectedId);
+      if (prompt) this._renderEditor(prompt);
+      else this._renderEmptyEditor();
     });
+    this._bindDirtyTracking();
 
-    // Aktualizacja nazwy w nagłówku edytora i liście przy wpisywaniu
-    if (inputName) {
-      inputName.addEventListener('input', () => {
-        const nameDisplay = document.querySelector('.agents-editor-prompt-name');
-        if (nameDisplay) nameDisplay.textContent = inputName.value || 'Nowy Prompt';
+    document.getElementById('agents-input-name')?.focus();
+  }
+
+  /** Oznacza edytor jako "brudny" (niezapisane zmiany) przy pierwszym wpisie w dowolne pole. */
+  _bindDirtyTracking() {
+    ['agents-input-name', 'agents-input-desc', 'agents-input-content'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('input', (e) => {
+        this.isDirty = true;
+        e.target.classList.remove('is-invalid');
       });
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Akcje
+  // --------------------------------------------------------------------------
+
+  _readForm() {
+    const name = document.getElementById('agents-input-name')?.value.trim() || '';
+    const description = document.getElementById('agents-input-desc')?.value.trim() || '';
+    const content = document.getElementById('agents-input-content')?.value.trim() || '';
+    return { name, description, content };
+  }
+
+  /** Oznacza puste wymagane pola na czerwono i przenosi focus na pierwsze z nich. Zwraca true jeśli formularz jest poprawny. */
+  _validateForm(name, content) {
+    const nameEl = document.getElementById('agents-input-name');
+    const contentEl = document.getElementById('agents-input-content');
+    nameEl?.classList.toggle('is-invalid', !name);
+    contentEl?.classList.toggle('is-invalid', !content);
+    if (!name) {
+      nameEl?.focus();
+      return false;
     }
-
-    // Zapisz
-    if (btnSave) {
-      btnSave.addEventListener('click', async () => {
-        const name = inputName?.value?.trim();
-        if (!name) { this._toast('Nazwa promptu nie może być pusta.', 'error'); return; }
-
-        btnSave.disabled = true;
-        btnSave.textContent = 'Zapisywanie...';
-        try {
-          await this.apiClient.updatePrompt(prompt.id, {
-            name: inputName.value.trim(),
-            description: inputDesc?.value?.trim() || null,
-            content: inputContent?.value ?? '',
-          });
-          this._toast('Prompt zapisany.', 'success');
-          await this._loadAndRender(prompt.id);
-        } catch (err) {
-          this._toast(`Błąd zapisu: ${err.message}`, 'error');
-          btnSave.disabled = false;
-          btnSave.textContent = 'Zapisz zmiany';
-        }
-      });
+    if (!content) {
+      contentEl?.focus();
+      return false;
     }
+    return true;
+  }
 
-    // Aktywuj
-    if (btnActivate && !btnActivate.disabled) {
-      btnActivate.addEventListener('click', async () => {
-        btnActivate.disabled = true;
-        btnActivate.textContent = '...';
-        try {
-          await this.apiClient.activatePrompt(prompt.id);
-          this._toast(`Prompt „${prompt.name}" jest teraz aktywny.`, 'success');
-          await this._loadAndRender(prompt.id);
-        } catch (err) {
-          this._toast(`Błąd aktywacji: ${err.message}`, 'error');
-          await this._loadAndRender(prompt.id);
-        }
-      });
+  async _handleSave(promptId) {
+    const { name, description, content } = this._readForm();
+    if (!this._validateForm(name, content)) {
+      this._showToast('Nazwa i treść promptu są wymagane.', 'error');
+      return;
     }
-
-    // Usuń — dwukliknięcie z potwierdzeniem inline
-    if (btnDelete && !btnDelete.disabled) {
-      let confirmPending = false;
-      let confirmTimer = null;
-
-      btnDelete.addEventListener('click', () => {
-        if (!confirmPending) {
-          confirmPending = true;
-          btnDelete.textContent = 'Potwierdź usunięcie';
-          btnDelete.style.color = 'var(--accent-danger)';
-          btnDelete.style.borderColor = 'rgba(239,68,68,0.4)';
-          confirmTimer = setTimeout(() => {
-            confirmPending = false;
-            btnDelete.textContent = 'Usuń';
-            btnDelete.style.color = '';
-            btnDelete.style.borderColor = '';
-          }, 3000);
-        } else {
-          clearTimeout(confirmTimer);
-          this._doDelete(prompt.id);
-        }
-      });
+    try {
+      await this.apiClient.updatePrompt(promptId, { name, description: description || null, content });
+      this._showToast('Zapisano zmiany w promptcie.', 'success');
+      await this._loadAndRender(promptId);
+    } catch (error) {
+      this._showToast(error.message || 'Błąd zapisu promptu.', 'error');
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Powiązanie eventów — edytor nowego promptu
-  // ---------------------------------------------------------------------------
-
-  _bindNewEditorEvents() {
-    const btnCreate  = document.getElementById('agents-btn-create');
-    const btnDiscard = document.getElementById('agents-btn-discard');
-
-    if (btnDiscard) {
-      btnDiscard.addEventListener('click', () => {
-        this._isNewMode = false;
-        if (this.prompts.length > 0) {
-          this.selectedId = this.activeId || this.prompts[0].id;
-          this._renderList();
-          const prompt = this.prompts.find((p) => p.id === this.selectedId);
-          if (prompt) this._renderEditor(prompt);
-        } else {
-          const panel = document.getElementById('agents-panel-editor');
-          if (panel) {
-            panel.innerHTML = `
-              <div class="agents-editor-empty">
-                <div class="agents-editor-empty-icon">◈</div>
-                <p>Wybierz prompt z listy lub utwórz nowy.</p>
-              </div>
-            `;
-          }
-        }
-      });
+  async _handleCreate() {
+    const { name, description, content } = this._readForm();
+    if (!this._validateForm(name, content)) {
+      this._showToast('Nazwa i treść promptu są wymagane.', 'error');
+      return;
     }
-
-    if (btnCreate) {
-      btnCreate.addEventListener('click', async () => {
-        const name    = document.getElementById('agents-input-name')?.value?.trim();
-        const desc    = document.getElementById('agents-input-desc')?.value?.trim();
-        const content = document.getElementById('agents-input-content')?.value ?? '';
-
-        if (!name)          { this._toast('Nazwa promptu nie może być pusta.', 'error'); return; }
-        if (!content.trim()) { this._toast('Treść promptu nie może być pusta.', 'error'); return; }
-
-        btnCreate.disabled = true;
-        btnCreate.textContent = 'Tworzenie...';
-        try {
-          const created = await this.apiClient.createPrompt({
-            name,
-            description: desc || null,
-            content,
-          });
-          this._toast(`Prompt „${name}" utworzony.`, 'success');
-          this._isNewMode = false;
-          await this._loadAndRender(created.id);
-        } catch (err) {
-          this._toast(`Błąd tworzenia: ${err.message}`, 'error');
-          btnCreate.disabled = false;
-          btnCreate.textContent = 'Utwórz Prompt';
-        }
-      });
+    try {
+      const created = await this.apiClient.createPrompt({ name, description: description || null, content });
+      this._showToast('Utworzono nowy prompt.', 'success');
+      await this._loadAndRender(created.id);
+    } catch (error) {
+      this._showToast(error.message || 'Błąd tworzenia promptu.', 'error');
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Akcja usuwania
-  // ---------------------------------------------------------------------------
+  async _handleActivate(promptId) {
+    if (!this._confirmDiscard()) return;
+    try {
+      await this.apiClient.activatePrompt(promptId);
+      this._showToast('Aktywowano prompt systemowy.', 'success');
+      await this._loadAndRender(promptId);
+    } catch (error) {
+      this._showToast(error.message || 'Błąd aktywacji promptu.', 'error');
+    }
+  }
 
-  async _doDelete(promptId) {
+  _handleDeleteClick(promptId) {
+    const zone = document.getElementById('agents-delete-zone');
+    if (!zone) return;
+    zone.innerHTML = `
+      <div class="delete-confirm-inline">
+        <span class="delete-confirm-text">Usunąć prompt?</span>
+        <button class="btn-confirm-yes" id="agents-btn-delete-yes">Tak</button>
+        <button class="btn-confirm-no" id="agents-btn-delete-no">Anuluj</button>
+      </div>
+    `;
+    document.getElementById('agents-btn-delete-yes')?.addEventListener('click', () => this._handleDeleteConfirm(promptId));
+    document.getElementById('agents-btn-delete-no')?.addEventListener('click', () => {
+      // Przywraca tylko strefę przycisku Usuń — pełny re-render edytora
+      // wyzerowałby niezapisane zmiany w Nazwie/Opisie/Treści.
+      zone.innerHTML = `<button class="btn agents-btn-delete" id="agents-btn-delete">Usuń</button>`;
+      document.getElementById('agents-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(promptId));
+    });
+  }
+
+  async _handleDeleteConfirm(promptId) {
     try {
       await this.apiClient.deletePrompt(promptId);
-      this._toast('Prompt usunięty.', 'success');
+      this._showToast('Usunięto prompt.', 'success');
       this.selectedId = null;
       await this._loadAndRender();
-    } catch (err) {
-      this._toast(`Błąd usuwania: ${err.message}`, 'error');
+    } catch (error) {
+      this._showToast(error.message || 'Błąd usuwania promptu.', 'error');
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Powiadomienia Toast (DRY — ten sam wzorzec co DashboardView)
-  // ---------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
+  // Toast
+  // --------------------------------------------------------------------------
 
-  _toast(message, type = 'info') {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'toast-container';
-      container.className = 'toast-container';
-      document.body.appendChild(container);
+  _showToast(message, type = 'success') {
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+      toastContainer = document.createElement('div');
+      toastContainer.id = 'toast-container';
+      toastContainer.className = 'toast-container';
+      document.body.appendChild(toastContainer);
     }
+
     const toast = document.createElement('div');
     toast.className = `toast-notification toast-${type}`;
-    toast.innerHTML = `<span>${escHtml(message)}</span>`;
-    container.appendChild(toast);
+    toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+    toastContainer.appendChild(toast);
+
     setTimeout(() => {
       toast.classList.add('toast-leaving');
       setTimeout(() => toast.remove(), 200);
-    }, 3200);
+    }, 3000);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
 
-function escHtml(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/"/g, '&quot;');
 }

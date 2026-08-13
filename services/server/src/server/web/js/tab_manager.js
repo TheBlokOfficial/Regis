@@ -46,6 +46,13 @@ export class TabManager {
       return;
     }
 
+    if (this.activeTabId === 'agents' && tabId !== 'agents' && this.views.agents.hasUnsavedChanges?.()) {
+      const confirmed = window.confirm(
+        'Masz niezapisane zmiany w edytorze promptów. Zmiana zakładki je odrzuci. Kontynuować?'
+      );
+      if (!confirmed) return;
+    }
+
     this.activeTabId = tabId;
 
     // Aktualizacja podświetlenia w Sidebarze
@@ -77,7 +84,7 @@ export class TabManager {
       }
 
       this.container.innerHTML = this.views[tabId].render();
-      
+
       // Inicjalizacja dynamiczna wyrenderowanego widoku
       if (tabId === 'dashboard') {
         this.views.dashboard.updateStatus(this.latestHealthData);
