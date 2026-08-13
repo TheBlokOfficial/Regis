@@ -1,4 +1,5 @@
 import { Icons } from '../icons.js';
+import { confirmModal } from '../modal_confirm.js';
 
 /**
  * Widok zarządzania promptami systemowymi Agenta — lista promptów (lewa kolumna)
@@ -137,14 +138,18 @@ export class AgentsView {
     }
   }
 
-  _confirmDiscard() {
+  async _confirmDiscard() {
     if (!this.isDirty) return true;
-    return window.confirm('Masz niezapisane zmiany w edytorze, które zostaną utracone. Kontynuować?');
+    return confirmModal({
+      title: 'Niezapisane zmiany',
+      message: 'Masz niezapisane zmiany w edytorze, które zostaną utracone. Kontynuować?',
+      confirmLabel: 'Odrzuć zmiany',
+    });
   }
 
-  _selectPrompt(id) {
+  async _selectPrompt(id) {
     if (id === this.selectedId && !this.isNewMode) return;
-    if (!this._confirmDiscard()) return;
+    if (!(await this._confirmDiscard())) return;
     this.isNewMode = false;
     this.selectedId = id;
     this._renderList();
@@ -153,9 +158,9 @@ export class AgentsView {
     else this._renderEmptyEditor();
   }
 
-  _enterNewMode() {
+  async _enterNewMode() {
     if (this.isNewMode) return;
-    if (!this._confirmDiscard()) return;
+    if (!(await this._confirmDiscard())) return;
     this.isNewMode = true;
     this.selectedId = null;
     this._renderList();
@@ -191,14 +196,11 @@ export class AgentsView {
             <button class="agents-btn-copy-id" id="agents-btn-copy-id" title="Skopiuj ID promptu" aria-label="Skopiuj ID promptu">${Icons.Copy()}</button>
             <span class="agents-dirty-badge hidden" id="agents-dirty-badge">● Niezapisane zmiany</span>
           </div>
-          <button
-            class="agents-toggle-active ${isActive ? 'is-on' : ''}"
-            id="agents-btn-activate"
-            ${isActive ? 'disabled title="To jest aktywny prompt systemowy"' : 'title="Ustaw jako aktywny prompt systemowy"'}
-          >
-            <span class="agents-toggle-track"><span class="agents-toggle-thumb"></span></span>
-            <span>${isActive ? 'Aktywny' : 'Nieaktywny'}</span>
-          </button>
+          ${
+            !isActive
+              ? `<button class="btn btn-sm btn-subtle" id="agents-btn-activate" title="Ustaw jako aktywny prompt systemowy">Ustaw jako aktywny</button>`
+              : ''
+          }
         </div>
         <div class="agents-editor-fields">
           <div class="form-group agents-field-compact">
@@ -222,10 +224,15 @@ export class AgentsView {
         </div>
         <div class="agents-editor-actions">
           <div class="agents-editor-actions-left">
-            <button class="btn btn-primary" id="agents-btn-save">Zapisz</button>
+            <button class="btn btn-primary" id="agents-btn-save" disabled>Zapisz</button>
           </div>
           <div class="agents-editor-actions-right" id="agents-delete-zone">
-            <button class="btn agents-btn-delete" id="agents-btn-delete" ${isActive ? 'disabled title="Nie można usunąć aktywnego promptu"' : ''}>Usuń</button>
+            ${
+              isActive
+                ? `<span class="agents-delete-hint">Aby usunąć, najpierw ustaw inny prompt jako aktywny</span>
+                   <button class="btn agents-btn-delete" id="agents-btn-delete" disabled title="Nie można usunąć aktywnego promptu">Usuń</button>`
+                : `<button class="btn agents-btn-delete" id="agents-btn-delete">Usuń</button>`
+            }
           </div>
         </div>
       </div>
@@ -237,7 +244,7 @@ export class AgentsView {
       document.getElementById('agents-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(prompt.id));
     }
     document.getElementById('agents-btn-copy-id')?.addEventListener('click', () => this._handleCopyId(prompt.id));
-    this._bindDirtyTracking();
+    this._bindDirtyTracking(true);
     this._bindContentEditorExtras();
   }
 
@@ -301,13 +308,19 @@ export class AgentsView {
     document.getElementById('agents-input-name')?.focus();
   }
 
-  /** Oznacza edytor jako "brudny" (niezapisane zmiany) przy pierwszym wpisie w dowolne pole. */
-  _bindDirtyTracking() {
+  /**
+   * Oznacza edytor jako "brudny" (niezapisane zmiany) przy pierwszym wpisie w dowolne pole.
+   * `lockSaveUntilDirty` odblokowuje przycisk Zapisz dopiero po realnej zmianie — dotyczy
+   * tylko edycji istniejącego promptu, nie tworzenia nowego (tam Zapisz jest potrzebny od razu).
+   */
+  _bindDirtyTracking(lockSaveUntilDirty = false) {
+    const saveBtn = document.getElementById('agents-btn-save');
     ['agents-input-name', 'agents-input-desc', 'agents-input-content'].forEach((id) => {
       document.getElementById(id)?.addEventListener('input', (e) => {
         this.isDirty = true;
         e.target.classList.remove('is-invalid');
         document.getElementById('agents-dirty-badge')?.classList.remove('hidden');
+        if (lockSaveUntilDirty && saveBtn) saveBtn.disabled = false;
       });
     });
   }
@@ -395,7 +408,7 @@ export class AgentsView {
   }
 
   async _handleActivate(promptId) {
-    if (!this._confirmDiscard()) return;
+    if (!(await this._confirmDiscard())) return;
     try {
       await this.apiClient.activatePrompt(promptId);
       this._showToast('Aktywowano prompt systemowy.', 'success');

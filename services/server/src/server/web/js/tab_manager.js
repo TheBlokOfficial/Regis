@@ -2,6 +2,7 @@ import { DashboardView } from './views/dashboard.js';
 import { SettingsView } from './views/settings.js';
 import { ChatView } from './views/chat.js';
 import { AgentsView } from './views/agents.js';
+import { confirmModal } from './modal_confirm.js';
 
 /**
  * Zarządza przełączaniem zakładek i renderowaniem widoków w obszarze roboczym.
@@ -48,9 +49,11 @@ export class TabManager {
     }
 
     if (this.activeTabId === 'agents' && tabId !== 'agents' && this.views.agents.hasUnsavedChanges?.()) {
-      const confirmed = window.confirm(
-        'Masz niezapisane zmiany w edytorze promptów. Zmiana zakładki je odrzuci. Kontynuować?'
-      );
+      const confirmed = await confirmModal({
+        title: 'Niezapisane zmiany',
+        message: 'Masz niezapisane zmiany w edytorze promptów. Zmiana zakładki je odrzuci. Kontynuować?',
+        confirmLabel: 'Odrzuć zmiany',
+      });
       if (!confirmed) return;
     }
 
@@ -69,9 +72,9 @@ export class TabManager {
     if (this.breadcrumb) {
       const titles = {
         dashboard: 'Dashboard',
-        chat: 'Czat z Agentem',
+        chat: 'Czat',
         settings: 'Ustawienia',
-        agents: 'Prompty Systemowe',
+        agents: 'Prompty',
       };
       this.breadcrumb.textContent = titles[tabId] || tabId;
     }

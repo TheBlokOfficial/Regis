@@ -57,3 +57,20 @@
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* Wariant kompaktowy — dla krótkich dialogów potwierdzenia zamiast dużych paneli zarządzania */
+.modal-content-sm {
+  max-width: 420px;
+}
+
+.modal-confirm-message {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.modal-confirm-actions {
+  justify-content: flex-end;
+  margin-top: 0;
+}
