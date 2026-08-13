@@ -6,7 +6,7 @@ from shared import ConfigStore, get_service_root
 class Settings(BaseModel):
     """Główna konfiguracja aplikacji serwera Regis."""
 
-    app_name: str = Field(default="Regis OS", description="Nazwa aplikacji")
+    app_name: str = Field(default="Regis", description="Nazwa aplikacji")
     version: str = Field(default="0.1.0", description="Wersja aplikacji")
     host: str = Field(default="0.0.0.0", description="Adres nasłuchiwania HTTP/WebSocket")
     port: int = Field(default=8000, description="Port serwera HTTP/WebSocket")

@@ -1,5 +1,7 @@
+import asyncio
 import json
 import time
+from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -29,6 +31,32 @@ class CreateSessionApiRequest(BaseModel):
 
     title: str = Field(default="Nowa konwersacja", description="Tytuł nowej sesji")
     custom_id: str | None = Field(default=None, description="Opcjonalne własne ID sesji (np. session_custom)")
+
+
+def _mask_secret_options(provider_type: str, options: dict[str, Any]) -> dict[str, Any]:
+    """Maskuje wartości pól oznaczonych w schemacie dostawcy jako 'password' (np. api_key).
+
+    Klucze API nie powinny nigdy opuszczać serwera w czystym tekście przez API REST —
+    pola sekretne są rozpoznawane na podstawie tego samego schematu, którego używa
+    frontend do renderowania formularzy (LLMFactory.get_all_schemas(), Single Source of Truth).
+    """
+    secret_fields = {
+        spec.name
+        for type_spec in LLMFactory.get_all_schemas().provider_types
+        if type_spec.type == provider_type
+        for spec in type_spec.options_schema
+        if spec.type == "password"
+    }
+    if not secret_fields:
+        return options
+
+    masked = dict(options)
+    for field_name in secret_fields:
+        value = masked.get(field_name)
+        if isinstance(value, str) and value:
+            visible = value[-4:] if len(value) > 4 else ""
+            masked[field_name] = f"{'•' * (len(value) - len(visible))}{visible}"
+    return masked
 
 
 def create_api_router(
@@ -74,16 +102,18 @@ def create_api_router(
         instances = await backend_registry.load_all_instances()
         active_id = await backend_registry.get_active_backend_id()
 
-        providers_dto = [
-            LLMProviderDTO(
-                id=cfg.id,
-                type=cfg.type.value if hasattr(cfg.type, "value") else str(cfg.type),
-                name=cfg.name,
-                options=cfg.options,
-                is_active=(cfg.id == active_id),
+        providers_dto = []
+        for cfg in instances.values():
+            type_str = cfg.type.value if hasattr(cfg.type, "value") else str(cfg.type)
+            providers_dto.append(
+                LLMProviderDTO(
+                    id=cfg.id,
+                    type=type_str,
+                    name=cfg.name,
+                    options=_mask_secret_options(type_str, cfg.options),
+                    is_active=(cfg.id == active_id),
+                )
             )
-            for cfg in instances.values()
-        ]
 
         return LLMProviderListResponse(providers=providers_dto, active_id=active_id)
 
@@ -125,20 +155,24 @@ def create_api_router(
                 detail=f"Niewspierany typ dostawcy LLM: '{req.type}'. Dozwolone: {supported}.",
             )
 
-        created_cfg = await backend_registry.create_instance(
-            provider_type=p_type,
-            name=req.name,
-            options=req.options,
-            custom_id=req.custom_id,
-        )
+        try:
+            created_cfg = await backend_registry.create_instance(
+                provider_type=p_type,
+                name=req.name,
+                options=req.options,
+                custom_id=req.custom_id,
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
         active_id = await backend_registry.get_active_backend_id()
+        type_str = created_cfg.type.value if hasattr(created_cfg.type, "value") else str(created_cfg.type)
 
         return LLMProviderDTO(
             id=created_cfg.id,
-            type=created_cfg.type.value if hasattr(created_cfg.type, "value") else str(created_cfg.type),
+            type=type_str,
             name=created_cfg.name,
-            options=created_cfg.options,
+            options=_mask_secret_options(type_str, created_cfg.options),
             is_active=(created_cfg.id == active_id),
         )
 
@@ -186,6 +220,8 @@ def create_api_router(
                 prompt=req.message,
                 system_prompt=req.system_prompt,
             )
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
         except Exception as err:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -213,6 +249,9 @@ def create_api_router(
                     system_prompt=req.system_prompt,
                 ):
                     yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                yield "data: [DONE]\n\n"
+            except asyncio.CancelledError:
+                yield f"data: {json.dumps({'cancelled': True})}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as err:
                 error_payload = json.dumps({"error": str(err)})
@@ -253,10 +292,13 @@ def create_api_router(
         tags=["Chat & Sessions"],
     )
     async def create_chat_session(req: CreateSessionApiRequest) -> ChatSessionSummaryDTO:
-        session = agent_engine.memory_manager.create_session(
-            title=req.title,
-            custom_id=req.custom_id,
-        )
+        try:
+            session = agent_engine.memory_manager.create_session(
+                title=req.title,
+                custom_id=req.custom_id,
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
         return session.to_summary()
 
     # 11. GET /api/v1/chat/sessions/{session_id}/history
@@ -267,7 +309,10 @@ def create_api_router(
         tags=["Chat & Sessions"],
     )
     async def get_chat_session_history(session_id: str) -> ChatSessionHistoryResponse:
-        session = agent_engine.memory_manager.get_or_create_session(session_id)
+        try:
+            session = agent_engine.memory_manager.get_or_create_session(session_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
         messages = list(session.get_history())
         is_generating = agent_engine.is_session_busy(session_id)
         if is_generating:
@@ -298,7 +343,10 @@ def create_api_router(
         tags=["Chat & Sessions"],
     )
     async def delete_chat_session(session_id: str):
-        deleted = agent_engine.memory_manager.delete_session(session_id)
+        try:
+            deleted = agent_engine.memory_manager.delete_session(session_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

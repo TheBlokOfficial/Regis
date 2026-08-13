@@ -1,38 +1,47 @@
 # Instrukcje dla Agenta AI (System Regis)
 
-## 1. Start Sesji (Pierwsze zapoznanie)
-Podczas pierwszego zapoznania się z projektem koniecznie przeczytaj dokumenty w katalogu `docs/`:
-- `docs/manifest.md`
-- `docs/onboarding.md`
+Ten plik obowiązuje każdego agenta AI pracującego w repozytorium (Claude Code
+i inne narzędzia zgodne z konwencją AGENTS.md). Instrukcje specyficzne dla
+Claude Code są w `CLAUDE.md`, który importuje ten plik.
 
-## 2. Obowiązek Stosowania Chain of Thought (COT)
-Przed przystąpieniem do jakichkolwiek modyfikacji kodu, edycji planów, tworzenia nowych plików czy wykonywania złożonych komend, agent **ma obowiązek przeprowadzić proces przemyślanego planowania i analizy (Chain of Thought)**.
+## 1. Kontekst projektu
+Kluczowa dokumentacja projektu: `docs/manifest.md`, `docs/onboarding.md`.
+(W Claude Code te pliki są importowane automatycznie przez `CLAUDE.md` —
+patrz ten plik — więc ładują się w każdej sesji bez konieczności pamiętania
+o tym przez agenta.)
 
-Agent stosuje analizę COT w sposób naturalny i elastyczny, dostosowując głębokość i formę przemyśleń do skali oraz skomplikowania zadania – **bez konieczności sztywnego i szablonowego wypisywania ponumerowanych punktów przed każdą odpowiedzią**.
+## 2. Zanim zaczniesz kodować
+- **Nie zgaduj.** Zweryfikuj rzeczywisty stan kodu — ścieżki plików, nazwy
+  funkcji, schematy danych — zanim ich użyjesz.
+- **Duże/niejasne zmiany:** najpierw eksploruj i zaplanuj, dopiero potem
+  implementuj. W Claude Code użyj do tego trybu plan mode.
+- **Małe, jednoznaczne poprawki** (literówka, log, rename zmiennej) —
+  działaj od razu, bez narzutu planowania.
+- **Zawsze miej sposób weryfikacji** swojej pracy (test, build, lint) i
+  uruchom go po zmianie — nie zakładaj, że "wygląda na gotowe".
+- Przemyśl skutki uboczne i przypadki brzegowe, nie tylko happy path.
+- Jeśli sugerowane rozwiązanie ma luki lub istnieje lepsza alternatywa —
+  zgłoś to zamiast realizować bezrefleksyjnie.
 
-Kluczowe filary analizy, o których agent musi pamiętać:
-- **Zrozumienie celu (Goal Understanding)**: Przeanalizowanie intencji użytkownika oraz kontekstu w projekcie, by rozwiązać właściwy problem, a nie tylko jego powierzchniowe objawy.
-- **Krytyczne myślenie i weryfikacja sugestii (Critical Thinking)**: Samodzielne sprawdzanie faktów i technicznego sensu proponowanych rozwiązań. Jeśli pomysł zawiera luki lub istnieje lepsza alternatywa – wykaż to przed realizacją.
-- **Sprawdzenie faktów (Fact Checking)**: Weryfikacja rzeczywistego stanu kodu, ścieżek plików, nazw funkcji i schematów danych przed ich użyciem (nie zgaduj).
-- **Plan działania i przemyślenie skutków (Action Plan & Consequences)**: Przemyślenie kroków koniecznych do zrealizowania zadania, skutków ubocznych oraz przypadków brzegowych.
+## 3. Standardy jakości kodu
+Każda zmiana powinna być zgodna z:
+- **SOLID** (Single Responsibility, Open/Closed, Liskov Substitution,
+  Interface Segregation, Dependency Inversion)
+- **DRY** — nie duplikuj logiki
+- **KISS** — najprostsze działające rozwiązanie, bez nadmiernej inżynierii
+- **YAGNI** — implementuj tylko to, co aktualnie wymagane
+- **POLA (Rule of Least Surprise)** — kod ma zachowywać się intuicyjnie
+- **Boy Scout Rule** — zostaw kod czystszy niż go zastałeś, przy okazji
+  pracy w danym miejscu
 
+## 4. Koniec sesji
+Gdy użytkownik zasygnalizuje koniec sesji (np. "kończymy sesję", "na dziś
+starczy"):
+1. Sprawdź `git status`.
+2. Wykonaj commit z czytelnym, zwięzłym opisem zmian.
+3. **Zapytaj o potwierdzenie przed `git push origin master`.** Nie pushuj
+   automatycznie bez wyraźnej zgody, chyba że w danej sesji ustalono inaczej.
 
-## 3. Standardy Jakości Kodu i Dobre Praktyki
-Pisz kod czysty, modułowy i łatwy w utrzymaniu. Każda zmiana w kodzie musi spełniać poniższe zasady:
-- **SOLID**: 
-  - *Single Responsibility*: Klasa/moduł/funkcja ma tylko jedną odpowiedzialność.
-  - *Open/Closed*: Kod otwarty na rozbudowę, zamknięty na modyfikacje.
-  - *Liskov Substitution*: Podklasy mogą zastępować klasy bazowe bez zaburzania działania programu.
-  - *Interface Segregation*: Twórz małe, dedykowane interfejsy zamiast ogólnych i przeładowanych.
-  - *Dependency Inversion*: Polegaj na abstrakcjach, a nie na konkretnych implementacjach.
-- **DRY (Don't Repeat Yourself)**: Unikaj duplikowania logiki – wydzielaj powtarzalne fragmenty do skomponowanych funkcji lub modułów.
-- **KISS (Keep It Simple, Stupid)**: Wybieraj najprostsze działające rozwiązanie. Unikaj nadmiernej inżynierii (over-engineering).
-- **YAGNI (You Aren't Gonna Need It)**: Implementuj wyłącznie to, co jest aktualnie wymagane. Nie pisz kodu "na zapas".
-- **Rule of Least Surprise (POLA)**: Kod powinien zachowywać się w sposób intuicyjny i przewidywalny dla innych programistów.
-- **Boy Scout Rule**: Zostaw kod w stanie lepszym, niż go zastałeś (poprawiaj drobne usterki, czytelność i typowanie przy okazji prac w danym miejscu).
-
-## 4. Koniec Sesji (Procedura zapisu)
-Gdy użytkownik zasygnalizuje koniec sesji (np. *"kończymy sesję"*, *"na dzisiaj starczy"*):
-1. Sprawdź zmodyfikowane pliki (`git status`).
-2. Wykonaj commit z czytelnym i zwięzłym opisem zmian.
-3. Wykonaj `git push` do repozytorium GitHub (`origin master`).
+> Instrukcja w punkcie 3 jest kontekstem dla agenta, nie twardą blokadą —
+> jeśli push na `master` bez potwierdzenia ma być fizycznie niemożliwy,
+> potrzebny jest hook (`PreToolUse` na `git push`), nie zapis w tym pliku.

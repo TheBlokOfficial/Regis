@@ -18,7 +18,7 @@ class ContextBuilder:
     def __init__(
         self,
         default_system_prompt: str | None = None,
-        max_history_messages: int | None = None,
+        max_history_messages: int | None = 40,
     ) -> None:
         self.default_system_prompt: str = default_system_prompt or DEFAULT_SYSTEM_PROMPT
         self.max_history_messages: int | None = max_history_messages

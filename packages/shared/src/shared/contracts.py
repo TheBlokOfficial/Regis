@@ -94,7 +94,7 @@ class ChatMessageDTO(BaseModel):
 class SendChatMessageRequest(BaseModel):
     """Żądanie wysłania nowej wiadomości do Agenta."""
 
-    session_id: str = Field(default="default", description="Identyfikator sesji rozmowy w backendzie")
+    session_id: str = Field(default="session_default", description="Identyfikator sesji rozmowy w backendzie")
     message: str = Field(..., description="Treść nowej wiadomości od użytkownika/satelity")
     system_prompt: str | None = Field(default=None, description="Opcjonalny customowy system prompt")
 

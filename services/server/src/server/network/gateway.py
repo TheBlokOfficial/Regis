@@ -1,7 +1,6 @@
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from shared import EventBus
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
 from server.network.routes import create_api_router
@@ -9,7 +8,6 @@ from server.network.routes import create_api_router
 
 def create_gateway_app(
     agent_engine: AgentEngine,
-    event_bus: EventBus,
     backend_registry: BackendRegistry,
 ) -> FastAPI:
     """Tworzy i konfiguruje bramkę sieciową FastAPI z wbudowaną konsolą WWW i punktami końcowymi."""

@@ -1,6 +1,6 @@
 """Wspólne moduły i narzędzia dla usług Regis."""
 
-from shared.config import ConfigStore, get_service_root
+from shared.config import ConfigStore, get_service_root, sanitize_identifier
 from shared.contracts import (
     CancelChatApiRequest,
     ChatMessageDTO,
@@ -44,5 +44,6 @@ __all__ = [
     "SendChatMessageRequest",
     "get_logger",
     "get_service_root",
+    "sanitize_identifier",
     "setup_logging",
 ]

@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
-from shared import ConfigStore, get_service_root, get_logger
+from shared import ConfigStore, get_service_root, get_logger, sanitize_identifier
 
 from server.agent.backend.factory import LLMFactory
 from server.agent.backend.models import ActiveBackendConfig, BackendFileContent, BackendInstanceConfig, ProviderType
@@ -28,42 +28,55 @@ class BackendRegistry:
     # Inicjalizacja domyślnych instancji (wykonuje się tylko raz, poza lockiem)
     # --------------------------------------------------------------------------
 
-    def _ensure_default_instances(self) -> None:
-        """Tworzy domyślne pliki instancji backendów jeśli folder jest pusty. Wykonuje się tylko raz."""
+    async def _ensure_default_instances(self) -> None:
+        """Tworzy domyślne pliki instancji backendów jeśli folder jest pusty. Wykonuje się tylko raz.
+
+        Cała operacja (odczyt katalogu + ewentualny zapis) wykonywana jest pod `self._lock`
+        z podwójnym sprawdzeniem flagi `_defaults_ensured`, by wyeliminować race condition
+        między równoległymi pierwszymi żądaniami.
+        """
         if self._defaults_ensured:
             return
 
-        self.backends_dir.mkdir(parents=True, exist_ok=True)
-        existing_files = list(self.backends_dir.glob("*.json"))
+        async with self._lock:
+            if self._defaults_ensured:
+                return
 
-        if not existing_files:
-            logger.info("Brak zadeklarowanych instancji backendów. Tworzenie instancji domyślnych...")
+            self.backends_dir.mkdir(parents=True, exist_ok=True)
+            existing_files = list(self.backends_dir.glob("*.json"))
 
-            ollama_id = "bk_ollama_local"
-            ollama_content = BackendFileContent(
-                type=ProviderType.OLLAMA,
-                name="Lokalna Ollama (Llama 3)",
-                options={
-                    "base_url": "http://localhost:11434",
-                    "model": "llama3",
-                },
-            )
-            ConfigStore(BackendFileContent, self.backends_dir / f"{ollama_id}.json").save(ollama_content)
+            if not existing_files:
+                logger.info("Brak zadeklarowanych instancji backendów. Tworzenie instancji domyślnych...")
 
-            openrouter_id = "bk_openrouter_main"
-            openrouter_content = BackendFileContent(
-                type=ProviderType.OPENROUTER,
-                name="OpenRouter (Claude 3.5 Sonnet)",
-                options={
-                    "api_key": "",
-                    "model": "anthropic/claude-3.5-sonnet",
-                },
-            )
-            ConfigStore(BackendFileContent, self.backends_dir / f"{openrouter_id}.json").save(openrouter_content)
+                ollama_id = "bk_ollama_local"
+                ollama_content = BackendFileContent(
+                    type=ProviderType.OLLAMA,
+                    name="Lokalna Ollama (Llama 3)",
+                    options={
+                        "base_url": "http://localhost:11434",
+                        "model": "llama3",
+                    },
+                )
+                await asyncio.to_thread(
+                    ConfigStore(BackendFileContent, self.backends_dir / f"{ollama_id}.json").save, ollama_content
+                )
 
-            self.active_store.save(ActiveBackendConfig(active_id=ollama_id))
+                openrouter_id = "bk_openrouter_main"
+                openrouter_content = BackendFileContent(
+                    type=ProviderType.OPENROUTER,
+                    name="OpenRouter (Claude 3.5 Sonnet)",
+                    options={
+                        "api_key": "",
+                        "model": "anthropic/claude-3.5-sonnet",
+                    },
+                )
+                await asyncio.to_thread(
+                    ConfigStore(BackendFileContent, self.backends_dir / f"{openrouter_id}.json").save, openrouter_content
+                )
 
-        self._defaults_ensured = True
+                await asyncio.to_thread(self.active_store.save, ActiveBackendConfig(active_id=ollama_id))
+
+            self._defaults_ensured = True
 
     # --------------------------------------------------------------------------
     # Publiczne metody async — bezpieczne pod kątem race condition
@@ -85,25 +98,27 @@ class BackendRegistry:
         :return: Utworzona instancja BackendInstanceConfig.
         """
         instance_id = custom_id or f"bk_{uuid.uuid4().hex[:8]}"
+        if custom_id:
+            sanitize_identifier(custom_id, field_name="custom_id")
         content = BackendFileContent(type=provider_type, name=name, options=options)
         file_path = self.backends_dir / f"{instance_id}.json"
 
         async with self._lock:
-            ConfigStore(BackendFileContent, file_path).save(content)
+            await asyncio.to_thread(ConfigStore(BackendFileContent, file_path).save, content)
 
         logger.info(f"Utworzono nową instancję backendu [{name}] z ID: {instance_id}")
         return BackendInstanceConfig(id=instance_id, **content.model_dump())
 
     async def load_all_instances(self) -> Dict[str, BackendInstanceConfig]:
         """Wczytuje i zwraca słownik wszystkich dostępnych instancji backendów {id: config}."""
-        self._ensure_default_instances()
+        await self._ensure_default_instances()
         instances: Dict[str, BackendInstanceConfig] = {}
 
         async with self._lock:
             for file_path in self.backends_dir.glob("*.json"):
                 try:
                     instance_id = file_path.stem
-                    content = ConfigStore(BackendFileContent, file_path).load()
+                    content = await asyncio.to_thread(ConfigStore(BackendFileContent, file_path).load)
                     instances[instance_id] = BackendInstanceConfig(id=instance_id, **content.model_dump())
                 except Exception as e:
                     logger.error(f"Błąd podczas wczytywania pliku instancji backendu [{file_path}]: {e}")
@@ -112,15 +127,18 @@ class BackendRegistry:
 
     async def get_active_backend_id(self) -> str:
         """Wczytuje ID obecnie aktywnego backendu z pliku active_backend.json."""
-        self._ensure_default_instances()
+        await self._ensure_default_instances()
         async with self._lock:
-            cfg = self.active_store.load(default_factory=lambda: ActiveBackendConfig(active_id="bk_ollama_local"))
+            cfg = await asyncio.to_thread(
+                self.active_store.load, default_factory=lambda: ActiveBackendConfig(active_id="bk_ollama_local")
+            )
             return cfg.active_id
 
     async def set_active_backend_id(self, backend_id: str) -> None:
         """Ustawia i zapisuje ID aktywnego backendu w pliku active_backend.json."""
+        sanitize_identifier(backend_id, field_name="backend_id")
         async with self._lock:
-            self.active_store.save(ActiveBackendConfig(active_id=backend_id))
+            await asyncio.to_thread(self.active_store.save, ActiveBackendConfig(active_id=backend_id))
         logger.info(f"Zmieniono aktywną instancję backendu na: [{backend_id}]")
 
     async def delete_instance(self, backend_id: str) -> bool:
@@ -130,14 +148,15 @@ class BackendRegistry:
 
         :param backend_id: ID instancji do usunięcia.
         :return: True jeśli pomyślnie usunięto, False jeśli plik nie istniał.
-        :raises ValueError: Jeśli podjęto próbę usunięcia obecnie aktywnego backendu.
+        :raises ValueError: Jeśli podjęto próbę usunięcia obecnie aktywnego backendu lub backend_id jest nieprawidłowy.
         """
-        self._ensure_default_instances()
+        sanitize_identifier(backend_id, field_name="backend_id")
+        await self._ensure_default_instances()
         async with self._lock:
             # Odczyt aktywnego ID bezpośrednio wewnątrz locka (bez wywoływania get_active_backend_id,
             # które nabyłoby lock ponownie — asyncio.Lock nie jest reentrantowy).
-            active_cfg = self.active_store.load(
-                default_factory=lambda: ActiveBackendConfig(active_id="bk_ollama_local")
+            active_cfg = await asyncio.to_thread(
+                self.active_store.load, default_factory=lambda: ActiveBackendConfig(active_id="bk_ollama_local")
             )
             if backend_id == active_cfg.active_id:
                 raise ValueError(

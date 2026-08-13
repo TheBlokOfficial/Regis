@@ -15,6 +15,7 @@ export class ChatView {
     this.accumulatedText = '';
     this.userHasScrolledUp = false;
     this.pollInterval = null;
+    this._documentClickBound = false;
   }
 
   render() {
@@ -167,14 +168,27 @@ export class ChatView {
         triggerBtn.classList.toggle('active', !popover.classList.contains('hidden'));
       });
 
-      document.addEventListener('click', (e) => {
-        if (!popover.classList.contains('hidden')) {
-          if (!popover.contains(e.target) && !triggerBtn.contains(e.target)) {
-            popover.classList.add('hidden');
-            triggerBtn.classList.remove('active');
+      // TabManager zastępuje cały poddrzewo DOM widoku Chat przy każdej wizycie na zakładce
+      // (patrz tab_manager.js#switchTab), a ChatView jest instancją długożyjącą — bindEvents()
+      // uruchamia się więc wielokrotnie. Nasłuch na `document` musi zostać spięty tylko RAZ,
+      // inaczej każda wizyta na zakładce Chat dokłada kolejny, nigdy niesprzątany listener.
+      // Wewnątrz handlera odpytujemy DOM na żywo, by zawsze operować na aktualnie
+      // wyrenderowanym popoverze/triggerze, a nie na (potencjalnie odłączonych) referencjach
+      // z chwili pierwszego wywołania bindEvents().
+      if (!this._documentClickBound) {
+        this._documentClickBound = true;
+        document.addEventListener('click', (e) => {
+          const currentPopover = document.getElementById('chat-session-popover');
+          const currentTrigger = document.getElementById('chat-session-trigger');
+          if (!currentPopover || !currentTrigger) return;
+          if (!currentPopover.classList.contains('hidden')) {
+            if (!currentPopover.contains(e.target) && !currentTrigger.contains(e.target)) {
+              currentPopover.classList.add('hidden');
+              currentTrigger.classList.remove('active');
+            }
           }
-        }
-      });
+        });
+      }
     }
 
     if (btnPopoverNew) {
@@ -193,37 +207,6 @@ export class ChatView {
         }
       });
     }
-  }
-
-  showCustomConfirm(msg, onConfirm) {
-    const overlay = document.getElementById('modal-overlay');
-    const content = document.getElementById('modal-content');
-    if (!overlay || !content) return;
-    
-    content.innerHTML = `
-      <div class="modal-header">
-        <h3 class="modal-title">Potwierdzenie</h3>
-        <button class="btn-close-corner" id="btn-close-modal">×</button>
-      </div>
-      <p style="margin-bottom: 20px; font-size: 0.95rem; color: var(--text-secondary);">${msg}</p>
-      <div style="display: flex; justify-content: flex-end; gap: 10px;">
-        <button class="btn btn-subtle" id="btn-cancel-modal">Anuluj</button>
-        <button class="btn btn-primary" style="background-color: var(--accent-danger); border-color: var(--accent-danger);" id="btn-confirm-modal">Usuń</button>
-      </div>
-    `;
-    
-    overlay.classList.remove('hidden');
-    
-    const closeModal = () => {
-      overlay.classList.add('hidden');
-    };
-    
-    document.getElementById('btn-close-modal').addEventListener('click', closeModal);
-    document.getElementById('btn-cancel-modal').addEventListener('click', closeModal);
-    document.getElementById('btn-confirm-modal').addEventListener('click', () => {
-      onConfirm();
-      closeModal();
-    });
   }
 
   async loadActiveProviderInfo() {
@@ -497,12 +480,18 @@ export class ChatView {
 
     this.abortController = new AbortController();
 
+    // Zapamiętujemy sesję, dla której ten strumień faktycznie został rozpoczęty —
+    // użytkownik może przełączyć się na inną konwersację zanim strumień się zakończy,
+    // a callbacki poniżej nie mogą wtedy nadpisywać stanu UI aktywnej w danej chwili sesji.
+    const streamSessionId = this.activeSessionId;
+
     // 3. Strumieniowanie via SSE
     await this.apiClient.streamChatMessage(
-      this.activeSessionId,
+      streamSessionId,
       message,
       null,
       (chunk) => {
+        if (this.activeSessionId !== streamSessionId) return;
         this.accumulatedText += chunk;
         if (this.currentAssistantTextEl) {
           this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText, true);
@@ -511,19 +500,25 @@ export class ChatView {
       },
       (error) => {
         console.error('[ChatView] Błąd strumieniowania:', error);
-        if (this.currentAssistantTextEl) {
+        if (this.activeSessionId === streamSessionId && this.currentAssistantTextEl) {
           this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText + `\n\n[Błąd: ${error.message}]`, false);
         }
-        this.finishStreaming();
+        this.finishStreaming(streamSessionId);
       },
       () => {
-        this.finishStreaming();
+        this.finishStreaming(streamSessionId);
       },
       this.abortController.signal
     );
   }
 
-  finishStreaming() {
+  finishStreaming(streamSessionId = this.activeSessionId) {
+    // Strumień mógł dobiec końca dla sesji, z której użytkownik już się przełączył —
+    // wtedy nie dotykamy stanu UI aktualnie wyświetlanej sesji, jedynie odświeżamy listę.
+    if (this.activeSessionId !== streamSessionId) {
+      this.loadSessionsList();
+      return;
+    }
     this.stopPolling();
     if (this.currentAssistantTextEl) {
       this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText, false);

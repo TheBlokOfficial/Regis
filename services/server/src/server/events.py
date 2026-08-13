@@ -6,4 +6,7 @@ from enum import Enum
 class ServerEventType(str, Enum):
     """Typy ogólno-serwerowych zdarzeń w magistrali EventBus."""
 
-    pass
+    CHAT_CHUNK = "chat.chunk"
+    CHAT_DONE = "chat.done"
+    CHAT_ERROR = "chat.error"
+    CHAT_CANCELLED = "chat.cancelled"

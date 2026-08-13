@@ -17,22 +17,21 @@ async def main() -> None:
     settings = load_settings()
     logger.info(f"Uruchamianie {settings.app_name} (v{settings.version})...")
 
-    # 1. Tworzenie centralnej magistrali zdarzeń (Event Bus)
+    # 1. Tworzenie centralnej magistrali zdarzeń (Event Bus), współdzielonej przez AgentEngine
     event_bus = EventBus()
 
     # 2. Inicjalizacja rejestru backendów i pobranie aktywnego dostawcy LLM
     backend_registry = BackendRegistry()
     active_llm_provider = await backend_registry.get_active_provider()
 
-    # 3. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM i skonfigurowanym limitem historii kontekstu
+    # 3. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus i skonfigurowanym limitem historii kontekstu
     context_builder = ContextBuilder(max_history_messages=settings.max_history_messages)
-    agent_engine = AgentEngine(llm_provider=active_llm_provider, context_builder=context_builder)
+    agent_engine = AgentEngine(llm_provider=active_llm_provider, context_builder=context_builder, event_bus=event_bus)
     await agent_engine.initialize()
 
-    # 4. Inicjalizacja bramki sieciowej z podpiętą magistralą zdarzeń i rejestrem backendów
+    # 4. Inicjalizacja bramki sieciowej z rejestrem backendów
     app = create_gateway_app(
         agent_engine=agent_engine,
-        event_bus=event_bus,
         backend_registry=backend_registry,
     )
 

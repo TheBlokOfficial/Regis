@@ -50,7 +50,6 @@ def test_client():
 
         app = create_gateway_app(
             agent_engine=agent_engine,
-            event_bus=None,  # type: ignore
             backend_registry=backend_registry,
         )
 
@@ -171,7 +170,7 @@ async def test_async_background_generation_and_status():
         slow_provider = SlowMockLLMProvider()
         engine = AgentEngine(llm_provider=slow_provider, memory_manager=memory_manager)
         backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
-        app = create_gateway_app(agent_engine=engine, event_bus=None, backend_registry=backend_registry)
+        app = create_gateway_app(agent_engine=engine, backend_registry=backend_registry)
 
         with TestClient(app) as client:
             # Rozpoczynamy generowanie strumieniowe w tle przez engine
@@ -221,7 +220,7 @@ async def test_disconnect_does_not_cancel_background_task():
         slow_provider = SlowMockLLMProvider()
         engine = AgentEngine(llm_provider=slow_provider, memory_manager=memory_manager)
         backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
-        app = create_gateway_app(agent_engine=engine, event_bus=None, backend_registry=backend_registry)
+        app = create_gateway_app(agent_engine=engine, backend_registry=backend_registry)
 
         # 1. Rozpoczynamy interakcję strumieniową
         stream_gen = engine.interact_stream(session_id="session_default", prompt="Test rozłączenia klienta")

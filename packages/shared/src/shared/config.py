@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable, Generic, Type, TypeVar
 from pydantic import BaseModel
@@ -8,6 +9,24 @@ logger = get_logger("regis.shared.config")
 
 # Typ generyczny dla modeli konfiguracji dziedziczących po Pydantic BaseModel
 T = TypeVar("T", bound=BaseModel)
+
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def sanitize_identifier(value: str, *, field_name: str = "id") -> str:
+    """Waliduje identyfikator przeznaczony do budowy nazwy pliku na dysku (np. session_id, backend_id).
+
+    Dopuszcza wyłącznie znaki alfanumeryczne, '_' oraz '-', by uniemożliwić directory
+    traversal (np. '../../etc/passwd') lub inne nieprzewidziane znaki w nazwie pliku.
+
+    :raises ValueError: jeśli identyfikator jest pusty, zbyt długi lub zawiera niedozwolone znaki.
+    """
+    if not _SAFE_IDENTIFIER_RE.match(value):
+        raise ValueError(
+            f"Nieprawidłowy {field_name}: '{value}'. Dozwolone są wyłącznie znaki "
+            f"alfanumeryczne, '_' oraz '-' (maks. 128 znaków)."
+        )
+    return value
 
 
 class ConfigStore(Generic[T]):

@@ -3,7 +3,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 from pydantic import BaseModel, Field
-from shared import ChatMessageDTO, ChatSessionSummaryDTO, ConfigStore, get_logger, get_service_root
+from shared import ChatMessageDTO, ChatSessionSummaryDTO, ConfigStore, get_logger, get_service_root, sanitize_identifier
 
 logger = get_logger("regis.agent.memory")
 
@@ -127,10 +127,14 @@ class MemoryManager:
         # Wczytanie istniejących sesji z pliku i upewnienie się, że istnieje sesja domyślna
         self._load_all_from_disk()
 
+    def _session_file_path(self, session_id: str) -> Path:
+        """Zwraca ścieżkę pliku danej sesji, walidując `session_id` przeciwko directory traversal."""
+        sanitize_identifier(session_id, field_name="session_id")
+        return self.sessions_dir / f"{session_id}.json"
+
     def _get_store_for_session(self, session_id: str) -> ConfigStore[SessionDataModel]:
         """Zwraca instancję ConfigStore przypisaną do pliku danej sesji."""
-        file_path = self.sessions_dir / f"{session_id}.json"
-        return ConfigStore(SessionDataModel, file_path)
+        return ConfigStore(SessionDataModel, self._session_file_path(session_id))
 
     def _load_all_from_disk(self) -> None:
         """Automatycznie skanuje katalog data/sessions/ i wczytuje z dysku istniejące sesje."""
@@ -161,6 +165,8 @@ class MemoryManager:
         :return: Utworzona obiektowa instancja Session.
         """
         session_id = custom_id or generate_session_id()
+        if custom_id:
+            sanitize_identifier(custom_id, field_name="custom_id")
         session = Session(session_id=session_id, title=title)
         self._sessions[session_id] = session
         self.save_session(session_id)
@@ -177,7 +183,8 @@ class MemoryManager:
     def get_or_create_session(self, session_id: str = "session_default") -> Session:
         """Pobiera istniejącą sesję lub tworzy nową jeśli podane ID nie istnieje."""
         if session_id not in self._sessions:
-            file_path = self.sessions_dir / f"{session_id}.json"
+            sanitize_identifier(session_id, field_name="session_id")
+            file_path = self._session_file_path(session_id)
             if file_path.exists():
                 store = ConfigStore(SessionDataModel, file_path)
                 data_model = store.load()
@@ -225,10 +232,11 @@ class MemoryManager:
 
     def delete_session(self, session_id: str) -> bool:
         """Usuwa sesję z pamięci RAM oraz fizycznie kasuje plik JSON z dysku."""
+        sanitize_identifier(session_id, field_name="session_id")
         if session_id in self._sessions:
             del self._sessions[session_id]
 
-        file_path = self.sessions_dir / f"{session_id}.json"
+        file_path = self._session_file_path(session_id)
         if file_path.exists():
             file_path.unlink()
             logger.info(f"Usunięto plik sesji z dysku: [{file_path}]")
