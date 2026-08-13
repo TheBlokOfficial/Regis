@@ -125,37 +125,14 @@ export class ChatView {
         this.userHasScrolledUp = !isAtBottom;
       });
 
+      // Delegowany toggle dla bloków myślenia
       container.addEventListener('click', (e) => {
         const summary = e.target.closest('.thinking-summary');
         if (!summary) return;
-
-        const details = summary.closest('.chat-thinking-block');
-        if (!details) return;
-
-        if (details.open) {
-          e.preventDefault();
-
-          if (details._closingTimer) {
-            clearTimeout(details._closingTimer);
-            details._closingTimer = null;
-          }
-
-          if (details.classList.contains('is-closing')) {
-            details.classList.remove('is-closing');
-            return;
-          }
-
-          details.classList.add('is-closing');
-          details._closingTimer = setTimeout(() => {
-            details.removeAttribute('open');
-            details.classList.remove('is-closing');
-            details._closingTimer = null;
-          }, 300);
-        } else {
-          if (details.classList.contains('is-closing')) {
-            details.classList.remove('is-closing');
-          }
-        }
+        const block = summary.closest('.chat-thinking-block');
+        if (!block) return;
+        const isOpen = block.dataset.open === 'true';
+        block.dataset.open = isOpen ? 'false' : 'true';
       });
     }
 
@@ -588,8 +565,12 @@ export class ChatView {
         if (titleEl && titleEl.textContent !== statusTitle) {
           titleEl.textContent = statusTitle;
         }
+        // Płynne zwinięcie gdy myślenie się kończy
+        if (isThinkingDone && existingBlock.dataset.open === 'true') {
+          existingBlock.dataset.open = 'false';
+        }
       } else {
-        thinkHtml = `<details class="chat-thinking-block" ${!isThinkingDone ? 'open' : ''}><summary class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></summary><div class="thinking-wrapper"><div class="thinking-content">${escapedThink}</div></div></details>`;
+        thinkHtml = `<div class="chat-thinking-block" data-open="true"><div class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></div><div class="thinking-content-wrapper"><div class="thinking-content-inner"><div class="thinking-content">${escapedThink}</div></div></div></div>`;
       }
     }
 
@@ -617,7 +598,6 @@ export class ChatView {
       .replace(/```([\s\S]*?)```/g, '<pre class="chat-code-block"><code>$1</code></pre>')
       .replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>');
   }
-
 
   async stopGeneration() {
     this.stopPolling();
@@ -711,12 +691,12 @@ export class ChatView {
       const isStreaming = thinkEnd === -1;
       const statusTitle = isStreaming ? 'Regis myśli...' : 'Przemyślenia Agenta';
 
-      thinkHtml = `<details class="chat-thinking-block" ${isStreaming ? 'open' : ''}><summary class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></summary><div class="thinking-wrapper"><div class="thinking-content">${escapedThink}</div></div></details>`;
+      thinkHtml = `<div class="chat-thinking-block" data-open="${isStreaming ? 'true' : 'false'}"><div class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></div><div class="thinking-content-wrapper"><div class="thinking-content-inner"><div class="thinking-content">${escapedThink}</div></div></div></div>`;
       content = restText;
     }
 
-    const formattedRest = this.formatRestContent(content);
-    return thinkHtml + `<div class="message-rest-content">${formattedRest}</div>`;
+    const formattedContent = this.formatRestContent(content);
+    return thinkHtml + `<div class="message-rest-content">${formattedContent}</div>`;
   }
 
   scrollToBottom(force = false) {
