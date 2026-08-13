@@ -20,15 +20,25 @@ class LLMFactory:
             f"[ID: {config.id}, Typ: {config.type.value}]..."
         )
 
+        max_tokens_raw = config.options.get("max_tokens")
+        max_tokens: int | None = None
+        if max_tokens_raw is not None and str(max_tokens_raw).strip():
+            try:
+                max_tokens = int(max_tokens_raw)
+            except (ValueError, TypeError):
+                logger.warning(f"Nieprawidłowa wartość max_tokens: '{max_tokens_raw}'. Ignorowanie...")
+
         if config.type == ProviderType.OLLAMA:
             return OllamaProvider(
                 base_url=config.options.get("base_url", "http://localhost:11434"),
                 model=config.options.get("model", "llama3"),
+                max_tokens=max_tokens,
             )
         elif config.type == ProviderType.OPENROUTER:
             return OpenRouterProvider(
                 api_key=config.options.get("api_key", ""),
                 model=config.options.get("model", "anthropic/claude-3.5-sonnet"),
+                max_tokens=max_tokens,
             )
         else:
             raise ValueError(f"Nieobsługiwany typ dostawcy LLM: {config.type}")
@@ -62,6 +72,14 @@ class LLMFactory:
                             default_value="http://localhost:11434",
                             placeholder="http://localhost:11434",
                         ),
+                        ProviderOptionSpec(
+                            name="max_tokens",
+                            label="Limit tokenów wyjściowych (max_tokens)",
+                            type="number",
+                            required=False,
+                            default_value="4096",
+                            placeholder="4096",
+                        ),
                     ],
                 ),
                 ProviderTypeSpecDTO(
@@ -83,6 +101,14 @@ class LLMFactory:
                             required=True,
                             default_value="",
                             placeholder="sk-or-v1-...",
+                        ),
+                        ProviderOptionSpec(
+                            name="max_tokens",
+                            label="Limit tokenów wyjściowych (max_tokens)",
+                            type="number",
+                            required=False,
+                            default_value="4096",
+                            placeholder="4096",
                         ),
                     ],
                 ),

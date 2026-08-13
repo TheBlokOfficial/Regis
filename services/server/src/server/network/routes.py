@@ -36,9 +36,9 @@ def create_api_router(
     """Centralny rejestr używanych punktów końcowych REST i SSE API serwera Regis OS."""
     router = APIRouter()
 
-    # 1. GET /api/health
+    # 1. GET /api/v1/health
     @router.get(
-        "/api/health",
+        "/api/v1/health",
         response_model=HealthResponse,
         summary="Status zdrowia serwera centralnego",
         tags=["System"],
@@ -51,9 +51,9 @@ def create_api_router(
             shared_version=shared.__version__,
         )
 
-    # 2. GET /api/llm/providers/schemas
+    # 2. GET /api/v1/llm/providers/schemas
     @router.get(
-        "/api/llm/providers/schemas",
+        "/api/v1/llm/providers/schemas",
         response_model=ProviderMetadataResponse,
         summary="Pobiera generyczne specyfikacje pól opcji dla dostępnych typów dostawców LLM",
         tags=["LLM Providers"],
@@ -61,9 +61,9 @@ def create_api_router(
     async def get_llm_provider_schemas() -> ProviderMetadataResponse:
         return LLMFactory.get_all_schemas()
 
-    # 3. GET /api/llm/providers
+    # 3. GET /api/v1/llm/providers
     @router.get(
-        "/api/llm/providers",
+        "/api/v1/llm/providers",
         response_model=LLMProviderListResponse,
         summary="Pobiera listę skonfigurowanych dostawców LLM oraz ID aktywnego",
         tags=["LLM Providers"],
@@ -85,9 +85,9 @@ def create_api_router(
 
         return LLMProviderListResponse(providers=providers_dto, active_id=active_id)
 
-    # 4. PUT /api/llm/providers/active
+    # 4. PUT /api/v1/llm/providers/active
     @router.put(
-        "/api/llm/providers/active",
+        "/api/v1/llm/providers/active",
         response_model=LLMProviderListResponse,
         summary="Wybiera i przełącza aktywnego dostawcę LLM w agencie",
         tags=["LLM Providers"],
@@ -105,9 +105,9 @@ def create_api_router(
 
         return await get_llm_providers()
 
-    # 5. POST /api/llm/providers
+    # 5. POST /api/v1/llm/providers
     @router.post(
-        "/api/llm/providers",
+        "/api/v1/llm/providers",
         response_model=LLMProviderDTO,
         status_code=status.HTTP_201_CREATED,
         summary="Tworzy nową instancję dostawcy LLM i zapisuje plik JSON",
@@ -140,9 +140,9 @@ def create_api_router(
             is_active=(created_cfg.id == active_id),
         )
 
-    # 6. DELETE /api/llm/providers/{provider_id}
+    # 6. DELETE /api/v1/llm/providers/{provider_id}
     @router.delete(
-        "/api/llm/providers/{provider_id}",
+        "/api/v1/llm/providers/{provider_id}",
         summary="Usuwa plik instancji dostawcy LLM z dysku",
         tags=["LLM Providers"],
     )
@@ -165,9 +165,9 @@ def create_api_router(
     # CHAT & SESSIONS ENDPOINTS (AGENT OS MULTI-SESSION CONVERSATIONS)
     # ==========================================================================
 
-    # 7. POST /api/chat
+    # 7. POST /api/v1/chat
     @router.post(
-        "/api/chat",
+        "/api/v1/chat",
         response_model=ChatResponseDTO,
         summary="Wysyła wiadomość do Agenta i zwraca pełną odpowiedź w jednym żądaniu",
         tags=["Chat & Sessions"],
@@ -190,9 +190,9 @@ def create_api_router(
                 detail=f"Błąd generowania odpowiedzi przez Agenta: {err}",
             )
 
-    # 8. POST /api/chat/stream
+    # 8. POST /api/v1/chat/stream
     @router.post(
-        "/api/chat/stream",
+        "/api/v1/chat/stream",
         summary="Wysyła wiadomość do Agenta i strumieniuje odpowiedź w czasie rzeczywistym via SSE",
         tags=["Chat & Sessions"],
     )
@@ -218,9 +218,9 @@ def create_api_router(
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-    # 8b. POST /api/chat/cancel
+    # 8b. POST /api/v1/chat/cancel
     @router.post(
-        "/api/chat/cancel",
+        "/api/v1/chat/cancel",
         summary="Anuluje aktywne generowanie odpowiedzi dla podanej sesji (Web, Satelita, Cron)",
         tags=["Chat & Sessions"],
     )
@@ -228,9 +228,9 @@ def create_api_router(
         cancelled = await agent_engine.cancel_interaction(req.session_id)
         return {"success": cancelled, "session_id": req.session_id}
 
-    # 9. GET /api/chat/sessions
+    # 9. GET /api/v1/chat/sessions
     @router.get(
-        "/api/chat/sessions",
+        "/api/v1/chat/sessions",
         response_model=ChatSessionListResponse,
         summary="Pobiera listę wszystkich aktywnych i zapisanych sesji konwersacji z backendu",
         tags=["Chat & Sessions"],
@@ -239,9 +239,9 @@ def create_api_router(
         summaries = agent_engine.memory_manager.list_session_summaries()
         return ChatSessionListResponse(sessions=summaries)
 
-    # 10. POST /api/chat/sessions
+    # 10. POST /api/v1/chat/sessions
     @router.post(
-        "/api/chat/sessions",
+        "/api/v1/chat/sessions",
         response_model=ChatSessionSummaryDTO,
         status_code=status.HTTP_201_CREATED,
         summary="Tworzy nową sesję konwersacji w pamięci i na dysku",
@@ -254,9 +254,9 @@ def create_api_router(
         )
         return session.to_summary()
 
-    # 11. GET /api/chat/sessions/{session_id}/history
+    # 11. GET /api/v1/chat/sessions/{session_id}/history
     @router.get(
-        "/api/chat/sessions/{session_id}/history",
+        "/api/v1/chat/sessions/{session_id}/history",
         response_model=ChatSessionHistoryResponse,
         summary="Pobiera pełną historię wiadomości oraz metadane konkretnej sesji",
         tags=["Chat & Sessions"],
@@ -271,9 +271,9 @@ def create_api_router(
             updated_at=session.updated_at,
         )
 
-    # 12. DELETE /api/chat/sessions/{session_id}
+    # 12. DELETE /api/v1/chat/sessions/{session_id}
     @router.delete(
-        "/api/chat/sessions/{session_id}",
+        "/api/v1/chat/sessions/{session_id}",
         summary="Usuwa historię i plik sesji z dysku serwera",
         tags=["Chat & Sessions"],
     )

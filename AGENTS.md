@@ -1,17 +1,21 @@
-# Instrukcje dla Agenta AI (Regis)
+# Instrukcje dla Agenta AI (System Regis)
 
 ## 1. Start Sesji (Pierwsze zapoznanie)
 Podczas pierwszego zapoznania się z projektem koniecznie przeczytaj dokumenty w katalogu `docs/`:
 - `docs/manifest.md`
 - `docs/onboarding.md`
 
-## 2. Obowiązkowa Analiza i Planowanie (Chain of Thought)
-Przed przystąpieniem do jakichkolwiek modyfikacji kodu, tworzenia plików czy wykonywania złożonych komend, agent **bezwzględnie musi** przeprowadzić proces przemyślanego planowania i analizy:
-1. **Zrozumienie celu**: Przeanalizuj intencję użytkownika oraz kontekst w projekcie. Zidentyfikuj problem, a nie tylko jego objawy.
-2. **Krytyczne myślenie i weryfikacja sugestii**: Nie traktuj sugestii ani propozycji użytkownika jak bezwzględnej wyroczni. Zweryfikuj fakty samodzielnie, sprawdź techniczny sens oraz jakość proponowanego rozwiązania. Jeśli pomysł użytkownika zawiera błędy, luki architektoniczne lub istnieje obiektywnie lepsze rozwiązanie – przeanalizuj to krytycznie i zwróć na to uwagę przed ślepą realizacją.
-3. **Sprawdzenie faktów (Nie zgaduj)**: Zawsze zweryfikuj rzeczywisty stan kodu, ścieżki plików, nazwy funkcji i schematy danych przed ich użyciem.
-4. **Plan działania i przemyślenie skutków**: Określ kroki konieczne do zrealizowania zadania oraz rozważ potencjalne skutki uboczne, przypadki brzegowe i wpływ na inne moduły.
-5. **Dopiero po przeanalizowaniu**: Przejdź do wykonania konkretnych edycji i generowania kodu.
+## 2. Obowiązek Stosowania Chain of Thought (COT)
+Przed przystąpieniem do jakichkolwiek modyfikacji kodu, edycji planów, tworzenia nowych plików czy wykonywania złożonych komend, agent **ma obowiązek przeprowadzić proces przemyślanego planowania i analizy (Chain of Thought)**.
+
+Agent stosuje analizę COT w sposób naturalny i elastyczny, dostosowując głębokość i formę przemyśleń do skali oraz skomplikowania zadania – **bez konieczności sztywnego i szablonowego wypisywania ponumerowanych punktów przed każdą odpowiedzią**.
+
+Kluczowe filary analizy, o których agent musi pamiętać:
+- **Zrozumienie celu (Goal Understanding)**: Przeanalizowanie intencji użytkownika oraz kontekstu w projekcie, by rozwiązać właściwy problem, a nie tylko jego powierzchniowe objawy.
+- **Krytyczne myślenie i weryfikacja sugestii (Critical Thinking)**: Samodzielne sprawdzanie faktów i technicznego sensu proponowanych rozwiązań. Jeśli pomysł zawiera luki lub istnieje lepsza alternatywa – wykaż to przed realizacją.
+- **Sprawdzenie faktów (Fact Checking)**: Weryfikacja rzeczywistego stanu kodu, ścieżek plików, nazw funkcji i schematów danych przed ich użyciem (nie zgaduj).
+- **Plan działania i przemyślenie skutków (Action Plan & Consequences)**: Przemyślenie kroków koniecznych do zrealizowania zadania, skutków ubocznych oraz przypadków brzegowych.
+
 
 ## 3. Standardy Jakości Kodu i Dobre Praktyki
 Pisz kod czysty, modułowy i łatwy w utrzymaniu. Każda zmiana w kodzie musi spełniać poniższe zasady:

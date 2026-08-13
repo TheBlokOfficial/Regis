@@ -1,29 +1,87 @@
-# Regis - System Usług Rozproszonych (Monorepo)
+# System Regis
 
-Projekt oparty o monorepo Python z wykorzystaniem menedżera pakietów [`uv`](https://github.com/astral-sh/uv) oraz architektury `uv workspace`.
+**System Regis** to rozproszony system usług sieciowych komunikujących się w sieci lokalnej, zbudowany w oparciu o architekturę monorepo w języku Python z wykorzystaniem menedżera pakietów [`uv`](https://github.com/astral-sh/uv) (`uv workspace`).
 
-## Struktura projektu
+Projekt oferuje elastyczne środowisko orkiestracji silnika konwersacyjnego, obsługę wielu dostawców modeli LLM (zarówno lokalnych jak Ollama, jak i chmurowych poprzez OpenRouter), asynchronizację zdarzeń w oparciu o magistralę `EventBus` oraz nowoczesny interfejs użytkownika.
 
-- `services/` - Usługi rozproszone (aplikacje sieciowe/mikrousługi):
-  - `services/server/` - Główny serwer obsługujący WebSockets oraz API REST (FastAPI).
-- `packages/` - Wspólne biblioteki kodowe (paczki pomocnicze/DTO/protokoły):
-  - `packages/shared/` - Wspólna paczka kodu dla usług.
-- `docs/` - Dokumentacja architektoniczna i onboardingowa (`manifest.md`, `onboarding.md`).
+---
 
+## 🏗️ Architektura i Struktura Monorepo
 
-## Wymagania
+System Regis podzielony jest na autonomiczne usługi (`services/`) oraz wspólne biblioteki kodu (`packages/`):
 
-- Python >= 3.11
-- `uv` (`pip install uv`)
+```text
+Regis/
+├── docs/             # Dokumentacja architektoniczna i wdrożeniowa (manifest.md, onboarding.md)
+├── packages/         # Wspólne pakiety kodowe
+│   └── shared/       # Paczka shared (ConfigStore, EventBus, kontrakty DTO, logowanie)
+├── services/         # Usługi sieciowe i aplikacje
+│   └── server/       # Główny serwer Systemu Regis (bramka REST/WS, engine, rejestr LLM, Web UI)
+├── pyproject.toml    # Konfiguracja uv workspace i pytest
+└── README.md         # Wprowadzenie do projektu
+```
 
-## Uruchamianie
+### Kluczowe Komponenty:
+- **`services/server`**: Serwer sieciowy realizujący komunikację poprzez FastAPI (REST API v1), strumieniowanie odpowiedzi w czasie rzeczywistym (Server-Sent Events - SSE), silnik konwersacji (`AgentEngine`), zarządcę pamięci sesji (`MemoryManager`), budowniczy kontekstu (`ContextBuilder`) oraz wbudowany interfejs Web UI.
+- **`packages/shared`**: Centralny pakiet dzielony zawierający wspólny magazyn konfiguracji (`ConfigStore`), asynchroniczną magistralę zdarzeń (`EventBus`), obiekty transferu danych (`contracts.py`) oraz standaryzowany moduł logowania (`logging.py`).
 
-### Instalacja / synchronizacja zależności
+---
+
+## 🚀 Szybki Start
+
+### 1. Wymagania wstępne
+- **Python**: `>= 3.11`
+- **Menedżer pakietów**: `uv` (`pip install uv` lub instalacja z dystrybucji Astral)
+
+### 2. Inicjalizacja środowiska
+Zainstaluj zależności dla całego monorepo i powiąż pakiety workspace:
 ```bash
 python -m uv sync
 ```
 
-### Uruchomienie serwera
+### 3. Uruchomienie serwera Systemu Regis
+Uruchom serwer deweloperski na porcie 8000:
 ```bash
 python -m uv run --package server uvicorn server.main:app --reload
 ```
+Alternatywnie bezpośrednio przez moduł Python:
+```bash
+python -m uv run python -m server.main
+```
+
+### 4. Dostęp do Interfejsu i API
+Po uruchomieniu serwera aplikacja jest dostępna pod adresami:
+- **Interfejs Web UI**: `http://127.0.0.1:8000/`
+- **API REST (Czat)**: `http://127.0.0.1:8000/api/v1/chat`
+- **Strumieniowanie SSE**: `http://127.0.0.1:8000/api/v1/chat/stream`
+- **Bramka WebSockets**: `ws://127.0.0.1:8000/ws` *(Planowana dla komunikacji wielousługowej/satelitarnej)*
+
+---
+
+## 🧪 Testy i Jakość Kodu
+
+Projekt posiada automatyczny zestaw testów jednostkowych i integracyjnych uruchamianych przez `pytest`:
+
+```bash
+# Uruchomienie wszystkich testów monorepo
+python -m pytest
+```
+
+---
+
+## ⚙️ Konfiguracja Dostawców LLM
+
+System Regis wspiera dynamiczne przełączanie backendów językowych:
+- **Ollama** (Domyślny lokalny): Wymaga uruchomionej instancji Ollama (`http://localhost:11434`).
+- **OpenRouter** (Chmura): Wymaga ustawienia zmiennej środowiskowej `OPENROUTER_API_KEY`.
+
+Ustawienia persystentne są przechowywane w plikach konfiguracyjnych zarządzanych przez `ConfigStore`.
+
+---
+
+## 📚 Dokumentacja
+
+Szczegółowe informacje znajdują się w katalogu [`docs/`](file:///d:/Projekty/Regis/docs):
+- [**`docs/onboarding.md`**](file:///d:/Projekty/Regis/docs/onboarding.md) – Przewodnik deweloperski, konfiguracja środowiska i cykl pracy.
+- [**`docs/manifest.md`**](file:///d:/Projekty/Regis/docs/manifest.md) – Manifest Architektoniczny Systemu Regis, opisy warstw i przepływy danych.
+- [**`AGENTS.md`**](file:///d:/Projekty/Regis/AGENTS.md) – Standardy jakości i instrukcje dla agentów AI.

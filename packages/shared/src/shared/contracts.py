@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
-    """Odpowiedź dla punktu końcowego GET /api/health."""
+    """Odpowiedź dla punktu końcowego GET /api/v1/health."""
 
     system: str = Field(default="Regis Agent OS", description="Nazwa systemu")
     gateway_status: str = Field(default="online", description="Status bramki sieciowej")
@@ -22,20 +22,20 @@ class LLMProviderDTO(BaseModel):
 
 
 class LLMProviderListResponse(BaseModel):
-    """Odpowiedź dla GET /api/llm/providers."""
+    """Odpowiedź dla GET /api/v1/llm/providers."""
 
     providers: list[LLMProviderDTO] = Field(default_factory=list, description="Lista dostępnych dostawców LLM")
     active_id: str = Field(..., description="ID obecnie aktywnego dostawcy")
 
 
 class SelectLLMProviderRequest(BaseModel):
-    """Żądanie dla PUT /api/llm/providers/active."""
+    """Żądanie dla PUT /api/v1/llm/providers/active."""
 
     provider_id: str = Field(..., description="ID dostawcy LLM do aktywacji")
 
 
 class CreateLLMProviderRequest(BaseModel):
-    """Żądanie dla POST /api/llm/providers."""
+    """Żądanie dla POST /api/v1/llm/providers."""
 
     type: str = Field(..., description="Typ dostawcy (OLLAMA, OPENROUTER, OPENAI)")
     name: str = Field(..., description="Wyświetlana nazwa")
@@ -70,7 +70,7 @@ class ProviderTypeSpecDTO(BaseModel):
 
 
 class ProviderMetadataResponse(BaseModel):
-    """Odpowiedź dla GET /api/llm/providers/schemas zawierająca schematy opcji."""
+    """Odpowiedź dla GET /api/v1/llm/providers/schemas zawierająca schematy opcji."""
 
     provider_types: list[ProviderTypeSpecDTO] = Field(
         default_factory=list, description="Lista wspieranych typów z ich schematami opcji"

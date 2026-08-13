@@ -61,16 +61,16 @@ def test_client():
 def test_chat_sessions_endpoints(test_client):
     client, memory = test_client
 
-    # 1. GET /api/chat/sessions (powinna zawierać domyślną sesję)
-    res_list = client.get("/api/chat/sessions")
+    # 1. GET /api/v1/chat/sessions (powinna zawierać domyślną sesję)
+    res_list = client.get("/api/v1/chat/sessions")
     assert res_list.status_code == 200
     data_list = res_list.json()
     assert "sessions" in data_list
     assert len(data_list["sessions"]) == 1
     assert data_list["sessions"][0]["session_id"] == "session_default"
 
-    # 2. POST /api/chat/sessions (tworzenie nowej sesji)
-    res_create = client.post("/api/chat/sessions", json={"title": "Testowa Nowa Sesja"})
+    # 2. POST /api/v1/chat/sessions (tworzenie nowej sesji)
+    res_create = client.post("/api/v1/chat/sessions", json={"title": "Testowa Nowa Sesja"})
     assert res_create.status_code == 201
     new_session_data = res_create.json()
     assert new_session_data["title"] == "Testowa Nowa Sesja"
@@ -78,16 +78,16 @@ def test_chat_sessions_endpoints(test_client):
     assert new_id.startswith("session_")
 
     # Lista sesji po utworzeniu
-    res_list2 = client.get("/api/chat/sessions")
+    res_list2 = client.get("/api/v1/chat/sessions")
     assert len(res_list2.json()["sessions"]) == 2
 
 
 def test_chat_interaction_and_history(test_client):
     client, memory = test_client
 
-    # 1. POST /api/chat (wysłanie pytania)
+    # 1. POST /api/v1/chat (wysłanie pytania)
     res_chat = client.post(
-        "/api/chat",
+        "/api/v1/chat",
         json={
             "session_id": "session_default",
             "message": "Jaki jest Twój status?",
@@ -100,8 +100,8 @@ def test_chat_interaction_and_history(test_client):
     assert "Echo: Jaki jest Twój status?" in chat_data["message"]["content"]
     assert chat_data["model"] == "mock-model-v1"
 
-    # 2. GET /api/chat/sessions/session_default/history
-    res_hist = client.get("/api/chat/sessions/session_default/history")
+    # 2. GET /api/v1/chat/sessions/session_default/history
+    res_hist = client.get("/api/v1/chat/sessions/session_default/history")
     assert res_hist.status_code == 200
     hist_data = res_hist.json()
     assert len(hist_data["messages"]) == 2  # 1 User + 1 Assistant
@@ -113,9 +113,9 @@ def test_chat_interaction_and_history(test_client):
 def test_chat_streaming(test_client):
     client, memory = test_client
 
-    # POST /api/chat/stream
+    # POST /api/v1/chat/stream
     res_stream = client.post(
-        "/api/chat/stream",
+        "/api/v1/chat/stream",
         json={
             "session_id": "session_default",
             "message": "Cześć Strumień",
@@ -134,9 +134,9 @@ def test_chat_streaming(test_client):
 def test_cancel_chat_api(test_client):
     client, memory = test_client
 
-    # POST /api/chat/cancel (dla niezajętej sesji)
+    # POST /api/v1/chat/cancel (dla niezajętej sesji)
     res_cancel = client.post(
-        "/api/chat/cancel",
+        "/api/v1/chat/cancel",
         json={"session_id": "session_default"},
     )
     assert res_cancel.status_code == 200

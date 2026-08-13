@@ -12,6 +12,7 @@ class Settings(BaseModel):
     port: int = Field(default=8000, description="Port serwera HTTP/WebSocket")
     debug: bool = Field(default=False, description="Tryb debugowania")
     llm_timeout: float = Field(default=30.0, description="Globalny limit czasu zapytań do LLM w sekundach")
+    llm_default_max_tokens: int = Field(default=4096, description="Domyślna maksymalna liczba tokenów wyjściowych dla modeli LLM")
 
 
 # Automatyczne odnajdywanie korzenia usługi (services/server)

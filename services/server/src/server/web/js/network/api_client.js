@@ -10,7 +10,7 @@ export class ApiClient {
 
   async getHealth() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/health`);
+      const response = await fetch(`${this.baseUrl}/api/v1/health`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -23,7 +23,7 @@ export class ApiClient {
 
   async getProviderSchemas() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/llm/providers/schemas`);
+      const response = await fetch(`${this.baseUrl}/api/v1/llm/providers/schemas`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -36,7 +36,7 @@ export class ApiClient {
 
   async getLLMProviders() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/llm/providers`);
+      const response = await fetch(`${this.baseUrl}/api/v1/llm/providers`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -49,7 +49,7 @@ export class ApiClient {
 
   async setActiveLLMProvider(providerId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/llm/providers/active`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/llm/providers/active`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider_id: providerId }),
@@ -67,7 +67,7 @@ export class ApiClient {
 
   async createLLMProvider(providerData) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/llm/providers`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/llm/providers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(providerData),
@@ -85,7 +85,7 @@ export class ApiClient {
 
   async deleteLLMProvider(providerId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/llm/providers/${providerId}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/llm/providers/${providerId}`, {
         method: 'DELETE',
       });
       if (!response.ok) {
@@ -105,7 +105,7 @@ export class ApiClient {
 
   async getChatSessions() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat/sessions`);
+      const response = await fetch(`${this.baseUrl}/api/v1/chat/sessions`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -118,7 +118,7 @@ export class ApiClient {
 
   async createChatSession(title = 'Nowa konwersacja', customId = null) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat/sessions`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/chat/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, custom_id: customId }),
@@ -136,7 +136,7 @@ export class ApiClient {
 
   async getChatHistory(sessionId = 'session_default') {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat/sessions/${sessionId}/history`);
+      const response = await fetch(`${this.baseUrl}/api/v1/chat/sessions/${sessionId}/history`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -149,7 +149,7 @@ export class ApiClient {
 
   async deleteChatSession(sessionId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat/sessions/${sessionId}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/chat/sessions/${sessionId}`, {
         method: 'DELETE',
       });
       if (!response.ok) {
@@ -165,7 +165,7 @@ export class ApiClient {
 
   async cancelChatSession(sessionId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat/cancel`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/chat/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
@@ -183,7 +183,7 @@ export class ApiClient {
 
   async sendChatMessage(sessionId = 'session_default', message = '', systemPrompt = null) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, message, system_prompt: systemPrompt }),
@@ -209,7 +209,7 @@ export class ApiClient {
     signal = null
   ) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/chat/stream`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, message, system_prompt: systemPrompt }),

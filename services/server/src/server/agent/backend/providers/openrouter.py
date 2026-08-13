@@ -17,14 +17,20 @@ class OpenRouterProvider(BaseLLMProvider):
         self,
         api_key: str = "",
         model: str = "anthropic/claude-3.5-sonnet",
+        max_tokens: int | None = None,
     ) -> None:
         self.api_key = api_key
         self._model = model
+        self._max_tokens = max_tokens
         self.base_url = self.BASE_URL
 
     @property
     def model(self) -> str:
         return self._model
+
+    @property
+    def max_tokens(self) -> int | None:
+        return self._max_tokens
 
     async def generate_stream(
         self,
@@ -44,6 +50,10 @@ class OpenRouterProvider(BaseLLMProvider):
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": True,
         }
+
+        max_t = kwargs.get("max_tokens", self._max_tokens)
+        if max_t is not None:
+            payload["max_tokens"] = max_t
 
         if "temperature" in kwargs:
             payload["temperature"] = kwargs["temperature"]

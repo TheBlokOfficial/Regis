@@ -28,6 +28,11 @@ class BaseLLMProvider(ABC):
         """Domyślna nazwa modelu obsługiwanego przez dostawcę."""
         return getattr(self, "_model", "unknown")
 
+    @property
+    def max_tokens(self) -> int | None:
+        """Limit tokenów wyjściowych wygenerowanej odpowiedzi."""
+        return getattr(self, "_max_tokens", None)
+
     @abstractmethod
     def generate_stream(
         self,

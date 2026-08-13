@@ -16,13 +16,19 @@ class OllamaProvider(BaseLLMProvider):
         self,
         base_url: str = "http://localhost:11434",
         model: str = "llama3",
+        max_tokens: int | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._model = model
+        self._max_tokens = max_tokens
 
     @property
     def model(self) -> str:
         return self._model
+
+    @property
+    def max_tokens(self) -> int | None:
+        return self._max_tokens
 
     async def generate_stream(
         self,
@@ -36,8 +42,13 @@ class OllamaProvider(BaseLLMProvider):
             "stream": True,
         }
 
-        if "options" in kwargs:
-            payload["options"] = kwargs["options"]
+        options = dict(kwargs.get("options", {}))
+        max_t = kwargs.get("max_tokens", self._max_tokens)
+        if max_t is not None and "num_predict" not in options:
+            options["num_predict"] = max_t
+
+        if options:
+            payload["options"] = options
 
         logger.debug(f"Strumieniowanie z Ollamy [{url}] (model: '{payload['model']}')...")
 
