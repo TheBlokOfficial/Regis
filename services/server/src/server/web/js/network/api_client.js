@@ -100,6 +100,101 @@ export class ApiClient {
   }
 
   // ==========================================================================
+  // METODY PROMPTÓW (AGENTY)
+  // ==========================================================================
+
+  async getPrompts() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts`);
+      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania listy promptów:', error);
+      return null;
+    }
+  }
+
+  async getPrompt(promptId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts/${promptId}`);
+      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd pobierania promptu ${promptId}:`, error);
+      throw error;
+    }
+  }
+
+  async createPrompt(promptData) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(promptData),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd tworzenia promptu:', error);
+      throw error;
+    }
+  }
+
+  async updatePrompt(promptId, promptData) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts/${promptId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(promptData),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd aktualizacji promptu ${promptId}:`, error);
+      throw error;
+    }
+  }
+
+  async deletePrompt(promptId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts/${promptId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd usuwania promptu ${promptId}:`, error);
+      throw error;
+    }
+  }
+
+  async activatePrompt(promptId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts/${promptId}/activate`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd aktywacji promptu ${promptId}:`, error);
+      throw error;
+    }
+  }
+
+  // ==========================================================================
   // METODY CHAT & SESSIONS
   // ==========================================================================
 

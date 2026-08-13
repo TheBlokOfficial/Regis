@@ -1,6 +1,7 @@
 import { DashboardView } from './views/dashboard.js';
 import { SettingsView } from './views/settings.js';
 import { ChatView } from './views/chat.js';
+import { AgentsView } from './views/agents.js';
 
 /**
  * Zarządza przełączaniem zakładek i renderowaniem widoków w obszarze roboczym.
@@ -17,6 +18,7 @@ export class TabManager {
       dashboard: new DashboardView(),
       chat: new ChatView(),
       settings: new SettingsView(),
+      agents: new AgentsView(),
     };
 
     this.latestHealthData = null;
@@ -61,12 +63,19 @@ export class TabManager {
         dashboard: 'Dashboard',
         chat: 'Czat z Agentem',
         settings: 'Ustawienia',
+        agents: 'Prompty Systemowe',
       };
       this.breadcrumb.textContent = titles[tabId] || tabId;
     }
 
     // Renderowanie widoku w kontenerze roboczym
     if (this.container) {
+      if (tabId === 'agents') {
+        this.container.classList.add('workspace-content--full');
+      } else {
+        this.container.classList.remove('workspace-content--full');
+      }
+
       this.container.innerHTML = this.views[tabId].render();
       
       // Inicjalizacja dynamiczna wyrenderowanego widoku
@@ -75,6 +84,8 @@ export class TabManager {
         await this.loadDashboardData();
       } else if (tabId === 'chat') {
         await this.views.chat.init(this.apiClient);
+      } else if (tabId === 'agents') {
+        await this.views.agents.init(this.apiClient);
       }
     }
   }
