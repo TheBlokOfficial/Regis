@@ -181,12 +181,12 @@ export class ApiClient {
     }
   }
 
-  async sendChatMessage(sessionId = 'session_default', message = '', systemPrompt = null) {
+  async sendChatMessage(sessionId = 'session_default', message = '') {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message, system_prompt: systemPrompt }),
+        body: JSON.stringify({ session_id: sessionId, message }),
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -202,7 +202,6 @@ export class ApiClient {
   async streamChatMessage(
     sessionId = 'session_default',
     message = '',
-    systemPrompt = null,
     onChunk = null,
     onError = null,
     onComplete = null,
@@ -212,7 +211,7 @@ export class ApiClient {
       const response = await fetch(`${this.baseUrl}/api/v1/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message, system_prompt: systemPrompt }),
+        body: JSON.stringify({ session_id: sessionId, message }),
         signal,
       });
 

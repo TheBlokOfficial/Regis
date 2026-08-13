@@ -4,6 +4,7 @@ from shared import ChatResponseDTO, Event, EventBus, get_logger
 from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse, OllamaProvider
 from server.agent.context import ContextBuilder
 from server.agent.memory import MemoryManager
+from server.agent.prompts import PromptStore
 from server.events import ServerEventType
 
 logger = get_logger("regis.agent")
@@ -21,11 +22,13 @@ class AgentEngine:
         memory_manager: MemoryManager | None = None,
         context_builder: ContextBuilder | None = None,
         event_bus: EventBus | None = None,
+        prompt_store: PromptStore | None = None,
     ) -> None:
         self.llm_provider: BaseLLMProvider = llm_provider or OllamaProvider()
         self.memory_manager: MemoryManager = memory_manager or MemoryManager()
         self.context_builder: ContextBuilder = context_builder or ContextBuilder()
         self.event_bus: EventBus = event_bus or EventBus()
+        self.prompt_store: PromptStore = prompt_store or PromptStore()
         self._active_tasks: dict[str, asyncio.Task[Any]] = {}
         self._generation_buffers: dict[str, str] = {}
 
@@ -80,7 +83,6 @@ class AgentEngine:
         self,
         session_id: str,
         prompt: str,
-        system_prompt: str | None = None,
     ) -> None:
         """Wykonywane w tle zadanie generowania odpowiedzi LLM dla sesji.
 
@@ -91,11 +93,14 @@ class AgentEngine:
         # 1. Rejestracja pytania użytkownika w pamięci sesji (I/O na dysku poza event loopem)
         await asyncio.to_thread(self.memory_manager.add_message, session_id=session_id, role="user", content=prompt)
 
-        # 2. Pobranie aktualnej historii i zbudowanie kontekstu LLM
+        # 2. Pobranie aktywnego promptu systemowego ze store'u (fallback do DEFAULT_SYSTEM_PROMPT w builderze)
+        active_system_prompt = await self.prompt_store.get_active_content()
+
+        # 3. Pobranie aktualnej historii i zbudowanie kontekstu LLM
         history = self.memory_manager.get_history(session_id=session_id)
         llm_messages = self.context_builder.build_messages(
             session_history=history,
-            system_prompt_override=system_prompt,
+            system_prompt_override=active_system_prompt,
         )
 
         self._generation_buffers[session_id] = ""
@@ -158,7 +163,6 @@ class AgentEngine:
         self,
         session_id: str = "session_default",
         prompt: str = "",
-        system_prompt: str | None = None,
     ) -> AsyncIterator[str]:
         """Główna strumieniowa pętla konwersacyjna. Utrwala zapytanie i odpowiedź w pamięci sesji.
 
@@ -167,7 +171,6 @@ class AgentEngine:
 
         :param session_id: Identyfikator sesji backendowej.
         :param prompt: Nowa treść wiadomości użytkownika.
-        :param system_prompt: Opcjonalne nadpisanie instrukcji systemowych.
         :yields: Kolejne fragmenty tekstu (tokeny/chunking).
         """
         if self.is_session_busy(session_id):
@@ -203,7 +206,6 @@ class AgentEngine:
             self._generate_in_background(
                 session_id=session_id,
                 prompt=prompt,
-                system_prompt=system_prompt,
             )
         )
         self._active_tasks[session_id] = bg_task
@@ -229,16 +231,14 @@ class AgentEngine:
         self,
         session_id: str = "session_default",
         prompt: str = "",
-        system_prompt: str | None = None,
     ) -> ChatResponseDTO:
         """Ścisła, niestrumieniowa konwersacja bazująca bezpośrednio na strumieniowej pętli (DRY wrapper).
 
         :param session_id: Identyfikator sesji backendowej.
         :param prompt: Nowa treść wiadomości użytkownika.
-        :param system_prompt: Opcjonalne nadpisanie instrukcji systemowych.
         :return: Struktura ChatResponseDTO z wygenerowaną odpowiedzią i nazwą modelu.
         """
-        _ = [chunk async for chunk in self.interact_stream(session_id=session_id, prompt=prompt, system_prompt=system_prompt)]
+        _ = [chunk async for chunk in self.interact_stream(session_id=session_id, prompt=prompt)]
 
         session = self.memory_manager.get_or_create_session(session_id)
         last_message = session.messages[-1]

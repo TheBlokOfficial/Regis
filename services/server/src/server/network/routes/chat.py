@@ -30,7 +30,6 @@ def create_chat_router(agent_engine: AgentEngine) -> APIRouter:
             return await agent_engine.interact(
                 session_id=req.session_id,
                 prompt=req.message,
-                system_prompt=req.system_prompt,
             )
         except ValueError as err:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
@@ -57,7 +56,6 @@ def create_chat_router(agent_engine: AgentEngine) -> APIRouter:
                 async for chunk in agent_engine.interact_stream(
                     session_id=req.session_id,
                     prompt=req.message,
-                    system_prompt=req.system_prompt,
                 ):
                     yield f"data: {json.dumps({'chunk': chunk})}\n\n"
                 yield "data: [DONE]\n\n"

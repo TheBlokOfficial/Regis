@@ -8,6 +8,7 @@ from server.agent import AgentEngine
 from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse
 from server.agent.backend.registry import BackendRegistry
 from server.agent.memory import MemoryManager
+from server.agent.prompts import PromptStore
 from server.network.gateway import create_gateway_app
 
 
@@ -42,15 +43,18 @@ def test_client():
         # Usługi z osobnym katalogiem tymczasowym dla pamięci
         memory_manager = MemoryManager(data_dir=tmp_path / "sessions")
         mock_provider = MockLLMProvider()
+        prompt_store = PromptStore(data_dir=tmp_path)
         agent_engine = AgentEngine(
             llm_provider=mock_provider,
             memory_manager=memory_manager,
+            prompt_store=prompt_store,
         )
         backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
 
         app = create_gateway_app(
             agent_engine=agent_engine,
             backend_registry=backend_registry,
+            prompt_store=prompt_store,
         )
 
         with TestClient(app) as client:
@@ -170,7 +174,8 @@ async def test_async_background_generation_and_status():
         slow_provider = SlowMockLLMProvider()
         engine = AgentEngine(llm_provider=slow_provider, memory_manager=memory_manager)
         backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
-        app = create_gateway_app(agent_engine=engine, backend_registry=backend_registry)
+        prompt_store = PromptStore(data_dir=tmp_path)
+        app = create_gateway_app(agent_engine=engine, backend_registry=backend_registry, prompt_store=prompt_store)
 
         with TestClient(app) as client:
             # Rozpoczynamy generowanie strumieniowe w tle przez engine
@@ -220,7 +225,8 @@ async def test_disconnect_does_not_cancel_background_task():
         slow_provider = SlowMockLLMProvider()
         engine = AgentEngine(llm_provider=slow_provider, memory_manager=memory_manager)
         backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
-        app = create_gateway_app(agent_engine=engine, backend_registry=backend_registry)
+        prompt_store = PromptStore(data_dir=tmp_path)
+        app = create_gateway_app(agent_engine=engine, backend_registry=backend_registry, prompt_store=prompt_store)
 
         # 1. Rozpoczynamy interakcję strumieniową
         stream_gen = engine.interact_stream(session_id="session_default", prompt="Test rozłączenia klienta")

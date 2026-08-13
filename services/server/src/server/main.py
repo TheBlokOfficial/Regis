@@ -5,6 +5,7 @@ from shared import EventBus, get_logger, setup_logging
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
 from server.agent.context import ContextBuilder
+from server.agent.prompts import PromptStore
 from server.config import load_settings
 from server.network.gateway import create_gateway_app
 
@@ -24,15 +25,25 @@ async def main() -> None:
     backend_registry = BackendRegistry()
     active_llm_provider = await backend_registry.get_active_provider()
 
-    # 3. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus i skonfigurowanym limitem historii kontekstu
+    # 3. Inicjalizacja magazynu promptów systemowych i upewnienie się, że domyślny prompt istnieje
+    prompt_store = PromptStore()
+    await prompt_store.ensure_defaults()
+
+    # 4. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus, skonfigurowanym limitem historii i PromptStore
     context_builder = ContextBuilder(max_history_messages=settings.max_history_messages)
-    agent_engine = AgentEngine(llm_provider=active_llm_provider, context_builder=context_builder, event_bus=event_bus)
+    agent_engine = AgentEngine(
+        llm_provider=active_llm_provider,
+        context_builder=context_builder,
+        event_bus=event_bus,
+        prompt_store=prompt_store,
+    )
     await agent_engine.initialize()
 
-    # 4. Inicjalizacja bramki sieciowej z rejestrem backendów
+    # 5. Inicjalizacja bramki sieciowej z rejestrem backendów i magazynem promptów
     app = create_gateway_app(
         agent_engine=agent_engine,
         backend_registry=backend_registry,
+        prompt_store=prompt_store,
     )
 
     # 5. Start serwera uvicorn

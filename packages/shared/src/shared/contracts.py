@@ -96,7 +96,6 @@ class SendChatMessageRequest(BaseModel):
 
     session_id: str = Field(default="session_default", description="Identyfikator sesji rozmowy w backendzie")
     message: str = Field(..., description="Treść nowej wiadomości od użytkownika/satelity")
-    system_prompt: str | None = Field(default=None, description="Opcjonalny customowy system prompt")
 
 
 class ChatResponseDTO(BaseModel):
@@ -141,3 +140,41 @@ class CancelChatApiRequest(BaseModel):
     session_id: str = Field(..., description="Identyfikator sesji do anulowania")
 
 
+# ==========================================================================
+# KONTRAKTY DLA MAGAZYNU PROMPTÓW SYSTEMOWYCH (PROMPT STORE CONTRACTS)
+# ==========================================================================
+
+
+class PromptDTO(BaseModel):
+    """Reprezentacja instancji promptu systemowego dla API."""
+
+    id: str = Field(..., description="Unikalny identyfikator promptu (np. prompt_default)")
+    name: str = Field(..., description="Wyświetlana nazwa promptu")
+    content: str = Field(..., description="Treść instrukcji systemowej")
+    description: str | None = Field(default=None, description="Opcjonalny opis przeznaczenia promptu")
+    is_active: bool = Field(default=False, description="Czy ten prompt jest obecnie aktywny")
+
+
+class PromptListResponse(BaseModel):
+    """Odpowiedź dla GET /api/v1/agent/prompts."""
+
+    prompts: list[PromptDTO] = Field(default_factory=list, description="Lista dostępnych promptów")
+    active_id: str = Field(..., description="ID aktualnie aktywnego promptu")
+
+
+class CreatePromptRequest(BaseModel):
+    """Żądanie dla POST /api/v1/agent/prompts."""
+
+    name: str = Field(..., description="Wyświetlana nazwa promptu")
+    content: str = Field(..., description="Treść instrukcji systemowej")
+    description: str | None = Field(default=None, description="Opcjonalny opis")
+    custom_id: str | None = Field(default=None, description="Opcjonalne własne ID (np. prompt_coding)")
+    set_active: bool = Field(default=False, description="Czy od razu aktywować ten prompt")
+
+
+class UpdatePromptRequest(BaseModel):
+    """Żądanie dla PUT /api/v1/agent/prompts/{id}."""
+
+    name: str | None = Field(default=None, description="Nowa wyświetlana nazwa")
+    content: str | None = Field(default=None, description="Nowa treść instrukcji")
+    description: str | None = Field(default=None, description="Nowy opis")

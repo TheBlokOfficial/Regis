@@ -3,12 +3,14 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
+from server.agent.prompts import PromptStore
 from server.network.routes import create_api_router
 
 
 def create_gateway_app(
     agent_engine: AgentEngine,
     backend_registry: BackendRegistry,
+    prompt_store: PromptStore,
 ) -> FastAPI:
     """Tworzy i konfiguruje bramkę sieciową FastAPI z wbudowaną konsolą WWW i punktami końcowymi."""
     app = FastAPI(
@@ -18,7 +20,11 @@ def create_gateway_app(
     )
 
     # Rejestracja centralnego routera używanych punktów końcowych API
-    api_router = create_api_router(agent_engine=agent_engine, backend_registry=backend_registry)
+    api_router = create_api_router(
+        agent_engine=agent_engine,
+        backend_registry=backend_registry,
+        prompt_store=prompt_store,
+    )
     app.include_router(api_router)
 
     # Wbudowana obsługa interfejsu Web Console (server/web)

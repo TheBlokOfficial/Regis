@@ -489,7 +489,6 @@ export class ChatView {
     await this.apiClient.streamChatMessage(
       streamSessionId,
       message,
-      null,
       (chunk) => {
         if (this.activeSessionId !== streamSessionId) return;
         this.accumulatedText += chunk;
