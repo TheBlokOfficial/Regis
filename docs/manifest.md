@@ -70,17 +70,20 @@ Regis/
 ### 3.1 Warstwa Sieciowa (`services/server/src/server/network`)
 - **FastAPI Router (`routes.py`)**: Obsługuje punkty końcowe REST i SSE API v1:
   - `GET /api/v1/health` – Status zdrowia bramki i modułów.
-  - `GET /api/v1/llm/providers` & `PUT /api/v1/llm/providers/active` – Zarządzanie dostawcami LLM.
+  - `GET /api/v1/llm/providers/schemas` – Specyfikacje pól opcji dla dostępnych typów dostawców LLM.
+  - `GET /api/v1/llm/providers` & `PUT /api/v1/llm/providers/active` – Listowanie i przełączanie aktywnego dostawcy LLM.
+  - `POST /api/v1/llm/providers` & `DELETE /api/v1/llm/providers/{provider_id}` – Tworzenie i usuwanie instancji dostawców LLM.
   - `POST /api/v1/chat` – Jednorazowa interakcja synchroniczna z Agentem.
   - `POST /api/v1/chat/stream` – Strumieniowa interakcja w czasie rzeczywistym via Server-Sent Events (SSE).
   - `POST /api/v1/chat/cancel` – Natychmiastowe przerwanie przetwarzania dla podanej sesji.
-  - `GET /api/v1/chat/sessions` & `/history` – Zarządzanie historią i metadanymi sesji.
+  - `GET /api/v1/chat/sessions` & `POST /api/v1/chat/sessions` – Listowanie i tworzenie sesji konwersacji.
+  - `GET /api/v1/chat/sessions/{session_id}/history` & `DELETE /api/v1/chat/sessions/{session_id}` – Historia i usuwanie konkretnej sesji.
 - **Gateway (`gateway.py`)**: Serwuje wbudowaną konsolę WWW (SPA) oraz rejestruje centralny router API v1. W modelu pojedynczej usługi strumieniowanie tokenów do konsoli realizowane jest przez protokół **SSE**. Dwukierunkowa bramka **WebSockets** (`ws://127.0.0.1:8000/ws`) jest zaplanowana jako punkt komunikacji w architekturze rozproszonej z wieloma usługami satelitarnymi.
 
 ### 3.2 Warstwa Rdzenia Agenta (`services/server/src/server/agent`)
 - **`AgentEngine` (`engine.py`)**: Serce orkiestracji Systemu Regis. Kontroluje aktywne zadania konwersacyjne (`_active_tasks`), zarządza cyklem życia sesji oraz udostępnia metody `interact_stream` i `cancel_interaction`.
-- **`MemoryManager` (`memory/session.py`)**: Odpowiada za utwalanie historii rozmów per sesja, bezpieczne przycinanie najstarszych komunikatów i limity tokenów.
-- **`ContextBuilder` (`context/builder.py`)**: Komponuje ostateczny prompty dla LLM, łącząc instrukcje systemowe, kontekst operacyjny oraz historię z pamięci sesji.
+- **`MemoryManager` (`memory/session.py`)**: Odpowiada za utrwalanie historii rozmów per sesja na dysku (`data/sessions/*.json`).
+- **`ContextBuilder` (`context/builder.py`)**: Komponuje ostateczny prompt dla LLM, łącząc instrukcje systemowe z historią sesji. Przycina historię do `max_history_messages` najnowszych wiadomości (domyślnie 40, konfigurowalne w `settings.json`), by uniknąć przekroczenia limitu kontekstu modelu w długich konwersacjach. Przycinanie działa na podstawie liczby wiadomości, nie realnego zliczania tokenów.
 - **`Tools` (`tools/`)**: Moduł rozszerzeń dedykowany dla automatycznego wywoływania funkcji (Tool Calling) przez agentów *(w fazie planowania architektonicznego)*.
 
 ### 3.3 Warstwa Dostawców LLM (`services/server/src/server/agent/backend`)
@@ -89,7 +92,7 @@ Regis/
 
 ### 3.4 Warstwa Wspólna (`packages/shared/src/shared`)
 - **`ConfigStore` (`config.py`)**: Centralny zarządca persystentnej konfiguracji w formacie JSON z automatyczną walidacją i domyślnymi wartościami.
-- **`EventBus` (`event_bus.py`)**: Asynchroniczna magistrala zdarzeń bazująca na `asyncio.Queue`, umożliwiająca publikację (pub) i subskrypcję (sub) zdarzeń wewnątrz i pomiędzy usługami.
+- **`EventBus` (`event_bus.py`)**: Asynchroniczna magistrala zdarzeń pub/sub (`subscribe`/`publish`), w pełni zaimplementowana w `packages/shared`. **Uwaga**: instancja `EventBus` jest tworzona w `main.py` i przekazywana do `create_gateway_app`, ale obecnie nie jest jeszcze podłączona do `AgentEngine` ani używana do publikowania jakichkolwiek zdarzeń — `events.py` (`ServerEventType`) jest na razie pustym enumem. Realne wpięcie do przepływu strumieniowania to niezaimplementowany punkt rozwoju (patrz sekcja 5).
 - **`contracts.py`**: Definicje obiektów transferu danych (DTO), m.in. `ChatMessageDTO`, `ChatResponseDTO`, `SendChatMessageRequest` oraz struktury odpowiedzi API.
 - **`logging.py`**: Jednolita konfiguracja logów dla całego monorepo z ustandaryzowanymi nazwami kategorii (`regis.main`, `regis.agent`, itp.).
 
@@ -108,10 +111,11 @@ Klient (Web UI)        FastAPI Gateway          AgentEngine        MemoryManager
        |                       |                     |--- generate_stream ------------------>|                 |
        |<-- sse data chunk ----|<-- yield chunk -----|                   |                   |                 |
        |<-- sse data chunk ----|<-- yield chunk -----|                   |                   |                 |
-       |                       |                     |--- add_assistant_msg ---------------->|                 |
-       |                       |                     |--- publish_event -------------------------------------->|
+       |                       |                     |--- add_assistant_msg -->|                |                 |
+       |                       |                     |--- publish_event [PLANOWANE, niepodłączone] ------------>|
        |<-- sse data [DONE] ---|                     |                   |                   |                 |
 ```
+> **Status implementacji**: krok `publish_event` jest częścią docelowego projektu przepływu, ale obecnie nie istnieje w kodzie — `AgentEngine` nie wywołuje `EventBus.publish()`. Zobacz uwagę w sekcji 3.4.
 
 ### 4.2 Przepływ Przerwania / Anulowania Zapytania
 ```text

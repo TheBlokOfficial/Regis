@@ -20,21 +20,28 @@ python -m uv sync
 
 ---
 
-## 2. Konfiguracja i Zmienne Środowiskowe
+## 2. Konfiguracja
 
-System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. Ustawienia zarządzane są persystentnie przez moduł `ConfigStore` (`packages/shared/src/shared/config.py`), zapisywane w pliku `services/server/config/settings.json`.
+System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga: żaden parametr konfiguracyjny nie jest obecnie odczytywany ze zmiennych środowiskowych** — cała konfiguracja jest persystentna i zarządzana wyłącznie przez moduł `ConfigStore` (`packages/shared/src/shared/config.py`), w postaci plików JSON na dysku.
 
-### Parametry konfiguracyjne:
-- **`OPENROUTER_API_KEY`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (opcjonalny, jeśli używany jest tylko Ollama).
-- **`OLLAMA_BASE_URL`**: Adres serwera Ollama (domyślnie: `http://localhost:11434`).
-- **`SERVER_HOST`**: Adres nasłuchiwania interfejsu sieciowego (domyślnie: `0.0.0.0` / `127.0.0.1`).
-- **`SERVER_PORT`**: Port serwera HTTP/WebSocket (domyślnie: `8000`).
+### Parametry serwera (`services/server/config/settings.json`, model `Settings` w `server/config.py`):
+- **`host`**: Adres nasłuchiwania interfejsu sieciowego (domyślnie: `0.0.0.0`).
+- **`port`**: Port serwera HTTP/WebSocket (domyślnie: `8000`).
+- **`llm_timeout`**: Globalny limit czasu zapytań do LLM w sekundach (domyślnie: `30.0`).
+- **`llm_default_max_tokens`**: Domyślna maksymalna liczba tokenów wyjściowych (domyślnie: `4096`).
+- **`max_history_messages`**: Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM (domyślnie: `40`).
+
+### Parametry dostawców LLM (`services/server/data/backends/*.json`, zarządzane przez `BackendRegistry`):
+- **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
+- **`options.base_url`**: Adres serwera Ollama (domyślnie: `http://localhost:11434`).
+
+Najwygodniejszy sposób edycji obu grup ustawień to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), a nie ręczna edycja plików JSON.
 
 ---
 
 ## 3. Architektura i Relacje Pakietów Monorepo
 
-Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](file:///d:/Projekty/Regis/docs/manifest.md). Struktura monorepo podzielona jest na:
+Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](manifest.md). Struktura monorepo podzielona jest na:
 - **Paczka `packages/shared`**: Dostarcza niezależne abstrakcje infrastrukturalne (logowanie `logging.py`, magistralę zdarzeń `event_bus.py`, persystencję `config.py` oraz struktury danych DTO `contracts.py`).
 - **Usługa `services/server`**: Główny serwer integrujący komponenty z `shared`, udostępniający REST API v1, strumieniowanie SSE dla konsoli Web UI oraz docelową bramkę WebSockets dla architektury rozproszonej.
 
@@ -65,7 +72,7 @@ python -m pytest
 
 ## 5. Standardy Jakości Kodu i Dobre Praktyki
 
-Wszystkie zasady inżynierii oprogramowania oraz standardy jakości obowiązujące w projekcie są szczegółowo zdefiniowane w pliku [**`AGENTS.md`**](file:///d:/Projekty/Regis/AGENTS.md). 
+Wszystkie zasady inżynierii oprogramowania oraz standardy jakości obowiązujące w projekcie są szczegółowo zdefiniowane w pliku [**`AGENTS.md`**](../AGENTS.md). 
 
 Najważniejsze filary:
 1. **Zasady SOLID, DRY, KISS, POLA & Boy Scout Rule**: Twórz kod modułowy, czytelny i bez niepotrzebnego powielania logiki.

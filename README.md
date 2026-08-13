@@ -71,17 +71,17 @@ python -m pytest
 
 ## ⚙️ Konfiguracja Dostawców LLM
 
-System Regis wspiera dynamiczne przełączanie backendów językowych:
-- **Ollama** (Domyślny lokalny): Wymaga uruchomionej instancji Ollama (`http://localhost:11434`).
-- **OpenRouter** (Chmura): Wymaga ustawienia zmiennej środowiskowej `OPENROUTER_API_KEY`.
+System Regis wspiera dynamiczne przełączanie backendów językowych. Instancje dostawców (Ollama, OpenRouter) są konfigurowane jako pliki JSON w `services/server/data/backends/` — najwygodniej zarządzać nimi przez zakładkę **Ustawienia** w Web UI, która korzysta z REST API `/api/v1/llm/providers`:
+- **Ollama** (Domyślny lokalny): Wymaga uruchomionej instancji Ollama, adres skonfigurowany w polu `options.base_url` instancji (domyślnie `http://localhost:11434`).
+- **OpenRouter** (Chmura): Wymaga klucza API ustawionego w polu `options.api_key` instancji (nie jest to zmienna środowiskowa).
 
-Ustawienia persystentne są przechowywane w plikach konfiguracyjnych zarządzanych przez `ConfigStore`.
+Ustawienia serwera (host/port itp.) oraz instancje dostawców LLM są przechowywane w plikach JSON zarządzanych przez `ConfigStore` (`services/server/config/settings.json` oraz `services/server/data/backends/*.json`).
 
 ---
 
 ## 📚 Dokumentacja
 
-Szczegółowe informacje znajdują się w katalogu [`docs/`](file:///d:/Projekty/Regis/docs):
-- [**`docs/onboarding.md`**](file:///d:/Projekty/Regis/docs/onboarding.md) – Przewodnik deweloperski, konfiguracja środowiska i cykl pracy.
-- [**`docs/manifest.md`**](file:///d:/Projekty/Regis/docs/manifest.md) – Manifest Architektoniczny Systemu Regis, opisy warstw i przepływy danych.
-- [**`AGENTS.md`**](file:///d:/Projekty/Regis/AGENTS.md) – Standardy jakości i instrukcje dla agentów AI.
+Szczegółowe informacje znajdują się w katalogu [`docs/`](docs):
+- [**`docs/onboarding.md`**](docs/onboarding.md) – Przewodnik deweloperski, konfiguracja środowiska i cykl pracy.
+- [**`docs/manifest.md`**](docs/manifest.md) – Manifest Architektoniczny Systemu Regis, opisy warstw i przepływy danych.
+- [**`AGENTS.md`**](AGENTS.md) – Standardy jakości i instrukcje dla agentów AI.

@@ -13,6 +13,7 @@ class Settings(BaseModel):
     debug: bool = Field(default=False, description="Tryb debugowania")
     llm_timeout: float = Field(default=30.0, description="Globalny limit czasu zapytań do LLM w sekundach")
     llm_default_max_tokens: int = Field(default=4096, description="Domyślna maksymalna liczba tokenów wyjściowych dla modeli LLM")
+    max_history_messages: int = Field(default=40, description="Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM")
 
 
 # Automatyczne odnajdywanie korzenia usługi (services/server)

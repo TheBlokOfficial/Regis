@@ -15,8 +15,13 @@ DEFAULT_SYSTEM_PROMPT = (
 class ContextBuilder:
     """Podsystem budowania i formatowania kontekstu promptu dla modeli LLM."""
 
-    def __init__(self, default_system_prompt: str | None = None) -> None:
+    def __init__(
+        self,
+        default_system_prompt: str | None = None,
+        max_history_messages: int | None = None,
+    ) -> None:
         self.default_system_prompt: str = default_system_prompt or DEFAULT_SYSTEM_PROMPT
+        self.max_history_messages: int | None = max_history_messages
 
     def build_messages(
         self,
@@ -25,6 +30,9 @@ class ContextBuilder:
         system_prompt_override: str | None = None,
     ) -> list[LLMMessage]:
         """Składa listę wiadomości LLMMessage na podstawie historii sesji oraz nowego zapytania.
+
+        Historia jest przycinana do `max_history_messages` najnowszych wiadomości (jeśli ustawiono),
+        aby uniknąć przekroczenia limitu kontekstu modelu w długich konwersacjach.
 
         :param session_history: Dotychczasowa historia wiadomości z sesji backendowej.
         :param new_prompt: Opcjonalny nowy prompt od użytkownika (jeśli nie został jeszcze dodany do historii).
@@ -37,8 +45,16 @@ class ContextBuilder:
         system_content = system_prompt_override or self.default_system_prompt
         messages.append(LLMMessage(role="system", content=system_content))
 
-        # 2. Mapowanie historii wiadomości z backendu do formatu dostawcy LLM
-        for msg in session_history:
+        # 2. Przycięcie historii do najnowszych N wiadomości i zmapowanie do formatu dostawcy LLM
+        trimmed_history = session_history
+        if self.max_history_messages is not None and len(session_history) > self.max_history_messages:
+            trimmed_history = session_history[-self.max_history_messages:]
+            logger.debug(
+                f"Przycięto historię z {len(session_history)} do {len(trimmed_history)} "
+                f"najnowszych wiadomości (limit: {self.max_history_messages})."
+            )
+
+        for msg in trimmed_history:
             # Mapujemy tylko znane role LLM (user, assistant, system)
             role = msg.role if msg.role in ("user", "assistant", "system") else "user"
             messages.append(LLMMessage(role=role, content=msg.content))

@@ -4,6 +4,7 @@ from shared import EventBus, get_logger, setup_logging
 
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
+from server.agent.context import ContextBuilder
 from server.config import load_settings
 from server.network.gateway import create_gateway_app
 
@@ -23,8 +24,9 @@ async def main() -> None:
     backend_registry = BackendRegistry()
     active_llm_provider = await backend_registry.get_active_provider()
 
-    # 3. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM
-    agent_engine = AgentEngine(llm_provider=active_llm_provider)
+    # 3. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM i skonfigurowanym limitem historii kontekstu
+    context_builder = ContextBuilder(max_history_messages=settings.max_history_messages)
+    agent_engine = AgentEngine(llm_provider=active_llm_provider, context_builder=context_builder)
     await agent_engine.initialize()
 
     # 4. Inicjalizacja bramki sieciowej z podpiętą magistralą zdarzeń i rejestrem backendów
