@@ -19,6 +19,15 @@ _TOOLS_AVAILABLE_HINT = (
 )
 
 
+def _format_capability(tool_name: str, features: frozenset[str]) -> str:
+    """Formatuje pojedynczą etykietę możliwości — dopisuje cechy w obrębie
+    narzędzia, gdy istnieją (wizja, sekcja 4.1: granularność cech), pomija
+    nawiasy, gdy narzędzie jest wspierane w pełni (pusty zbiór cech)."""
+    if not features:
+        return tool_name
+    return f"{tool_name}[{', '.join(sorted(features))}]"
+
+
 def _format_entities_section(entities: list[EntitySpec] | None) -> str:
     """Formatuje kanał Encji generycznie — kernel zna wyłącznie kształt z Kontraktu,
     nigdy pochodzenia (domeny) encji (wizja, sekcja 1 i 3)."""
@@ -26,8 +35,13 @@ def _format_entities_section(entities: list[EntitySpec] | None) -> str:
         return ""
     lines = ["\n\nDostępne encje (adresuj je wyłącznie po podanym id):"]
     for entity in entities:
-        capability_names = sorted({capability.tool_name for capability in entity.capabilities})
-        lines.append(f"- [{entity.id}] {entity.name} (możliwości: {', '.join(capability_names) or 'brak'})")
+        features_by_tool: dict[str, set[str]] = {}
+        for capability in entity.capabilities:
+            features_by_tool.setdefault(capability.tool_name, set()).update(capability.features)
+        capability_labels = sorted(
+            _format_capability(tool_name, frozenset(features)) for tool_name, features in features_by_tool.items()
+        )
+        lines.append(f"- [{entity.id}] {entity.name} (możliwości: {', '.join(capability_labels) or 'brak'})")
     return "\n".join(lines)
 
 

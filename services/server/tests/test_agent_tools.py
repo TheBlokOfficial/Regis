@@ -150,6 +150,25 @@ async def test_executor_group_aggregates_partial_failure():
     }
 
 
+@pytest.mark.anyio
+async def test_executor_group_with_missing_member_never_leaks_native_ref():
+    integration = FakeIntegration()
+    missing_group = DeviceGroup(
+        id="grp_bathroom",
+        name="Łazienka",
+        device_ids=["int_fake:light.bathroom", "int_fake:light.nieistniejące"],
+    )
+    device_registry = DeviceRegistry(_make_devices(), [missing_group])
+    executor = SmartHomeToolExecutor(device_registry, {"int_fake": integration})
+
+    result = await executor.execute("turn_on", {"entity_id": "grp_bathroom"})
+
+    # Raport o brakującym członku grupy nigdy nie ujawnia surowego, wewnętrznego
+    # namespaced ref pluginu (format 'integration_id:native_id') — nawet ścieżką błędu.
+    assert "int_fake:light.nieistniejące" not in result.content
+    assert "nieznane urządzenie" in result.content
+
+
 # --------------------------------------------------------------------------
 # Gateway — opaque ID stabilny/deterministyczny, routing, kolizje narzędzi
 # --------------------------------------------------------------------------
@@ -313,6 +332,26 @@ def test_context_builder_formats_entities_and_facts_channels():
     assert "opaque_abc" in system_content
     assert "Lampka" in system_content
     assert "aktualna_data_i_godzina: 2026-08-14 12:00:00" in system_content
+
+
+def test_context_builder_renders_granular_features_within_a_tool():
+    builder = ContextBuilder(max_history_messages=None)
+    entity = EntitySpec(
+        id="opaque_light",
+        name="Lampka salon",
+        capabilities=frozenset(
+            {
+                EntityCapability(tool_name="get_state"),
+                EntityCapability(tool_name="set_light", features=frozenset({"brightness"})),
+            }
+        ),
+    )
+
+    messages = builder.build_messages(session_history=[], entities=[entity])
+
+    system_content = messages[0].content
+    assert "set_light[brightness]" in system_content
+    assert "get_state" in system_content
 
 
 def test_context_builder_omits_empty_channels():

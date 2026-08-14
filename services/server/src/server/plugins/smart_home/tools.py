@@ -89,7 +89,9 @@ class SmartHomeToolExecutor:
         for device_id in group.device_ids:
             device = self._device_registry.get_device(device_id)
             if device is None:
-                failures.append(f"{device_id} (nieznane urządzenie)")
+                # Nigdy nie ujawniamy surowego, wewnętrznego device_id (namespaced ref
+                # integracji) w treści zwracanej do LLM — nawet ścieżką błędu.
+                failures.append("nieznane urządzenie")
                 continue
             if capability not in device.capabilities:
                 failures.append(f"{device.name} (nie obsługuje akcji)")
