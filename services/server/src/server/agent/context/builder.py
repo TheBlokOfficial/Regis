@@ -1,5 +1,7 @@
 from shared import ChatMessageDTO, get_logger
 from server.agent.backend import LLMMessage
+from server.agent.context_provider_contract import Fact
+from server.agent.plugin_contract import EntitySpec
 
 logger = get_logger("regis.agent.context")
 
@@ -15,6 +17,27 @@ _TOOLS_AVAILABLE_HINT = (
     "\n\nMasz dostęp do zestawu narzędzi zewnętrznych — korzystaj z nich, gdy pomogą "
     "w realizacji zadania lub odpowiedzi na pytanie."
 )
+
+
+def _format_entities_section(entities: list[EntitySpec] | None) -> str:
+    """Formatuje kanał Encji generycznie — kernel zna wyłącznie kształt z Kontraktu,
+    nigdy pochodzenia (domeny) encji (wizja, sekcja 1 i 3)."""
+    if not entities:
+        return ""
+    lines = ["\n\nDostępne encje (adresuj je wyłącznie po podanym id):"]
+    for entity in entities:
+        capability_names = sorted({capability.tool_name for capability in entity.capabilities})
+        lines.append(f"- [{entity.id}] {entity.name} (możliwości: {', '.join(capability_names) or 'brak'})")
+    return "\n".join(lines)
+
+
+def _format_facts_section(facts: list[Fact] | None) -> str:
+    """Formatuje kanał Faktów generycznie (wizja, sekcja 3)."""
+    if not facts:
+        return ""
+    lines = ["\n\nZnane fakty:"]
+    lines.extend(f"- {fact.key}: {fact.value}" for fact in facts)
+    return "\n".join(lines)
 
 
 class ContextBuilder:
@@ -34,6 +57,8 @@ class ContextBuilder:
         new_prompt: str | None = None,
         system_prompt_override: str | None = None,
         tools_available: bool = False,
+        entities: list[EntitySpec] | None = None,
+        facts: list[Fact] | None = None,
     ) -> list[LLMMessage]:
         """Składa listę wiadomości LLMMessage na podstawie historii sesji oraz nowego zapytania.
 
@@ -44,16 +69,21 @@ class ContextBuilder:
         :param new_prompt: Opcjonalny nowy prompt od użytkownika (jeśli nie został jeszcze dodany do historii).
         :param system_prompt_override: Opcjonalny własny system prompt nadpisujący domyślny.
         :param tools_available: Czy w tej interakcji agent ma dostęp do jakichkolwiek narzędzi
-            (agregacja ze wszystkich addonów) — jeśli tak, dokleja jedno neutralne zdanie
+            (agregacja z Gateway) — jeśli tak, dokleja jedno neutralne zdanie
             zachęcające do ich użycia, bez wymieniania czegokolwiek konkretnego.
+        :param entities: Kanał Encji zbudowany przez Gateway na tę turę (opaque ID, nazwa,
+            możliwości) — formatowany generycznie, kernel nie zna żadnej domeny.
+        :param facts: Kanał Faktów zebrany przez Gateway od Dostawców kontekstu na tę turę.
         :return: Lista zwalidowanych obiektów LLMMessage gotowych do wysłania do dostawcy LLM.
         """
         messages: list[LLMMessage] = []
 
-        # 1. Dodanie wytycznych systemowych (System Prompt)
+        # 1. Dodanie wytycznych systemowych (System Prompt) + kanały Encje/Fakty (Gateway)
         system_content = system_prompt_override or self.default_system_prompt
         if tools_available:
             system_content += _TOOLS_AVAILABLE_HINT
+        system_content += _format_entities_section(entities)
+        system_content += _format_facts_section(facts)
         messages.append(LLMMessage(role="system", content=system_content))
 
         # 2. Przycięcie historii do najnowszych N wiadomości i zmapowanie do formatu dostawcy LLM

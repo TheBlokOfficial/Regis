@@ -11,20 +11,20 @@ from shared import (
     UpdateDeviceGroupRequest,
     UpdateIntegrationRequest,
 )
-from server.addons.smart_home import SmartHomeAddon
+from server.plugins.smart_home import SmartHomePlugin
 
 
-def _mask_secret_options(smart_home_addon: SmartHomeAddon, provider_type: str, options: dict[str, Any]) -> dict[str, Any]:
+def _mask_secret_options(smart_home_plugin: SmartHomePlugin, provider_type: str, options: dict[str, Any]) -> dict[str, Any]:
     """Maskuje wartości pól oznaczonych w schemacie jako 'password' (np. access_token).
 
     Ten sam mechanizm co dla dostawców LLM (`routes/providers.py`) — sekrety
     nigdy nie opuszczają serwera w czystym tekście przez API REST. Schemat
-    pochodzi z faktycznie zarejestrowanych w addonie typów integracji, nie
+    pochodzi z faktycznie zarejestrowanych w pluginie typów integracji, nie
     z listy zaszytej na sztywno.
     """
     secret_fields = {
         spec.name
-        for type_spec in smart_home_addon.get_all_schemas().provider_types
+        for type_spec in smart_home_plugin.get_all_schemas().provider_types
         if type_spec.type == provider_type
         for spec in type_spec.options_schema
         if spec.type == "password"
@@ -41,13 +41,13 @@ def _mask_secret_options(smart_home_addon: SmartHomeAddon, provider_type: str, o
     return masked
 
 
-def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
-    """Tworzy router dla punktów końcowych konfiguracji dostawców i grup addonu Smart Home."""
+def create_integrations_router(smart_home_plugin: SmartHomePlugin) -> APIRouter:
+    """Tworzy router dla punktów końcowych konfiguracji dostawców i grup pluginu Smart Home."""
     router = APIRouter()
 
     # --------------------------------------------------------------------------
     # Integracje (np. Home Assistant) — typy pochodzą z tego co zarejestrowano
-    # jawnie w main.py, addon nie zna żadnej z góry.
+    # jawnie w main.py, plugin nie zna żadnej z góry.
     # --------------------------------------------------------------------------
 
     @router.get(
@@ -57,7 +57,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
         tags=["Integrations"],
     )
     async def get_integration_schemas() -> ProviderMetadataResponse:
-        return smart_home_addon.get_all_schemas()
+        return smart_home_plugin.get_all_schemas()
 
     @router.get(
         "/api/v1/integrations",
@@ -66,13 +66,13 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
         tags=["Integrations"],
     )
     async def get_integrations() -> IntegrationListResponse:
-        instances = await smart_home_addon.list_integration_instances()
+        instances = await smart_home_plugin.list_integration_instances()
         integrations_dto = [
             IntegrationDTO(
                 id=cfg.id,
                 type=cfg.type,
                 name=cfg.name,
-                options=_mask_secret_options(smart_home_addon, cfg.type, cfg.options),
+                options=_mask_secret_options(smart_home_plugin, cfg.type, cfg.options),
                 enabled=cfg.enabled,
             )
             for cfg in instances.values()
@@ -88,7 +88,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
     )
     async def create_integration(req: CreateIntegrationRequest) -> IntegrationDTO:
         try:
-            created_cfg = await smart_home_addon.create_integration_instance(
+            created_cfg = await smart_home_plugin.create_integration_instance(
                 provider_type=req.type.upper(),
                 name=req.name,
                 options=req.options,
@@ -102,7 +102,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
             id=created_cfg.id,
             type=created_cfg.type,
             name=created_cfg.name,
-            options=_mask_secret_options(smart_home_addon, created_cfg.type, created_cfg.options),
+            options=_mask_secret_options(smart_home_plugin, created_cfg.type, created_cfg.options),
             enabled=created_cfg.enabled,
         )
 
@@ -114,7 +114,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
     )
     async def update_integration(integration_id: str, req: UpdateIntegrationRequest) -> IntegrationDTO:
         try:
-            updated_cfg = await smart_home_addon.update_integration_instance(
+            updated_cfg = await smart_home_plugin.update_integration_instance(
                 provider_id=integration_id,
                 name=req.name,
                 options=req.options,
@@ -127,7 +127,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
             id=updated_cfg.id,
             type=updated_cfg.type,
             name=updated_cfg.name,
-            options=_mask_secret_options(smart_home_addon, updated_cfg.type, updated_cfg.options),
+            options=_mask_secret_options(smart_home_plugin, updated_cfg.type, updated_cfg.options),
             enabled=updated_cfg.enabled,
         )
 
@@ -137,7 +137,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
         tags=["Integrations"],
     )
     async def delete_integration(integration_id: str):
-        deleted = await smart_home_addon.delete_integration_instance(integration_id)
+        deleted = await smart_home_plugin.delete_integration_instance(integration_id)
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -156,7 +156,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
         tags=["Device Groups"],
     )
     async def get_groups() -> DeviceGroupListResponse:
-        instances = await smart_home_addon.list_groups()
+        instances = await smart_home_plugin.list_groups()
         return DeviceGroupListResponse(
             groups=[DeviceGroupDTO(id=cfg.id, name=cfg.name, device_ids=cfg.device_ids) for cfg in instances.values()]
         )
@@ -169,7 +169,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
         tags=["Device Groups"],
     )
     async def create_group(req: CreateDeviceGroupRequest) -> DeviceGroupDTO:
-        created_cfg = await smart_home_addon.create_group(
+        created_cfg = await smart_home_plugin.create_group(
             name=req.name,
             device_ids=req.device_ids,
             custom_id=req.custom_id,
@@ -184,7 +184,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
     )
     async def update_group(group_id: str, req: UpdateDeviceGroupRequest) -> DeviceGroupDTO:
         try:
-            updated_cfg = await smart_home_addon.update_group(
+            updated_cfg = await smart_home_plugin.update_group(
                 group_id=group_id,
                 name=req.name,
                 device_ids=req.device_ids,
@@ -199,7 +199,7 @@ def create_integrations_router(smart_home_addon: SmartHomeAddon) -> APIRouter:
         tags=["Device Groups"],
     )
     async def delete_group(group_id: str):
-        deleted = await smart_home_addon.delete_group(group_id)
+        deleted = await smart_home_plugin.delete_group(group_id)
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

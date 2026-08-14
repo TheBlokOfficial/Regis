@@ -1,9 +1,9 @@
 import asyncio
 from typing import AsyncIterator, Any
 from shared import ChatResponseDTO, Event, EventBus, get_logger
-from server.agent.addon_contract import AddonProvider, ToolDispatch
-from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse, OllamaProvider, ToolCallRequest, ToolDefinition, ToolResult
+from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse, OllamaProvider, ToolCallRequest
 from server.agent.context import ContextBuilder
+from server.agent.gateway import Gateway
 from server.agent.memory import MemoryManager
 from server.agent.prompts import PromptStore
 from server.events import ServerEventType
@@ -24,7 +24,7 @@ class AgentEngine:
         context_builder: ContextBuilder | None = None,
         event_bus: EventBus | None = None,
         prompt_store: PromptStore | None = None,
-        addons: list[AddonProvider] | None = None,
+        gateway: Gateway | None = None,
         max_tool_iterations: int = 8,
     ) -> None:
         self.llm_provider: BaseLLMProvider = llm_provider or OllamaProvider()
@@ -32,9 +32,9 @@ class AgentEngine:
         self.context_builder: ContextBuilder = context_builder or ContextBuilder()
         self.event_bus: EventBus = event_bus or EventBus()
         self.prompt_store: PromptStore = prompt_store or PromptStore()
-        # Kernel nie zna żadnego konkretnego addonu — pusta lista to bezpieczny domyślny
-        # stan (agent działa jak zwykły chat, bez narzędzi). Kompozycja addonów należy do main.py.
-        self.addons: list[AddonProvider] = addons or []
+        # Kernel nie zna żadnego konkretnego pluginu — pusty Gateway to bezpieczny domyślny
+        # stan (agent działa jak zwykły chat, bez narzędzi). Kompozycja pluginów należy do main.py.
+        self.gateway: Gateway = gateway or Gateway()
         self.max_tool_iterations: int = max_tool_iterations
         self._active_tasks: dict[str, asyncio.Task[Any]] = {}
         self._generation_buffers: dict[str, str] = {}
@@ -86,39 +86,6 @@ class AgentEngine:
         for session_id in list(self._active_tasks.keys()):
             await self.cancel_interaction(session_id)
 
-    async def _build_aggregated_tools(self) -> tuple[list[ToolDefinition], ToolDispatch]:
-        """Agreguje narzędzia ze wszystkich zarejestrowanych addonów w jeden zestaw dla LLM.
-
-        Kernel nie wie nic o pochodzeniu narzędzi — tylko woła `build_tools()`
-        na każdym addonie zgodnie z generycznym kontraktem `AddonProvider`.
-
-        Polityka kolizji nazw: jeśli dwa addony zarejestrują narzędzie o tej
-        samej nazwie, wcześniej zarejestrowany wygrywa — kolidujące narzędzie
-        późniejszego addonu jest logowane jako błąd i pomijane (bez cichego nadpisania).
-        """
-        all_defs: list[ToolDefinition] = []
-        dispatch_map: dict[str, ToolDispatch] = {}
-
-        for addon in self.addons:
-            defs, dispatch = await addon.build_tools()
-            for d in defs:
-                if d.name in dispatch_map:
-                    logger.error(
-                        f"Konflikt nazw narzędzi: '{d.name}' jest już zarejestrowane przez inny addon "
-                        f"— pomijam duplikat z addonu {type(addon).__name__}."
-                    )
-                    continue
-                dispatch_map[d.name] = dispatch
-                all_defs.append(d)
-
-        async def combined_dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
-            dispatch = dispatch_map.get(name)
-            if dispatch is None:
-                return ToolResult(is_error=True, content=f"Nieznane narzędzie: '{name}'.")
-            return await dispatch(name, arguments)
-
-        return all_defs, combined_dispatch
-
     async def _generate_in_background(
         self,
         session_id: str,
@@ -146,8 +113,11 @@ class AgentEngine:
         self._generation_buffers[session_id] = ""
 
         try:
-            # 3. Budowa zestawu narzędzi dostępnych agentowi na czas tej interakcji (agregacja addonów)
-            tool_defs, dispatch_tool = await self._build_aggregated_tools()
+            # 3. Budowa kontekstu tej tury od zera: narzędzia + encje + fakty (Gateway,
+            #    wizja sekcja 2 i 3) — nigdy cache'owane między turami.
+            gateway_build = await self.gateway.build()
+            tool_defs = gateway_build.tool_definitions
+            dispatch_tool = gateway_build.dispatch
 
             # 4. Pobranie aktualnej historii i zbudowanie kontekstu LLM
             history = self.memory_manager.get_history(session_id=session_id)
@@ -155,6 +125,8 @@ class AgentEngine:
                 session_history=history,
                 system_prompt_override=active_system_prompt,
                 tools_available=bool(tool_defs),
+                entities=gateway_build.entities,
+                facts=gateway_build.facts,
             )
 
             for iteration in range(self.max_tool_iterations):

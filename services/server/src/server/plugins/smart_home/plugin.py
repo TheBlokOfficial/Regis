@@ -1,15 +1,19 @@
-"""SmartHomeAddon — implementacja `AddonProvider` (Warstwa 1) dla domeny smart home.
+"""SmartHomePlugin — implementacja `PluginProvider` (Warstwa 1) dla domeny smart home.
+
+Jedyny byt widoczny dla Gateway w tej domenie (wizja, sekcja 2, "Plugin").
+Wewnątrz orkiestruje jedną lub więcej instancji integracji (dziś: Home
+Assistant) i w pełni rozwiązuje grupy urządzeń — obie te rzeczy przestają
+być widoczne na zewnątrz pluginu.
 
 Architektura wzorowana na `BackendRegistry`/`PromptStore` — instancje jako
-pliki JSON w `data/addons/smart_home/{integrations,groups}/*.json`. W
+pliki JSON w `data/plugins/smart_home/{integrations,groups}/*.json`. W
 przeciwieństwie do dostawców LLM, integracji może być jednocześnie włączonych
 wiele naraz — stąd pole `enabled` per instancja zamiast pojęcia jednego
 "aktywnego" backendu.
 
-Addon nie zna z góry żadnej konkretnej integracji (np. Home Assistant) —
+Plugin nie zna z góry żadnej konkretnej integracji (np. Home Assistant) —
 integracje rejestrują swój typ jawnie przez `register_integration_type()`,
-wywoływane z `main.py` (kompozycja aplikacji) przy starcie, analogicznie do
-tego jak `main.py` wpina sam addon do kernela.
+wywoływane z `main.py` (kompozycja aplikacji) przy starcie.
 """
 
 import asyncio
@@ -26,33 +30,43 @@ from shared import (
     ProviderTypeSpecDTO,
 )
 
-from server.agent.backend import ToolDefinition, ToolResult
-from server.addons.base import BaseTool
-from server.addons.smart_home.base import DeviceIntegration
-from server.addons.smart_home.devices import Device, DeviceGroup, DeviceRegistry
-from server.addons.smart_home.models import (
+from server.agent.backend import ToolResult
+from server.agent.context_provider_contract import Fact
+from server.agent.plugin_contract import EntityCapability, EntitySpec, PluginContribution
+from server.plugins.smart_home.contract import DeviceIntegration
+from server.plugins.smart_home.models import (
+    Device,
+    DeviceGroup,
     DeviceGroupFileContent,
     DeviceGroupInstanceConfig,
     IntegrationFileContent,
     IntegrationInstanceConfig,
 )
-from server.addons.smart_home.tools import build_core_tools
+from server.plugins.smart_home.registry import DeviceRegistry
+from server.plugins.smart_home.tools import SmartHomeToolExecutor, TOOL_NAMES, build_tool_definitions
 
-logger = get_logger("regis.addons.smart_home")
+logger = get_logger("regis.plugins.smart_home")
 
 IntegrationFactoryFn = Callable[[Dict[str, Any]], DeviceIntegration]
 
+# Grupa jest z zewnątrz nieodróżnialna od pojedynczego urządzenia (wizja,
+# sekcja 4.4) — deklaruje więc zawsze wszystkie narzędzia rdzenia; gating
+# per-członek następuje dopiero przy wykonaniu (patrz `tools.py`).
+_GROUP_CAPABILITIES = frozenset(EntityCapability(tool_name=name) for name in TOOL_NAMES)
 
-class SmartHomeAddon:
-    """Addon Smart Home — spełnia kontrakt `AddonProvider` kernela.
 
-    Nie dziedziczy jawnie po `AddonProvider` (Protocol strukturalny) — pasuje
-    kształtem dzięki metodzie `build_tools()`.
+class SmartHomePlugin:
+    """Plugin Smart Home — spełnia kontrakt `PluginProvider` Gateway.
+
+    Nie dziedziczy jawnie po `PluginProvider` (Protocol strukturalny) —
+    pasuje kształtem dzięki polu `plugin_id` i metodzie `build()`.
     """
+
+    plugin_id = "smart_home"
 
     def __init__(self, data_dir: Optional[Path] = None) -> None:
         service_root = get_service_root(__file__)
-        self.base_data_dir = (data_dir or (service_root / "data" / "addons" / "smart_home")).resolve()
+        self.base_data_dir = (data_dir or (service_root / "data" / "plugins" / "smart_home")).resolve()
         self.integrations_dir = self.base_data_dir / "integrations"
         self.groups_dir = self.base_data_dir / "groups"
         self._lock = asyncio.Lock()
@@ -60,7 +74,7 @@ class SmartHomeAddon:
         self._registered_types: Dict[str, tuple[IntegrationFactoryFn, ProviderTypeSpecDTO]] = {}
 
     async def _ensure_defaults(self) -> None:
-        """Tworzy katalogi danych jeśli nie istnieją. Addon startuje bez integracji i grup."""
+        """Tworzy katalogi danych jeśli nie istnieją. Plugin startuje bez integracji i grup."""
         if self._defaults_ensured:
             return
         async with self._lock:
@@ -83,7 +97,7 @@ class SmartHomeAddon:
         """Rejestruje typ integracji dostępny do tworzenia instancji.
 
         Wołane jawnie przez kompozycję aplikacji (`main.py`), nigdy przez sam
-        addon — to integracja się rejestruje, nie addon jej szuka.
+        plugin — to integracja się rejestruje, nie plugin jej szuka.
         """
         if type_name in self._registered_types:
             logger.warning(f"Typ integracji [{type_name}] rejestrowany ponownie — nadpisuję poprzednią rejestrację.")
@@ -192,7 +206,7 @@ class SmartHomeAddon:
             return False
 
     # --------------------------------------------------------------------------
-    # CRUD grup urządzeń
+    # CRUD grup urządzeń — prywatna, plugin-wide konfiguracja (wizja, sekcja 4.4)
     # --------------------------------------------------------------------------
 
     async def create_group(
@@ -268,18 +282,23 @@ class SmartHomeAddon:
             return False
 
     # --------------------------------------------------------------------------
-    # AddonProvider — budowanie narzędzi dla pojedynczej interakcji agenta
+    # PluginProvider — budowanie wkładu na czas jednej interakcji agenta
     # --------------------------------------------------------------------------
 
-    async def build_tools(self) -> tuple[list[ToolDefinition], Any]:
-        """Buduje pełny zestaw narzędzi addonu na czas jednej interakcji agenta.
+    async def build(self, facts: list[Fact]) -> PluginContribution:
+        """Buduje pełny, spłaszczony wkład pluginu na czas jednej interakcji agenta.
 
         Instancjonuje włączone integracje (przez zarejestrowane fabryki),
-        agreguje ich urządzenia i skonfigurowane grupy w jeden `DeviceRegistry`,
-        tworzy narzędzia rdzenia (`list_devices`/`get_state`/`turn_on`/`turn_off`)
-        oraz ewentualne narzędzia dodatkowe integracji, i zwraca definicje dla
-        LLM wraz z jedną funkcją dispatch po nazwie.
+        agreguje ich urządzenia i skonfigurowane grupy w jeden `DeviceRegistry`
+        wewnętrzny na tę turę, tworzy narzędzia rdzenia (`get_state`/`turn_on`/
+        `turn_off`) i encje (z już rozwiązanymi grupami) dla Gateway.
+
+        :param facts: Fakty zebrane w tej turze przez Gateway — nieużywane w
+            tej iteracji (żaden dzisiejszy przypadek użycia tego nie wymaga),
+            przyjmowane jako część kontraktu na przyszłość.
         """
+        del facts  # nieużywane w tej iteracji — patrz docstring
+
         all_instances = await self.list_integration_instances()
         enabled_instances = [cfg for cfg in all_instances.values() if cfg.enabled]
 
@@ -297,8 +316,8 @@ class SmartHomeAddon:
             except Exception as e:
                 logger.error(f"Nie udało się pobrać urządzeń z integracji [{provider_id}]: {e}")
                 continue
-            # Nadajemy urządzeniom przestrzeń nazw integracji, by ID pozostawały unikalne
-            # w DeviceRegistry nawet przy wielu jednocześnie włączonych instancjach.
+            # Nadajemy urządzeniom przestrzeń nazw integracji, by ref pozostawały
+            # unikalne w DeviceRegistry nawet przy wielu jednocześnie włączonych instancjach.
             for device in raw_devices:
                 device.integration_id = provider_id
                 device.id = f"{provider_id}:{device.id}"
@@ -308,22 +327,25 @@ class SmartHomeAddon:
         groups = [DeviceGroup(id=cfg.id, name=cfg.name, device_ids=cfg.device_ids) for cfg in group_instances.values()]
 
         device_registry = DeviceRegistry(devices, groups)
+        executor = SmartHomeToolExecutor(device_registry, integrations)
 
-        tools: list[BaseTool] = build_core_tools(device_registry, integrations)
-        for integration in integrations.values():
-            tools.extend(integration.get_extra_tools())
-
-        tools_by_name = {tool.definition.name: tool for tool in tools}
-        tool_definitions = [tool.definition for tool in tools]
+        entities: list[EntitySpec] = [
+            EntitySpec(
+                id=device.id,
+                name=device.name,
+                capabilities=frozenset(EntityCapability(tool_name=cap) for cap in device.capabilities),
+            )
+            for device in devices
+        ]
+        entities.extend(
+            EntitySpec(id=group.id, name=group.name, capabilities=_GROUP_CAPABILITIES) for group in groups
+        )
 
         async def dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
-            tool = tools_by_name.get(name)
-            if tool is None:
-                return ToolResult(is_error=True, content=f"Nieznane narzędzie: '{name}'.")
             try:
-                return await tool.execute(arguments)
+                return await executor.execute(name, arguments)
             except Exception as e:
                 logger.error(f"Błąd podczas wykonania narzędzia [{name}]: {e}")
                 return ToolResult(is_error=True, content=f"Błąd wykonania narzędzia '{name}': {e}")
 
-        return tool_definitions, dispatch
+        return PluginContribution(tools=build_tool_definitions(), entities=entities, dispatch=dispatch)

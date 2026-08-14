@@ -3,8 +3,8 @@ import httpx
 from shared import get_logger, ProviderOptionSpec, ProviderTypeSpecDTO
 
 from server.agent.backend import ToolResult
-from server.addons.smart_home.base import DeviceIntegration
-from server.addons.smart_home.devices import Device
+from server.plugins.smart_home.contract import DeviceIntegration
+from server.plugins.smart_home.models import Device
 
 logger = get_logger("regis.integrations.home_assistant")
 
@@ -13,7 +13,7 @@ logger = get_logger("regis.integrations.home_assistant")
 _TOGGLEABLE_DOMAINS = {"light", "switch", "fan", "input_boolean"}
 
 # Identyfikator typu i schemat opcji — jedyne miejsce definiujące te dane,
-# rejestrowane w addonie jawnie przez `main.py` (addon nie zna ich na sztywno).
+# rejestrowane w pluginie jawnie przez `main.py` (plugin nie zna ich na sztywno).
 TYPE_NAME = "HOME_ASSISTANT"
 
 SCHEMA = ProviderTypeSpecDTO(
@@ -74,11 +74,11 @@ def _format_state_text(entity_id: str, domain: str, state: str, attributes: dict
 class HomeAssistantIntegration(DeviceIntegration):
     """Integracja z Home Assistant przez jego REST API.
 
-    Implementuje kontrakt `DeviceIntegration` zdefiniowany przez addon Smart
-    Home (`server.addons.smart_home.base`). Cała wiedza o formacie danych Home
-    Assistant (entity_id, domain.service, atrybuty encji) jest zamknięta w tej
-    klasie — narzędzia LLM addonu operują wyłącznie na generycznym modelu
-    `Device`+capability.
+    Implementuje kontrakt `DeviceIntegration` zdefiniowany przez plugin Smart
+    Home (`server.plugins.smart_home.contract`). Cała wiedza o formacie danych
+    Home Assistant (entity_id, domain.service, atrybuty encji) jest zamknięta
+    w tej klasie — narzędzia LLM pluginu operują wyłącznie na generycznym
+    modelu `Device`+capability.
     """
 
     def __init__(self, base_url: str, access_token: str) -> None:
@@ -112,7 +112,7 @@ class HomeAssistantIntegration(DeviceIntegration):
             devices.append(
                 Device(
                     id=entity_id,
-                    integration_id="",  # uzupełniane przez SmartHomeAddon po zwrocie
+                    integration_id="",  # uzupełniane przez SmartHomePlugin po zwrocie
                     name=attributes.get("friendly_name", entity_id),
                     kind=domain,
                     capabilities=_capabilities_for_domain(domain),
@@ -163,7 +163,7 @@ class HomeAssistantIntegration(DeviceIntegration):
 
 
 def create(options: dict[str, Any]) -> HomeAssistantIntegration:
-    """Fabryka tworząca instancję integracji z worka opcji — rejestrowana w addonie."""
+    """Fabryka tworząca instancję integracji z worka opcji — rejestrowana w pluginie."""
     return HomeAssistantIntegration(
         base_url=options.get("base_url", "http://homeassistant.local:8123"),
         access_token=options.get("access_token", ""),

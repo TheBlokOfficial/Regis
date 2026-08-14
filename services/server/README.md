@@ -6,8 +6,8 @@ Usługa dzieli się na trzy warstwy, w których żadna nie zna z góry implement
 
 | Warstwa | Katalog | Zawartość |
 | :--- | :--- | :--- |
-| **0 — Kernel** | `src/server/agent/` | `AgentEngine` (pętla ReAct/tool calling), `MemoryManager`, `ContextBuilder`, `PromptStore`, dostawcy LLM (`backend/`) |
-| **1 — Addony** | `src/server/addons/` | `BaseTool` + `SmartHomeAddon` (urządzenia, grupy, narzędzia LLM) |
+| **0 — Kernel** | `src/server/agent/` | `AgentEngine` (pętla ReAct/tool calling), `Gateway`, `MemoryManager`, `ContextBuilder`, `PromptStore`, dostawcy LLM (`backend/`) |
+| **1 — Pluginy** | `src/server/plugins/` | `SmartHomePlugin` (urządzenia, grupy, narzędzia LLM) |
 | **2 — Integracje** | `src/server/integrations/` | `HomeAssistantIntegration` |
 
 Poza nimi: `network/` (bramka FastAPI i routery REST/SSE), `web/` (SPA), `config.py`, `events.py`, `main.py` (kompozycja aplikacji).

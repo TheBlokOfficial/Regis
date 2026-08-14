@@ -23,16 +23,16 @@ Serwer ma trzy warstwy i **żadna nie zna z góry implementacji warstwy poniżej
 
 | Warstwa | Katalog | Wie o warstwie niżej tylko tyle |
 | :--- | :--- | :--- |
-| 0 — Kernel | `server/agent/` | protokół `AddonProvider` |
-| 1 — Addony | `server/addons/` | własny kontrakt (np. `DeviceIntegration`) |
+| 0 — Kernel | `server/agent/` | protokoły `PluginProvider`/`ContextProvider` |
+| 1 — Pluginy | `server/plugins/` | własny kontrakt (np. `DeviceIntegration`) |
 | 2 — Integracje | `server/integrations/` | — |
 
-Konkretnie: kernel nie importuje z `addons/` ani `integrations/`, addon nie
-importuje z `integrations/` i nie zna nazwy żadnej integracji. Nowy addon czy
+Konkretnie: kernel nie importuje z `plugins/` ani `integrations/`, plugin nie
+importuje z `integrations/` i nie zna nazwy żadnej integracji. Nowy plugin czy
 integracja **nigdy** nie wymaga zmiany kernela. Weryfikacja (poprawny wynik: brak trafień):
 
 ```bash
-grep -rn "from server.addons\|from server.integrations" services/server/src/server/agent/
+grep -rn "from server.plugins\|from server.integrations" services/server/src/server/agent/
 ```
 
 Uzasadnienie i konsekwencje: `docs/manifest.md`, sekcje 3 i 5.

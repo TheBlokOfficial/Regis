@@ -27,14 +27,14 @@ Fundamentem architektury jest **kierunek zależności: żadna warstwa nie zna z 
 
 | Warstwa | Katalog | Odpowiedzialność |
 | :--- | :--- | :--- |
-| **0 — Kernel** | `server/agent/` | `AgentEngine` (pętla ReAct), `MemoryManager`, `ContextBuilder`, `PromptStore`, dostawcy LLM |
-| **1 — Addony** | `server/addons/` | Domena możliwości agenta i deklaracja narzędzi LLM (dziś: `SmartHomeAddon`) |
-| **2 — Integracje** | `server/integrations/` | Konkretne implementacje kontraktów addonu (dziś: `HomeAssistantIntegration`) |
+| **0 — Kernel** | `server/agent/` | `AgentEngine` (pętla ReAct), `Gateway`, `MemoryManager`, `ContextBuilder`, `PromptStore`, dostawcy LLM |
+| **1 — Pluginy** | `server/plugins/` | Domena możliwości agenta i deklaracja narzędzi LLM (dziś: `SmartHomePlugin`) |
+| **2 — Integracje** | `server/integrations/` | Konkretne implementacje kontraktów pluginu (dziś: `HomeAssistantIntegration`) |
 
 Dzięki temu smart home (i Home Assistant jako jedna z jego możliwych realizacji) jest tylko *narzędziem, którego agent może użyć* — nie integralną częścią tego, czym agent jest. Pełny opis warstw, przepływów danych i uzasadnienia decyzji: [`docs/manifest.md`](docs/manifest.md).
 
 ### Kluczowe komponenty:
-- **`services/server`**: Serwer realizujący komunikację przez FastAPI (REST API v1), strumieniowanie odpowiedzi w czasie rzeczywistym (Server-Sent Events), silnik konwersacji `AgentEngine` z pętlą agentyczną (tool calling), zarządcę pamięci sesji `MemoryManager`, budowniczego kontekstu `ContextBuilder`, magazyn promptów systemowych `PromptStore`, addony/integracje oraz wbudowany interfejs Web UI.
+- **`services/server`**: Serwer realizujący komunikację przez FastAPI (REST API v1), strumieniowanie odpowiedzi w czasie rzeczywistym (Server-Sent Events), silnik konwersacji `AgentEngine` z pętlą agentyczną (tool calling), zarządcę pamięci sesji `MemoryManager`, budowniczego kontekstu `ContextBuilder`, magazyn promptów systemowych `PromptStore`, pluginy/integracje oraz wbudowany interfejs Web UI.
 - **`packages/shared`**: Centralny pakiet dzielony zawierający wspólny magazyn konfiguracji (`ConfigStore`), asynchroniczną magistralę zdarzeń (`EventBus`), obiekty transferu danych (`contracts.py`) oraz standaryzowany moduł logowania (`logging.py`).
 
 ---

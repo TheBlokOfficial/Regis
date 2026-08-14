@@ -36,12 +36,12 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
 - **`options.base_url`**: Adres serwera Ollama (domyślnie: `http://localhost:11434`).
 
-### Parametry integracji (`services/server/data/addons/smart_home/integrations/*.json`, zarządzane przez `SmartHomeAddon`):
+### Parametry integracji (`services/server/data/plugins/smart_home/integrations/*.json`, zarządzane przez `SmartHomePlugin`):
 - **`type`**: Identyfikator zarejestrowanego typu integracji (np. `HOME_ASSISTANT`).
 - **`enabled`**: Czy integracja aktywnie dostarcza urządzenia agentowi (wiele integracji może być włączonych jednocześnie).
 - **`options.base_url`** / **`options.access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token).
 
-Grupy urządzeń przechowywane są analogicznie w `services/server/data/addons/smart_home/groups/*.json`.
+Grupy urządzeń (prywatna, plugin-wide konfiguracja — nie per-integracja) przechowywane są analogicznie w `services/server/data/plugins/smart_home/groups/*.json`.
 
 ### Prompty systemowe (`services/server/data/prompts/*.json`, zarządzane przez `PromptStore`):
 - Treść instrukcji systemowej faktycznie wysyłanej do LLM. Aktywny prompt wskazuje `services/server/data/active_prompt.json`.
@@ -61,15 +61,19 @@ Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](mani
 
 | Warstwa | Katalog | Odpowiedzialność | Co wie o warstwie niżej |
 | :--- | :--- | :--- | :--- |
-| **0 — Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct | Tylko protokół `AddonProvider` |
-| **1 — Addony** | `server/addons/` | Domena możliwości (dziś: smart home), deklaracja narzędzi | Tylko własny kontrakt (np. `DeviceIntegration`) |
+| **0 — Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct, `Gateway` (agregator 3 kanałów) | Tylko protokoły `PluginProvider`/`ContextProvider` |
+| **1 — Pluginy** | `server/plugins/` | Domena możliwości (dziś: smart home), deklaracja narzędzi i encji | Tylko własny kontrakt (np. `DeviceIntegration`) |
 | **2 — Integracje** | `server/integrations/` | Konkretne implementacje (dziś: Home Assistant) | — |
 
-**Zasada nadrzędna**: żadna warstwa nie zna z góry implementacji warstwy poniżej — te rejestrują się same, jawnie, w `main.py`. Dodanie nowej integracji albo nowego addonu **nie wymaga zmiany kernela**.
+Równolegle: **Dostawcy kontekstu** (`server/context_providers/`) — kategoria obok pluginów, dostarczająca Gateway wyłącznie płaskie fakty (dziś: `DateTimeContextProvider`), nigdy narzędzi ani encji.
+
+**Zasada nadrzędna**: żadna warstwa nie zna z góry implementacji warstwy poniżej — te rejestrują się same, jawnie, w `main.py`. Dodanie nowej integracji albo nowego pluginu **nie wymaga zmiany kernela**.
 
 Praktycznie:
-- **Nowy addon**: klasa z metodą `async def build_tools() -> (list[ToolDefinition], dispatch)` w `server/addons/`, dopisana do `AgentEngine(addons=[...])` w `main.py`.
-- **Nowa integracja**: implementacja kontraktu addonu (np. `DeviceIntegration`) w `server/integrations/`, eksportująca `TYPE_NAME`, `SCHEMA` i `create()`, zarejestrowana przez `addon.register_integration_type(...)` w `main.py`.
+- **Nowy plugin**: klasa z polem `plugin_id: str` i metodą `async def build(facts: list[Fact]) -> PluginContribution` w `server/plugins/`, dopisana do `Gateway(plugins=[...])` w `main.py`.
+- **Nowa integracja**: implementacja kontraktu pluginu (np. `DeviceIntegration`) w `server/integrations/`, eksportująca `TYPE_NAME`, `SCHEMA` i `create()`, zarejestrowana przez `plugin.register_integration_type(...)` w `main.py`. Szczegóły: [`docs/adding-integrations.md`](adding-integrations.md).
+- **Nowy dostawca kontekstu**: klasa z metodą `async def get_facts() -> list[Fact]` w `server/context_providers/`, dopisana do `Gateway(context_providers=[...])` w `main.py`.
+- Agent adresuje encje (urządzenia, grupy) wyłącznie przez opaque `entity_id` nadany przez Gateway — nigdy po przyjaznej nazwie ani natywnym ID integracji.
 
 ---
 
@@ -82,7 +86,7 @@ python -m uv run --package server python -m server.main
 
 > **Znane ograniczenie**: `server.main` nie eksportuje modułowego obiektu ASGI —
 > aplikacja FastAPI powstaje wewnątrz asynchronicznej funkcji `main()`, po
-> wcześniejszej inicjalizacji rejestru backendów, `PromptStore` i addonów.
+> wcześniejszej inicjalizacji rejestru backendów, `PromptStore` i pluginów.
 > Dlatego `uvicorn server.main:app --reload` kończy się błędem
 > *"Attribute 'app' not found in module 'server.main'"*, a tryb hot-reload nie
 > jest dostępny. Odblokowanie go wymaga zmiany w kodzie (fabryka aplikacji
@@ -158,9 +162,9 @@ Podczas prac nad projektem należy bezwzględnie stosować ustandaryzowany cykl 
    - Przed modyfikacją kodu sprawdź rzeczywisty stan plików, sygnatury i mechanizmy — nie zgaduj (zasada z [`AGENTS.md`](../AGENTS.md)). Dotyczy to również dokumentacji: każde zdanie w `docs/` traktuj jako hipotezę do potwierdzenia w kodzie.
 2. **Implementacja i Spójność Kontraktów**:
    - Zmiany w strukturach komunikacyjnych dodawaj w `packages/shared/src/shared/contracts.py`.
-   - **Respektuj kierunek zależności warstw** (sekcja 3): kernel nie może importować z `addons/` ani `integrations/`, a addon nie może importować z `integrations/`. Weryfikacja:
+   - **Respektuj kierunek zależności warstw** (sekcja 3): kernel nie może importować z `plugins/` ani `integrations/`, a plugin nie może importować z `integrations/` konkretnej integracji na sztywno. Weryfikacja:
      ```bash
-     grep -rn "from server.addons\|from server.integrations" services/server/src/server/agent/
+     grep -rn "from server.plugins\|from server.integrations" services/server/src/server/agent/
      ```
      (poprawny wynik: brak trafień)
 3. **Automatyczna Weryfikacja**:
