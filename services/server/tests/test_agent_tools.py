@@ -7,10 +7,10 @@ import pytest
 from server.agent import AgentEngine
 from server.agent.backend import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
 from server.agent.context.builder import ContextBuilder
-from server.agent.context_provider_contract import Fact
 from server.agent.gateway import Gateway
 from server.agent.memory import MemoryManager
-from server.agent.plugin_contract import EntityCapability, EntitySpec, PluginContribution
+from server.agent.plugin_contract import EntityCapability, EntitySpec, Fact, PluginContribution
+from server.plugins.datetime_plugin import DateTimePlugin
 from server.plugins.smart_home.contract import DeviceIntegration
 from server.plugins.smart_home.models import Device, DeviceGroup
 from server.plugins.smart_home.plugin import SmartHomePlugin
@@ -297,21 +297,46 @@ async def test_gateway_skips_colliding_tool_name_from_second_plugin():
 
 
 @pytest.mark.anyio
-async def test_gateway_collects_facts_from_context_providers_and_passes_to_plugins():
-    class FakeContextProvider:
-        async def get_facts(self) -> list[Fact]:
-            return [Fact(key="test_fact", value="test_value")]
-
+async def test_gateway_passes_facts_from_earlier_registered_plugin_to_later_one():
     async def dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
         return ToolResult(content="ok")
 
-    plugin = FakePlugin("fake_plugin", PluginContribution(tools=[], entities=[], dispatch=dispatch))
-    gateway = Gateway(plugins=[plugin], context_providers=[FakeContextProvider()])
+    first = FakePlugin(
+        "first",
+        PluginContribution(
+            tools=[], entities=[], dispatch=dispatch, facts=[Fact(key="test_fact", value="test_value")]
+        ),
+    )
+    second = FakePlugin("second", PluginContribution(tools=[], entities=[], dispatch=dispatch))
 
+    gateway = Gateway(plugins=[first, second])
     build_result = await gateway.build()
 
     assert build_result.facts == [Fact(key="test_fact", value="test_value")]
-    assert plugin.received_facts == [Fact(key="test_fact", value="test_value")]
+    assert first.received_facts == []
+    assert second.received_facts == [Fact(key="test_fact", value="test_value")]
+
+
+@pytest.mark.anyio
+async def test_gateway_plugin_built_first_never_sees_facts_from_plugin_built_after_it():
+    async def dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
+        return ToolResult(content="ok")
+
+    first = FakePlugin("first", PluginContribution(tools=[], entities=[], dispatch=dispatch))
+    second = FakePlugin(
+        "second",
+        PluginContribution(
+            tools=[], entities=[], dispatch=dispatch, facts=[Fact(key="test_fact", value="test_value")]
+        ),
+    )
+
+    # Odwrócona kolejność rejestracji względem poprzedniego testu: "second" jest
+    # teraz budowany jako pierwszy plugin tej tury.
+    gateway = Gateway(plugins=[second, first])
+    await gateway.build()
+
+    assert second.received_facts == []
+    assert first.received_facts == [Fact(key="test_fact", value="test_value")]
 
 
 # --------------------------------------------------------------------------
@@ -361,6 +386,24 @@ def test_context_builder_omits_empty_channels():
 
     assert "Dostępne encje" not in messages[0].content
     assert "Znane fakty" not in messages[0].content
+
+
+# --------------------------------------------------------------------------
+# DateTimePlugin — symetria Fakt<->narzędzie (wizja, sekcja 4.5)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_datetime_plugin_get_time_dispatch_matches_fact_value_from_same_build():
+    plugin = DateTimePlugin()
+
+    contribution = await plugin.build(facts=[])
+    result = await contribution.dispatch("get_time", {})
+
+    assert len(contribution.facts) == 1
+    assert contribution.facts[0].key == "aktualna_data_i_godzina"
+    assert result.is_error is False
+    assert result.content == contribution.facts[0].value
 
 
 # --------------------------------------------------------------------------

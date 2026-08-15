@@ -9,13 +9,24 @@ i rzeczownika — pola encji), zero logiki i zero stanu — nigdy nie istnieje
 jako uruchomiony obiekt (wizja, sekcja 2, "Kontrakt").
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
 
 from server.agent.backend import ToolDefinition, ToolResult
-from server.agent.context_provider_contract import Fact
 
 ToolDispatch = Callable[[str, dict[str, Any]], Awaitable[ToolResult]]
+
+
+@dataclass(frozen=True)
+class Fact:
+    """Pojedynczy, płaski fakt kontekstowy (klucz-wartość).
+
+    Kontekst do zrozumienia, nigdy do adresowania — zawsze z bliźniaczym
+    narzędziem dostarczającym tę samą treść na żądanie (wizja, sekcja 4.5).
+    """
+
+    key: str
+    value: str
 
 
 @dataclass(frozen=True)
@@ -60,6 +71,10 @@ class PluginContribution:
     tools: list[ToolDefinition]
     entities: list[EntitySpec]
     dispatch: ToolDispatch
+    facts: list[Fact] = field(default_factory=list)
+    """Fakty — opcjonalny wkład na równi z narzędziami i encjami (wizja,
+    sekcja 2 i 4.5). Każdy Fakt tu zwrócony musi mieć bliźniacze narzędzie
+    dostarczające tę samą treść na żądanie."""
 
 
 class PluginProvider(Protocol):
@@ -73,8 +88,9 @@ class PluginProvider(Protocol):
         """Buduje pełny, spłaszczony wkład pluginu (narzędzia + encje, z już
         rozwiązanymi grupami) na czas jednej interakcji agenta.
 
-        :param facts: Fakty zebrane w tej turze od Dostawców kontekstu —
-            plugin może (opcjonalnie) użyć ich do decyzji co pokazać jako
-            priorytet, budując swoje encje.
+        :param facts: Fakty zebrane przez Gateway w tej turze od pluginów
+            zbudowanych wcześniej, w kolejności rejestracji — plugin może
+            (opcjonalnie) użyć ich do decyzji co pokazać jako priorytet,
+            budując swoje encje.
         """
         ...

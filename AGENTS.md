@@ -23,7 +23,7 @@ Serwer ma trzy warstwy i **żadna nie zna z góry implementacji warstwy poniżej
 
 | Warstwa | Katalog | Wie o warstwie niżej tylko tyle |
 | :--- | :--- | :--- |
-| 0 — Kernel | `server/agent/` | protokoły `PluginProvider`/`ContextProvider` |
+| 0 — Kernel | `server/agent/` | protokół `PluginProvider` |
 | 1 — Pluginy | `server/plugins/` | własny kontrakt (np. `DeviceIntegration`) |
 | 2 — Integracje | `server/integrations/` | — |
 

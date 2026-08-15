@@ -31,8 +31,7 @@ from shared import (
 )
 
 from server.agent.backend import ToolResult
-from server.agent.context_provider_contract import Fact
-from server.agent.plugin_contract import EntityCapability, EntitySpec, PluginContribution
+from server.agent.plugin_contract import EntityCapability, EntitySpec, Fact, PluginContribution
 from server.plugins.smart_home.contract import DeviceIntegration
 from server.plugins.smart_home.models import (
     Device,

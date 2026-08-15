@@ -36,24 +36,22 @@ Regis/
 server/
 ├── agent/          # WARSTWA 0 — Kernel: "umysł" agenta
 │   ├── engine.py     # AgentEngine: pętla ReAct, sesje
-│   ├── gateway.py     # Gateway — jedyny agregator: pluginy + dostawcy kontekstu → 3 kanały
-│   ├── plugin_contract.py  # PluginProvider (Protocol) + EntitySpec/EntityCapability — jedyna wiedza Gateway o pluginach
-│   ├── context_provider_contract.py  # ContextProvider (Protocol) + Fact — jedyna wiedza Gateway o dostawcach kontekstu
+│   ├── gateway.py     # Gateway — jedyny agregator: pluginy → 3 kanały, sekwencyjnie
+│   ├── plugin_contract.py  # PluginProvider (Protocol) + EntitySpec/EntityCapability/Fact — jedyna wiedza Gateway o pluginach
 │   ├── backend/      # Dostawcy LLM + typy narzędzi (ToolDefinition/ToolCallRequest/ToolResult)
 │   ├── context/      # ContextBuilder
 │   ├── memory/       # MemoryManager
 │   └── prompts/      # PromptStore
 ├── plugins/        # WARSTWA 1 — Pluginy: domeny możliwości agenta
-│   └── smart_home/   # Plugin Smart Home (Device, DeviceGroup, narzędzia LLM, CRUD)
-├── context_providers/  # Dostawcy kontekstu — kategoria równoległa do pluginów
-│   └── datetime_provider.py  # DateTimeContextProvider (fakt: aktualna data/godzina)
+│   ├── smart_home/   # Plugin Smart Home (Device, DeviceGroup, narzędzia LLM, CRUD)
+│   └── datetime_plugin.py  # DateTimePlugin — narzędzie get_time + bliźniaczy Fakt (wizja, sekcja 4.5)
 ├── integrations/   # WARSTWA 2 — Integracje: konkretne implementacje kontraktów pluginów
 │   └── home_assistant.py  # HomeAssistantIntegration + TYPE_NAME/SCHEMA/create()
 ├── network/        # Bramka FastAPI i routery REST/SSE
 ├── web/            # Wbudowana konsola SPA (HTML/CSS/JS)
 ├── config.py       # Settings (ConfigStore)
 ├── events.py       # ServerEventType
-└── main.py         # Kompozycja aplikacji: wpina pluginy/dostawców kontekstu do Gateway
+└── main.py         # Kompozycja aplikacji: wpina pluginy do Gateway
 ```
 
 ### Relacje przestrzeni roboczej:
@@ -84,7 +82,7 @@ server/
 |  - MemoryManager (Session storage)       |  |  - ConfigStore          |
 |  - ContextBuilder                        |  |  - Contracts (DTOs)     |
 |  - Gateway (agregator 3 kanałów treści)  |  |  - Logging              |
-|  - PluginProvider / ContextProvider      |  |                         |
+|  - PluginProvider                        |  |                         |
 +------------------------------------------+  +-------------------------+
         |                        |                        ^
         v                        v                        |
@@ -112,12 +110,11 @@ zna wyłącznie *kształt* tego, co dostaje od warstwy pod spodem — nigdy tre�
 ani pochodzenie.**
 
 - Kernel nigdy nie importuje niczego z `plugins/` ani `integrations/`. Zna
-  wyłącznie protokoły `PluginProvider` (`build(facts) -> PluginContribution`)
-  i `ContextProvider` (`get_facts() -> Fact[]`), zdefiniowane w `agent/plugin_contract.py`
-  i `agent/context_provider_contract.py`. `Gateway` (`agent/gateway.py`) —
-  jedyny agregator, zawsze budowany od zera co turę — dostaje listy pluginów
-  i dostawców kontekstu wstrzyknięte z `main.py`, wpięty następnie do
-  `AgentEngine(gateway=...)`.
+  wyłącznie protokół `PluginProvider` (`build(facts) -> PluginContribution`),
+  zdefiniowany w `agent/plugin_contract.py`. `Gateway` (`agent/gateway.py`) —
+  jedyny agregator, zawsze budowany od zera co turę, w jednym sekwencyjnym
+  przebiegu w kolejności rejestracji — dostaje listę pluginów wstrzykniętą
+  z `main.py`, wpięty następnie do `AgentEngine(gateway=...)`.
 - Plugin nigdy nie importuje niczego z `integrations/` ani nie zna nazwy żadnej
   konkretnej integracji. Integracje rejestrują się przez
   `SmartHomePlugin.register_integration_type(TYPE_NAME, create, SCHEMA)`,
@@ -138,7 +135,7 @@ Gateway buduje co turę trzy płaskie kanały, przekazywane do `ContextBuilder`:
 |---|---|---|
 | **Narzędzia** | `ToolDefinition[]` (nazwa, opis, JSON Schema parametrów) | Pluginy, przez `PluginProvider` |
 | **Encje** | `EntitySpec[]` — rzeczy do interakcji z opaque ID i etykietami możliwości, w tym już rozwiązane grupy | Pluginy |
-| **Fakty** | `Fact[]` — kontekst niezwiązany z żadnym narzędziem (dziś: aktualna data/godzina) | Dostawcy kontekstu |
+| **Fakty** | `Fact[]` — kontekst niezwiązany z żadnym narzędziem, zawsze z bliźniaczym narzędziem (dziś: aktualna data/godzina) | Pluginy, opcjonalnie |
 
 Agent adresuje encje wyłącznie przez `entity_id` — opaque, nieprzezroczysty
 identyfikator nadany przez Gateway (skrót SHA-256 z tożsamości pluginu +
@@ -162,8 +159,8 @@ nigdy nie widzi opaque ID.
 
 ### 3.2 Warstwa 0 — Kernel Agenta (`services/server/src/server/agent`)
 - **`AgentEngine` (`engine.py`)**: Serce orkiestracji Systemu Regis. Realizuje **pełną pętlę agentyczną (ReAct)** — jeśli LLM zażąda wywołania narzędzia, wynik wraca do niego jako kolejna wiadomość i generacja jest kontynuowana, aż model zwróci odpowiedź finalną lub zostanie przekroczony `max_tool_iterations` (domyślnie 8). Kontroluje aktywne zadania konwersacyjne (`_active_tasks`), zarządza cyklem życia sesji oraz udostępnia metody `interact_stream` i `cancel_interaction`. Na początku każdej interakcji woła `Gateway.build()` (nigdy cache'owane) i przekazuje jego trzy kanały (narzędzia, encje, fakty) do `ContextBuilder`.
-- **`gateway.py`**: `Gateway` — jedyny agregator kernela, zbierający wkład wszystkich Pluginów i Dostawców kontekstu w jednym przebiegu, nadający encjom opaque ID i budujący tabelę routingu `opaque_id -> (plugin, wewnętrzny ref)` na tę turę (patrz sekcja "Trzy kanały treści agenta" wyżej).
-- **`plugin_contract.py` / `context_provider_contract.py`**: Definicje `PluginProvider`/`ContextProvider` (`typing.Protocol`), `EntitySpec`/`EntityCapability`/`PluginContribution`/`Fact` — **jedyna wiedza Gateway o istnieniu pluginów i dostawców kontekstu**. Przy kolizji nazw narzędzi między dwoma pluginami narzędzie późniejszego pluginu jest logowane jako błąd i pomijane (bez cichego nadpisania) — identyczna polityka jak dawniej na poziomie kernela.
+- **`gateway.py`**: `Gateway` — jedyny agregator kernela, budujący pluginy sekwencyjnie w kolejności rejestracji (jeden przebieg), przekazując każdemu kolejnemu Fakty zebrane od pluginów zbudowanych wcześniej w tej samej turze, nadający encjom opaque ID i budujący tabelę routingu `opaque_id -> (plugin, wewnętrzny ref)` na tę turę (patrz sekcja "Trzy kanały treści agenta" wyżej).
+- **`plugin_contract.py`**: Definicje `PluginProvider` (`typing.Protocol`), `EntitySpec`/`EntityCapability`/`PluginContribution`/`Fact` — **jedyna wiedza Gateway o istnieniu pluginów**. Fakty są opcjonalnym polem `PluginContribution`, na równi z narzędziami i encjami — nie ma osobnej kategorii "dostawcy kontekstu" (wizja, `docs/agent-context-architecture-vision.md`, sekcja 2 i 4.5). Przy kolizji nazw narzędzi między dwoma pluginami narzędzie późniejszego pluginu jest logowane jako błąd i pomijane (bez cichego nadpisania) — identyczna polityka jak dawniej na poziomie kernela.
 - **`MemoryManager` (`memory/session.py`)**: Odpowiada za utrwalanie historii rozmów per sesja na dysku (`data/sessions/*.json`). Do pamięci trafia **wyłącznie finalny tekst odpowiedzi** — pośrednie wiadomości `assistant`/`tool` z pętli ReAct żyją tylko w pamięci na czas jednej interakcji.
 - **`ContextBuilder` (`context/builder.py`)**: Komponuje ostateczny prompt dla LLM, łącząc instrukcje systemowe z historią sesji. Przycina historię do `max_history_messages` najnowszych wiadomości (domyślnie 40, konfigurowalne w `settings.json`), by uniknąć przekroczenia limitu kontekstu modelu w długich konwersacjach. Przycinanie działa na podstawie liczby wiadomości, nie realnego zliczania tokenów. Parametr `tools_available` warunkowo dokleja jedno neutralne zdanie o dostępności narzędzi — nigdy nie wymienia ich nazw ani pochodzenia. Parametry `entities`/`facts` (kanały z `Gateway.build()`) są formatowane w pełni generycznie — kernel zna wyłącznie kształt `EntitySpec`/`Fact` z Kontraktu, nigdy domeny, która je wypełniła.
 - **`PromptStore` (`prompts/store.py`)**: Magazyn promptów systemowych (`data/prompts/*.json`) z wyborem aktywnego promptu (`data/active_prompt.json`). Usunięcie aktywnego promptu jest zablokowane; gdy nie da się wczytać żadnego, `ContextBuilder` używa `DEFAULT_SYSTEM_PROMPT` jako fallbacku.
@@ -180,14 +177,12 @@ nigdy nie widzi opaque ID.
 - **`DeviceRegistry` (`smart_home/registry.py`)**: Czysty magazyn urządzeń i grup na czas jednej interakcji (`get_device()`/`get_group()` po wewnętrznym ref). W przeciwieństwie do dawnego rejestru addonu **nie ma logiki dopasowania po nazwie** — agent adresuje encje wyłącznie przez opaque `entity_id` nadany przez Gateway, które ten tłumaczy z powrotem na wewnętrzny ref tuż przed wywołaniem pluginu.
 - **Narzędzia LLM (`smart_home/tools.py`)**: `get_state`, `turn_on`, `turn_off` — zaimplementowane **raz**, współdzielone przez wszystkie zarejestrowane integracje, adresowane przez parametr `entity_id`. Działają zarówno na pojedynczym urządzeniu, jak i na całej grupie (z agregacją częściowych niepowodzeń, `SmartHomeToolExecutor._invoke_group`). Nazwy i opisy narzędzi nigdy nie ujawniają konkretnej integracji. `list_devices` **nie istnieje** jako osobne narzędzie — kanał Encji (sekcja "Trzy kanały treści agenta") dostarcza dokładnie tę samą informację (z opaque ID) automatycznie co turę.
 - **`DeviceIntegration` (`smart_home/contract.py`)**: Kontrakt Warstwy 2, prywatna sprawa pluginu — nigdy widoczny dla Gateway ani agenta.
+- **`DateTimePlugin` (`datetime_plugin.py`)**: Minimalny plugin dowodzący zasady symetrii Fakt↔narzędzie (wizja, sekcja 4.5) — jedno narzędzie (`get_time`) i jeden odpowiadający mu Fakt (`aktualna_data_i_godzina`), oba liczone z tego samego `datetime.now()` w jednym wywołaniu `build()`. Nie dostarcza żadnych encji.
 
-### 3.5 Dostawcy kontekstu (`services/server/src/server/context_providers`)
-- **`DateTimeContextProvider` (`datetime_provider.py`)**: Jedyny, trywialny dostawca kontekstu dziś zarejestrowany — zwraca fakt z aktualną datą/godziną serwera. Kategoria równoległa do pluginów: nie dostarcza narzędzi ani encji, zawsze domenowo pusta (wizja, `docs/agent-context-architecture-vision.md`, sekcja 2).
-
-### 3.6 Warstwa 2 — Integracje (`services/server/src/server/integrations`)
+### 3.5 Warstwa 2 — Integracje (`services/server/src/server/integrations`)
 - **`HomeAssistantIntegration` (`home_assistant.py`)**: Implementacja `DeviceIntegration` komunikująca się z REST API Home Assistant. Cała wiedza o formacie danych HA (`entity_id`, `domain.service`, atrybuty encji) jest zamknięta w tej klasie. Moduł eksportuje `TYPE_NAME`, `SCHEMA` i `create()` — komplet danych potrzebnych do samorejestracji w pluginie.
 
-### 3.7 Warstwa Wspólna (`packages/shared/src/shared`)
+### 3.6 Warstwa Wspólna (`packages/shared/src/shared`)
 - **`ConfigStore` (`config.py`)**: Centralny zarządca persystentnej konfiguracji w formacie JSON z automatyczną walidacją i domyślnymi wartościami.
 - **`EventBus` (`event_bus.py`)**: Asynchroniczna magistrala zdarzeń pub/sub (`subscribe`/`publish`). **W pełni wpięta w przepływ strumieniowania** — `AgentEngine` publikuje zdarzenia `ServerEventType.CHAT_CHUNK/DONE/ERROR/CANCELLED`, a `interact_stream` subskrybuje je i tłumaczy z powrotem na strumień tokenów dla wywołującego. Dzięki temu rdzeń nie zna bezpośrednio odbiorców (SSE dziś, WebSockets satelitów w przyszłości).
 - **`contracts.py`**: Definicje obiektów transferu danych (DTO) współdzielonych przez serwer i konsolę WWW:
@@ -265,12 +260,12 @@ Klient (Web UI)        REST Gateway            AgentEngine         Task (Asyncio
 ## 5. Standardy i Kierunki Rozwoju
 
 1. **SOLID, DRY, KISS**: Kod projektowany jest w sposób modułowy, ze ścisłym rozdzieleniem odpowiedzialności.
-2. **Dodawanie nowych pluginów i integracji**: Nowy plugin = klasa z polem `plugin_id` i metodą `build(facts)` w `plugins/`, wpięta do `Gateway(plugins=[...])` w `main.py`. Nowa integracja = implementacja kontraktu danego pluginu w `integrations/`, eksportująca `TYPE_NAME`/`SCHEMA`/`create()` i zarejestrowana w `main.py`. Nowy dostawca kontekstu = klasa z metodą `get_facts()` w `context_providers/`, wpięta do `Gateway(context_providers=[...])`. **Żadna z tych operacji nie wymaga zmiany kernela ani istniejących pluginów.**
-3. **Model dystrybucji**: Nic ponad kernel nie jest architektonicznie uprzywilejowane — podział na "wbudowane" i "pobieralne" byłby decyzją dystrybucyjną, nie granicą kodu. Obecnie wszystko żyje w jednym pakiecie z jawną rejestracją w `main.py`; dynamiczne ładowanie pluginów, manifesty i sandboxing są **świadomie odłożone** (brak realnego przypadku użycia — YAGNI). Granica `PluginProvider`/`ContextProvider` sprawia, że dodanie loadera w przyszłości nie wymaga przepisywania kernela.
+2. **Dodawanie nowych pluginów i integracji**: Nowy plugin = klasa z polem `plugin_id` i metodą `build(facts)` w `plugins/`, wpięta do `Gateway(plugins=[...])` w `main.py`. Fakty nie mają osobnej kategorii — plugin, który chce proaktywnie dostarczyć kontekst, dopisuje `facts` do zwracanego `PluginContribution` obok narzędzi i encji, pamiętając o bliźniaczym narzędziu (wizja, sekcja 4.5). Nowa integracja = implementacja kontraktu danego pluginu w `integrations/`, eksportująca `TYPE_NAME`/`SCHEMA`/`create()` i zarejestrowana w `main.py`. **Żadna z tych operacji nie wymaga zmiany kernela ani istniejących pluginów.**
+3. **Model dystrybucji**: Nic ponad kernel nie jest architektonicznie uprzywilejowane — podział na "wbudowane" i "pobieralne" byłby decyzją dystrybucyjną, nie granicą kodu. Obecnie wszystko żyje w jednym pakiecie z jawną rejestracją w `main.py`; dynamiczne ładowanie pluginów, manifesty i sandboxing są **świadomie odłożone** (brak realnego przypadku użycia — YAGNI). Granica `PluginProvider` sprawia, że dodanie loadera w przyszłości nie wymaga przepisywania kernela.
 
 ### Świadome decyzje projektowe (nie zmieniać bez ponownej analizy)
 
-- **Brak rdzennego pojęcia "pokoju" (`Room`)**: Narzucałoby kernelowi/pluginowi założenie „świat = dom z pokojami”, podczas gdy smart home jest tylko jedną z możliwych domen agenta. `Device.area` pozostaje luźnym tagiem bez rejestru. Świadomość przestrzenna będzie własnością przyszłego systemu satelitów (satelita deklaruje swoją lokalizację jako Dostawca kontekstu, wizja sekcja 4.3), a skorelowanie jej z urządzeniami należy do LLM, nie do sztywnej logiki serwera.
+- **Brak rdzennego pojęcia "pokoju" (`Room`)**: Narzucałoby kernelowi/pluginowi założenie „świat = dom z pokojami”, podczas gdy smart home jest tylko jedną z możliwych domen agenta. `Device.area` pozostaje luźnym tagiem bez rejestru. Świadomość przestrzenna będzie własnością przyszłego pluginu obecności/lokalizacji, deklarującego swoją pozycję jako Fakt (wizja, sekcja 4.3), a skorelowanie jej z urządzeniami należy do LLM, nie do sztywnej logiki serwera.
 - **`DeviceGroup` należy do pluginu, nie do kernela**: Model grupowania jest ściśle związany z `invoke`/capability tej konkretnej domeny i może przecinać granice integracji tego samego pluginu; generalizacja na poziom Gateway byłaby odtworzeniem kompozytora, którego architektura świadomie unika (wizja, sekcja 4.4 i 8).
 - **Integracje żyją w `server/integrations/`, nie wewnątrz pluginu**: Zagnieżdżenie (`plugins/smart_home/integrations/home_assistant.py`) sugerowałoby, że integracja jest częścią pluginu i należy do niego jako implementacja. Tymczasem zależność biegnie w drugą stronę: to integracja zna kontrakt pluginu (`DeviceIntegration`), a plugin nie zna żadnej integracji. Katalog najwyższego poziomu utrzymuje tę asymetrię widoczną w strukturze plików i zostawia miejsce na integracje obsługujące kontrakty kilku pluginów naraz.
 - **Adresowanie po opaque ID, nie po nazwie**: Dawne dopasowywanie po przyjaznej nazwie (`DeviceRegistry.resolve()`) było kruche (niejednoznaczności, literówki) i zdradzało integrację stojącą za urządzeniem, gdy nazwa trafiała do logów/promptu. Gateway nadaje deterministyczny, nieprzezroczysty `entity_id` — stabilny w historii rozmowy mimo budowania kontekstu od zera co turę (wizja, sekcja 4.2).

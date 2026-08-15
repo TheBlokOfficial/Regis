@@ -7,7 +7,7 @@ from server.agent.backend import BackendRegistry
 from server.agent.context import ContextBuilder
 from server.agent.gateway import Gateway
 from server.agent.prompts import PromptStore
-from server.context_providers.datetime_provider import DateTimeContextProvider
+from server.plugins.datetime_plugin import DateTimePlugin
 from server.plugins.smart_home import SmartHomePlugin
 from server.config import load_settings
 from server.integrations import home_assistant as ha_integration
@@ -41,13 +41,11 @@ async def main() -> None:
     smart_home_plugin.register_integration_type(
         ha_integration.TYPE_NAME, ha_integration.create, ha_integration.SCHEMA
     )
+    datetime_plugin = DateTimePlugin()
 
-    # 5. Inicjalizacja Gateway — jedyny agregator Warstwy 0, spinający Pluginy i Dostawców
-    #    kontekstu w trzy płaskie kanały treści agenta (narzędzia, encje, fakty).
-    gateway = Gateway(
-        plugins=[smart_home_plugin],
-        context_providers=[DateTimeContextProvider()],
-    )
+    # 5. Inicjalizacja Gateway — jedyny agregator Warstwy 0, spinający Pluginy w trzy
+    #    płaskie kanały treści agenta (narzędzia, encje, fakty).
+    gateway = Gateway(plugins=[smart_home_plugin, datetime_plugin])
 
     # 6. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus, skonfigurowanym limitem historii, PromptStore i Gateway
     context_builder = ContextBuilder(max_history_messages=settings.max_history_messages)

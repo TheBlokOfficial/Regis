@@ -1,7 +1,6 @@
 from shared import ChatMessageDTO, get_logger
 from server.agent.backend import LLMMessage
-from server.agent.context_provider_contract import Fact
-from server.agent.plugin_contract import EntitySpec
+from server.agent.plugin_contract import EntitySpec, Fact
 
 logger = get_logger("regis.agent.context")
 

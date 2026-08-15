@@ -61,18 +61,17 @@ Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](mani
 
 | Warstwa | Katalog | Odpowiedzialność | Co wie o warstwie niżej |
 | :--- | :--- | :--- | :--- |
-| **0 — Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct, `Gateway` (agregator 3 kanałów) | Tylko protokoły `PluginProvider`/`ContextProvider` |
-| **1 — Pluginy** | `server/plugins/` | Domena możliwości (dziś: smart home), deklaracja narzędzi i encji | Tylko własny kontrakt (np. `DeviceIntegration`) |
+| **0 — Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct, `Gateway` (agregator 3 kanałów) | Tylko protokół `PluginProvider` |
+| **1 — Pluginy** | `server/plugins/` | Domena możliwości (dziś: smart home, data/godzina), deklaracja narzędzi, encji i opcjonalnie faktów | Tylko własny kontrakt (np. `DeviceIntegration`) |
 | **2 — Integracje** | `server/integrations/` | Konkretne implementacje (dziś: Home Assistant) | — |
 
-Równolegle: **Dostawcy kontekstu** (`server/context_providers/`) — kategoria obok pluginów, dostarczająca Gateway wyłącznie płaskie fakty (dziś: `DateTimeContextProvider`), nigdy narzędzi ani encji.
+Fakty nie mają osobnej kategorii — są opcjonalnym wkładem zwykłego Pluginu, na równi z narzędziami i encjami. Gateway buduje pluginy sekwencyjnie, w kolejności rejestracji, i przekazuje każdemu kolejnemu Fakty zebrane od pluginów zbudowanych wcześniej w tej samej turze (dowód: `DateTimePlugin`, jedno narzędzie `get_time` + bliźniaczy Fakt).
 
 **Zasada nadrzędna**: żadna warstwa nie zna z góry implementacji warstwy poniżej — te rejestrują się same, jawnie, w `main.py`. Dodanie nowej integracji albo nowego pluginu **nie wymaga zmiany kernela**.
 
 Praktycznie:
-- **Nowy plugin**: klasa z polem `plugin_id: str` i metodą `async def build(facts: list[Fact]) -> PluginContribution` w `server/plugins/`, dopisana do `Gateway(plugins=[...])` w `main.py`.
+- **Nowy plugin**: klasa z polem `plugin_id: str` i metodą `async def build(facts: list[Fact]) -> PluginContribution` w `server/plugins/`, dopisana do `Gateway(plugins=[...])` w `main.py`. Jeśli plugin proaktywnie dostarcza kontekst, dopisuje `facts` do zwracanego `PluginContribution` — pod warunkiem, że ta sama treść jest też dostępna przez narzędzie (wizja, sekcja 4.5).
 - **Nowa integracja**: implementacja kontraktu pluginu (np. `DeviceIntegration`) w `server/integrations/`, eksportująca `TYPE_NAME`, `SCHEMA` i `create()`, zarejestrowana przez `plugin.register_integration_type(...)` w `main.py`. Szczegóły: [`docs/adding-integrations.md`](adding-integrations.md).
-- **Nowy dostawca kontekstu**: klasa z metodą `async def get_facts() -> list[Fact]` w `server/context_providers/`, dopisana do `Gateway(context_providers=[...])` w `main.py`.
 - Agent adresuje encje (urządzenia, grupy) wyłącznie przez opaque `entity_id` nadany przez Gateway — nigdy po przyjaznej nazwie ani natywnym ID integracji.
 
 ---

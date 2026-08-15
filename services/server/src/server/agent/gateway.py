@@ -1,12 +1,13 @@
-"""Gateway — jedyny agregator Warstwy 0 (kernel) łączący Pluginy i Dostawców
-kontekstu w trzy płaskie kanały treści agenta (wizja, sekcja 2 i 3).
+"""Gateway — jedyny agregator Warstwy 0 (kernel) łączący Pluginy w trzy
+płaskie kanały treści agenta (wizja, sekcja 2 i 3).
 
-Budowany od zera przy każdej turze agenta (nigdy cache'owany), w jednym
-przebiegu — pyta każdy zarejestrowany Plugin i każdego Dostawcę kontekstu
-o jego wkład, skleja w trzy płaskie listy, rozstrzyga kolizje nazw
-narzędzi i nadaje encjom opaque identyfikatory. Nie interpretuje treści
-niczego, co dostaje — rozmawia wyłącznie z Pluginami, nigdy bezpośrednio
-z żadną integracją wewnątrz nich.
+Budowany od zera przy każdej turze agenta (nigdy cache'owany), w jednym,
+sekwencyjnym przebiegu — pyta każdy zarejestrowany Plugin, w kolejności
+rejestracji, o jego wkład (przekazując Fakty zebrane od wcześniej
+zbudowanych Pluginów tej samej tury), skleja w trzy płaskie listy,
+rozstrzyga kolizje nazw narzędzi i nadaje encjom opaque identyfikatory.
+Nie interpretuje treści niczego, co dostaje — rozmawia wyłącznie z
+Pluginami, nigdy bezpośrednio z żadną integracją wewnątrz nich.
 """
 
 import hashlib
@@ -16,8 +17,7 @@ from typing import Any
 from shared import get_logger
 
 from server.agent.backend import ToolDefinition, ToolResult
-from server.agent.context_provider_contract import ContextProvider, Fact
-from server.agent.plugin_contract import EntitySpec, PluginProvider, ToolDispatch
+from server.agent.plugin_contract import EntitySpec, Fact, PluginProvider, ToolDispatch
 
 logger = get_logger("regis.agent.gateway")
 
@@ -47,28 +47,29 @@ class GatewayBuild:
 
 
 class Gateway:
-    """Agregator Warstwy 0 — jedyny punkt zbierający wkład Pluginów i
-    Dostawców kontekstu (wizja, sekcja 2)."""
+    """Agregator Warstwy 0 — jedyny punkt zbierający wkład Pluginów (wizja,
+    sekcja 2)."""
 
     def __init__(
         self,
         plugins: list[PluginProvider] | None = None,
-        context_providers: list[ContextProvider] | None = None,
     ) -> None:
         self.plugins: list[PluginProvider] = plugins or []
-        self.context_providers: list[ContextProvider] = context_providers or []
 
     async def build(self) -> GatewayBuild:
         """Buduje pełny kontekst agenta na czas jednej interakcji, od zera.
+
+        Sekwencyjny, jednoprzebiegowy: pluginy budowane są w kolejności
+        rejestracji (tej samej, która rozstrzyga kolizje nazw narzędzi), a
+        każdy kolejny plugin dostaje w `facts` Fakty zebrane od wszystkich
+        pluginów zbudowanych wcześniej w tej samej turze (wizja, sekcja 4.5).
 
         Polityka kolizji nazw narzędzi: jeśli dwa pluginy zarejestrują
         narzędzie o tej samej nazwie, wcześniej zarejestrowany wygrywa —
         kolidujące narzędzie późniejszego pluginu jest logowane jako błąd
         i pomijane (bez cichego nadpisania) — tak jak dziś na poziomie kernela.
         """
-        facts: list[Fact] = []
-        for provider in self.context_providers:
-            facts.extend(await provider.get_facts())
+        accumulated_facts: list[Fact] = []
 
         all_tool_defs: list[ToolDefinition] = []
         tool_owner: dict[str, PluginProvider] = {}
@@ -77,7 +78,7 @@ class Gateway:
         agent_entities: list[EntitySpec] = []
 
         for plugin in self.plugins:
-            contribution = await plugin.build(facts)
+            contribution = await plugin.build(facts=list(accumulated_facts))
 
             for tool_def in contribution.tools:
                 if tool_def.name in tool_owner:
@@ -96,6 +97,8 @@ class Gateway:
                 opaque_id = _compute_opaque_id(plugin.plugin_id, native_ref)
                 routing_table[opaque_id] = (plugin, native_ref)
                 agent_entities.append(EntitySpec(id=opaque_id, name=entity.name, capabilities=entity.capabilities))
+
+            accumulated_facts.extend(contribution.facts)
 
         async def combined_dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
             plugin = tool_owner.get(name)
@@ -128,6 +131,6 @@ class Gateway:
         return GatewayBuild(
             tool_definitions=all_tool_defs,
             entities=agent_entities,
-            facts=facts,
+            facts=accumulated_facts,
             dispatch=combined_dispatch,
         )
