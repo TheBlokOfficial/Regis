@@ -67,6 +67,9 @@ function mountIcons() {
   const iconAgents = document.getElementById('icon-nav-agents');
   if (iconAgents) iconAgents.innerHTML = Icons.Cpu();
 
+  const iconExtensions = document.getElementById('icon-nav-extensions');
+  if (iconExtensions) iconExtensions.innerHTML = Icons.Puzzle();
+
   const iconServices = document.getElementById('icon-nav-services');
   if (iconServices) iconServices.innerHTML = Icons.Server();
 

@@ -2,6 +2,7 @@ import { DashboardView } from './views/dashboard.js';
 import { SettingsView } from './views/settings.js';
 import { ChatView } from './views/chat.js';
 import { AgentsView } from './views/agents.js';
+import { ExtensionsView } from './views/extensions.js';
 import { confirmModal } from './modal_confirm.js';
 
 /**
@@ -20,6 +21,7 @@ export class TabManager {
       chat: new ChatView(),
       settings: new SettingsView(),
       agents: new AgentsView(),
+      extensions: new ExtensionsView(),
     };
 
     this.latestHealthData = null;
@@ -75,13 +77,14 @@ export class TabManager {
         chat: 'Czat',
         settings: 'Ustawienia',
         agents: 'Prompty',
+        extensions: 'Rozszerzenia',
       };
       this.breadcrumb.textContent = titles[tabId] || tabId;
     }
 
     // Renderowanie widoku w kontenerze roboczym
     if (this.container) {
-      if (tabId === 'agents') {
+      if (tabId === 'agents' || tabId === 'extensions') {
         this.container.classList.add('workspace-content--full');
       } else {
         this.container.classList.remove('workspace-content--full');
@@ -97,6 +100,8 @@ export class TabManager {
         await this.views.chat.init(this.apiClient);
       } else if (tabId === 'agents') {
         await this.views.agents.init(this.apiClient);
+      } else if (tabId === 'extensions') {
+        await this.views.extensions.init(this.apiClient);
       }
     }
   }

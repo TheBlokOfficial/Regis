@@ -2,7 +2,7 @@
 
 **System Regis** to rozproszony system usług sieciowych komunikujących się w sieci lokalnej, zbudowany w oparciu o architekturę monorepo w języku Python z wykorzystaniem menedżera pakietów [`uv`](https://github.com/astral-sh/uv) (`uv workspace`).
 
-Regis jest **ogólnym agentem AI**: rdzeń (kernel) odpowiada za rozmowę, pamięć i pętlę agentyczną, a konkretne możliwości (dziś: sterowanie smart home) są doklejane z zewnątrz jako addony i integracje. Projekt oferuje obsługę wielu dostawców modeli LLM (lokalnych jak Ollama i chmurowych przez OpenRouter), **tool calling** w pełnej pętli ReAct, asynchroniczną magistralę zdarzeń `EventBus` oraz wbudowaną konsolę Web UI.
+Regis jest **ogólnym agentem AI**: rdzeń (kernel) odpowiada za rozmowę, pamięć i pętlę agentyczną, a konkretne możliwości (dziś: sterowanie Home Assistant, data/godzina) są doklejane z zewnątrz jako Rozszerzenia. Projekt oferuje obsługę wielu dostawców modeli LLM (lokalnych jak Ollama i chmurowych przez OpenRouter), **tool calling** w pełnej pętli ReAct, asynchroniczną magistralę zdarzeń `EventBus` oraz wbudowaną konsolę Web UI.
 
 ---
 
@@ -16,7 +16,7 @@ Regis/
 ├── packages/         # Wspólne pakiety kodowe
 │   └── shared/       # Paczka shared (ConfigStore, EventBus, kontrakty DTO, logowanie)
 ├── services/         # Usługi sieciowe i aplikacje
-│   └── server/       # Główny serwer Systemu Regis (bramka REST/SSE, kernel, addony, integracje, Web UI)
+│   └── server/       # Główny serwer Systemu Regis (bramka REST/SSE, kernel, rozszerzenia, Web UI)
 ├── pyproject.toml    # Konfiguracja uv workspace, grupy dev i pytest
 └── README.md         # Wprowadzenie do projektu
 ```
@@ -28,13 +28,12 @@ Fundamentem architektury jest **kierunek zależności: żadna warstwa nie zna z 
 | Warstwa | Katalog | Odpowiedzialność |
 | :--- | :--- | :--- |
 | **0 — Kernel** | `server/agent/` | `AgentEngine` (pętla ReAct), `Gateway`, `MemoryManager`, `ContextBuilder`, `PromptStore`, dostawcy LLM |
-| **1 — Pluginy** | `server/plugins/` | Domena możliwości agenta i deklaracja narzędzi LLM (dziś: `SmartHomePlugin`) |
-| **2 — Integracje** | `server/integrations/` | Konkretne implementacje kontraktów pluginu (dziś: `HomeAssistantIntegration`) |
+| **1 — Rozszerzenia** | `server/extensions/` | Domena możliwości agenta i deklaracja narzędzi LLM (dziś: `HomeAssistantExtension`, `BasicToolsExtension`) |
 
-Dzięki temu smart home (i Home Assistant jako jedna z jego możliwych realizacji) jest tylko *narzędziem, którego agent może użyć* — nie integralną częścią tego, czym agent jest. Pełny opis warstw, przepływów danych i uzasadnienia decyzji: [`docs/manifest.md`](docs/manifest.md).
+Dzięki temu Home Assistant jest tylko *narzędziem, którego agent może użyć* — nie integralną częścią tego, czym agent jest. Pełny opis warstw, przepływów danych i uzasadnienia decyzji: [`docs/manifest.md`](docs/manifest.md).
 
 ### Kluczowe komponenty:
-- **`services/server`**: Serwer realizujący komunikację przez FastAPI (REST API v1), strumieniowanie odpowiedzi w czasie rzeczywistym (Server-Sent Events), silnik konwersacji `AgentEngine` z pętlą agentyczną (tool calling), zarządcę pamięci sesji `MemoryManager`, budowniczego kontekstu `ContextBuilder`, magazyn promptów systemowych `PromptStore`, pluginy/integracje oraz wbudowany interfejs Web UI.
+- **`services/server`**: Serwer realizujący komunikację przez FastAPI (REST API v1), strumieniowanie odpowiedzi w czasie rzeczywistym (Server-Sent Events), silnik konwersacji `AgentEngine` z pętlą agentyczną (tool calling), zarządcę pamięci sesji `MemoryManager`, budowniczego kontekstu `ContextBuilder`, magazyn promptów systemowych `PromptStore`, rozszerzenia oraz wbudowany interfejs Web UI.
 - **`packages/shared`**: Centralny pakiet dzielony zawierający wspólny magazyn konfiguracji (`ConfigStore`), asynchroniczną magistralę zdarzeń (`EventBus`), obiekty transferu danych (`contracts.py`) oraz standaryzowany moduł logowania (`logging.py`).
 
 ---
@@ -89,7 +88,7 @@ Cała konfiguracja jest persystentna i trzymana w plikach JSON zarządzanych prz
 | Ustawienia serwera (host, port, limity) | `services/server/config/settings.json` | ręcznie |
 | Instancje dostawców LLM (Ollama, OpenRouter) | `services/server/data/backends/*.json` | zakładka **Ustawienia** w Web UI |
 | Prompty systemowe | `services/server/data/prompts/*.json` | zakładka **Prompty** w Web UI |
-| Integracje i grupy urządzeń | `services/server/data/addons/smart_home/{integrations,groups}/*.json` | REST `/api/v1/integrations` *(zakładka w Web UI: planowana)* |
+| Połączenia Home Assistant i grupy urządzeń | `services/server/data/extensions/home_assistant/{connections,groups}/*.json` | zakładka **Rozszerzenia** w Web UI |
 
 Szczegółowy opis wszystkich parametrów: [`docs/onboarding.md`](docs/onboarding.md#2-konfiguracja).
 

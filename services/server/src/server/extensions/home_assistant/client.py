@@ -1,43 +1,23 @@
+"""Klient REST API Home Assistant.
+
+Cała wiedza o formacie danych Home Assistant (entity_id, domain.service,
+atrybuty encji) jest zamknięta w tej klasie — narzędzia LLM rozszerzenia
+(`tools.py`) operują wyłącznie na generycznym modelu `Device`+capability.
+"""
+
 from typing import Any
+
 import httpx
-from shared import get_logger, ProviderOptionSpec, ProviderTypeSpecDTO
+from shared import get_logger
 
 from server.agent.backend import ToolResult
-from server.plugins.smart_home.contract import DeviceIntegration
-from server.plugins.smart_home.models import Device
+from server.extensions.home_assistant.models import Device
 
-logger = get_logger("regis.integrations.home_assistant")
+logger = get_logger("regis.extensions.home_assistant")
 
 # Domeny encji HA obsługujące włączanie/wyłączanie — wszystkie pozostałe domeny
-# udostępniają wyłącznie odczyt stanu ('get_state') w tej wersji integracji.
+# udostępniają wyłącznie odczyt stanu ('get_state').
 _TOGGLEABLE_DOMAINS = {"light", "switch", "fan", "input_boolean"}
-
-# Identyfikator typu i schemat opcji — jedyne miejsce definiujące te dane,
-# rejestrowane w pluginie jawnie przez `main.py` (plugin nie zna ich na sztywno).
-TYPE_NAME = "HOME_ASSISTANT"
-
-SCHEMA = ProviderTypeSpecDTO(
-    type=TYPE_NAME,
-    label="Home Assistant",
-    options_schema=[
-        ProviderOptionSpec(
-            name="base_url",
-            label="Adres serwera Home Assistant",
-            type="string",
-            required=True,
-            default_value="http://homeassistant.local:8123",
-            placeholder="http://homeassistant.local:8123",
-        ),
-        ProviderOptionSpec(
-            name="access_token",
-            label="Długoterminowy token dostępu (Long-Lived Access Token)",
-            type="password",
-            required=True,
-            default_value="",
-            placeholder="eyJhbGciOi...",
-        ),
-    ],
-)
 
 
 def _capabilities_for_domain(domain: str) -> set[str]:
@@ -71,15 +51,8 @@ def _format_state_text(entity_id: str, domain: str, state: str, attributes: dict
     return f"{friendly}: {state}"
 
 
-class HomeAssistantIntegration(DeviceIntegration):
-    """Integracja z Home Assistant przez jego REST API.
-
-    Implementuje kontrakt `DeviceIntegration` zdefiniowany przez plugin Smart
-    Home (`server.plugins.smart_home.contract`). Cała wiedza o formacie danych
-    Home Assistant (entity_id, domain.service, atrybuty encji) jest zamknięta
-    w tej klasie — narzędzia LLM pluginu operują wyłącznie na generycznym
-    modelu `Device`+capability.
-    """
+class HomeAssistantClient:
+    """Komunikuje się z REST API jednego połączenia Home Assistant."""
 
     def __init__(self, base_url: str, access_token: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -112,7 +85,7 @@ class HomeAssistantIntegration(DeviceIntegration):
             devices.append(
                 Device(
                     id=entity_id,
-                    integration_id="",  # uzupełniane przez SmartHomePlugin po zwrocie
+                    connection_id="",  # uzupełniane przez HomeAssistantExtension po zwrocie
                     name=attributes.get("friendly_name", entity_id),
                     kind=domain,
                     capabilities=_capabilities_for_domain(domain),
@@ -160,11 +133,3 @@ class HomeAssistantIntegration(DeviceIntegration):
                 return response.status_code == 200
         except Exception:
             return False
-
-
-def create(options: dict[str, Any]) -> HomeAssistantIntegration:
-    """Fabryka tworząca instancję integracji z worka opcji — rejestrowana w pluginie."""
-    return HomeAssistantIntegration(
-        base_url=options.get("base_url", "http://homeassistant.local:8123"),
-        access_token=options.get("access_token", ""),
-    )

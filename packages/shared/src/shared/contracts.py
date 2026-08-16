@@ -181,68 +181,30 @@ class UpdatePromptRequest(BaseModel):
 
 
 # ==========================================================================
-# KONTRAKTY DLA INTEGRACJI AGENTA (TOOL CALLING INTEGRATIONS CONTRACTS)
+# KONTRAKTY DLA REJESTRU ROZSZERZEŃ (EXTENSIONS REGISTRY CONTRACTS)
 # ==========================================================================
+#
+# Generyczny kształt „lista rozszerzeń" — jedyna treść współdzielona między
+# rozszerzeniami. Prywatne słownictwo poszczególnych rozszerzeń (np. Home
+# Assistant — połączenia, katalog, grupy) żyje lokalnie w ich własnych
+# pakietach (`server/extensions/home_assistant/dto.py`), nie tutaj.
 
 
-class IntegrationDTO(BaseModel):
-    """Reprezentacja instancji integracji dla API."""
+class ExtensionSummaryDTO(BaseModel):
+    """Jeden wpis w liście rozszerzeń dla API."""
 
-    id: str = Field(..., description="Unikalne ID instancji integracji (np. int_ha_main)")
-    type: str = Field(..., description="Typ integracji (np. HOME_ASSISTANT)")
-    name: str = Field(..., description="Wyświetlana nazwa")
-    options: dict[str, Any] = Field(default_factory=dict, description="Opcje konfiguracyjne")
-    enabled: bool = Field(default=True, description="Czy integracja aktywnie dostarcza narzędzia agentowi")
+    id: str = Field(..., description="Stabilny identyfikator rozszerzenia (np. home_assistant)")
+    label: str = Field(..., description="Wyświetlana nazwa rozszerzenia")
+    enabled: bool = Field(..., description="Czy rozszerzenie aktywnie dostarcza wkład agentowi")
 
 
-class IntegrationListResponse(BaseModel):
-    """Odpowiedź dla GET /api/v1/integrations."""
+class ExtensionListResponse(BaseModel):
+    """Odpowiedź dla GET /api/v1/extensions."""
 
-    integrations: list[IntegrationDTO] = Field(default_factory=list, description="Lista skonfigurowanych integracji")
-
-
-class CreateIntegrationRequest(BaseModel):
-    """Żądanie dla POST /api/v1/integrations."""
-
-    type: str = Field(..., description="Typ integracji (np. HOME_ASSISTANT)")
-    name: str = Field(..., description="Wyświetlana nazwa")
-    options: dict[str, Any] = Field(default_factory=dict, description="Opcje konfiguracyjne")
-    enabled: bool = Field(default=True, description="Czy integracja ma być od razu włączona")
-    custom_id: str | None = Field(default=None, description="Opcjonalne własne ID")
+    extensions: list[ExtensionSummaryDTO] = Field(default_factory=list, description="Lista zarejestrowanych rozszerzeń")
 
 
-class UpdateIntegrationRequest(BaseModel):
-    """Żądanie dla PUT /api/v1/integrations/{id}."""
+class SetExtensionEnabledRequest(BaseModel):
+    """Żądanie dla PUT /api/v1/extensions/{id}."""
 
-    name: str | None = Field(default=None, description="Nowa wyświetlana nazwa")
-    options: dict[str, Any] | None = Field(default=None, description="Nowe opcje konfiguracyjne")
-    enabled: bool | None = Field(default=None, description="Nowy stan włączenia integracji")
-
-
-class DeviceGroupDTO(BaseModel):
-    """Reprezentacja grupy urządzeń dla API."""
-
-    id: str = Field(..., description="Unikalne ID grupy (np. grp_a1b2c3d4)")
-    name: str = Field(..., description="Wyświetlana nazwa grupy")
-    device_ids: list[str] = Field(default_factory=list, description="Lista namespaced ID urządzeń wchodzących w grupę")
-
-
-class DeviceGroupListResponse(BaseModel):
-    """Odpowiedź dla GET /api/v1/integrations/groups."""
-
-    groups: list[DeviceGroupDTO] = Field(default_factory=list, description="Lista skonfigurowanych grup urządzeń")
-
-
-class CreateDeviceGroupRequest(BaseModel):
-    """Żądanie dla POST /api/v1/integrations/groups."""
-
-    name: str = Field(..., description="Wyświetlana nazwa grupy")
-    device_ids: list[str] = Field(default_factory=list, description="Lista namespaced ID urządzeń wchodzących w grupę")
-    custom_id: str | None = Field(default=None, description="Opcjonalne własne ID")
-
-
-class UpdateDeviceGroupRequest(BaseModel):
-    """Żądanie dla PUT /api/v1/integrations/groups/{id}."""
-
-    name: str | None = Field(default=None, description="Nowa wyświetlana nazwa")
-    device_ids: list[str] | None = Field(default=None, description="Nowa lista urządzeń wchodzących w grupę")
+    enabled: bool = Field(..., description="Nowy stan włączenia rozszerzenia")

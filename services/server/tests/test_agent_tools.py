@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Any, AsyncIterator, List
 
 import pytest
+from fastapi import APIRouter
+from fastapi.testclient import TestClient
 
 from server.agent import AgentEngine
 from server.agent.backend import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
@@ -10,33 +12,41 @@ from server.agent.context.builder import ContextBuilder
 from server.agent.gateway import Gateway
 from server.agent.memory import MemoryManager
 from server.agent.plugin_contract import EntityCapability, EntitySpec, Fact, PluginContribution
-from server.plugins.datetime_plugin import DateTimePlugin
-from server.plugins.smart_home.contract import DeviceIntegration
-from server.plugins.smart_home.models import Device, DeviceGroup
-from server.plugins.smart_home.plugin import SmartHomePlugin
-from server.plugins.smart_home.registry import DeviceRegistry
-from server.plugins.smart_home.tools import SmartHomeToolExecutor
+from server.extensions.basic_tools import BasicToolsExtension
+from server.extensions.home_assistant import HomeAssistantExtension
+from server.extensions.home_assistant.models import (
+    Device,
+    DeviceDeclarationEntry,
+    DeviceDeclarationFileContent,
+    DeviceGroup,
+    HAConnectionConfig,
+)
+from server.extensions.home_assistant.registry import DeviceRegistry
+from server.extensions.home_assistant.tools import HomeAssistantToolExecutor
+from server.network.extension_contract import NetworkExtension
+from server.network.gateway import create_gateway_app
+from server.network.routes.extensions import create_extensions_registry_router
 
 
 def _make_devices() -> list[Device]:
     return [
         Device(
-            id="int_fake:light.bathroom",
-            integration_id="int_fake",
+            id="con_fake:light.bathroom",
+            connection_id="con_fake",
             name="Światło w łazience",
             kind="light",
             capabilities={"turn_on", "turn_off", "get_state"},
         ),
         Device(
-            id="int_fake:light.bathroom_mirror",
-            integration_id="int_fake",
+            id="con_fake:light.bathroom_mirror",
+            connection_id="con_fake",
             name="Światło w łazience — lustro",
             kind="light",
             capabilities={"turn_on", "turn_off", "get_state"},
         ),
         Device(
-            id="int_fake:sensor.living_room_temp",
-            integration_id="int_fake",
+            id="con_fake:sensor.living_room_temp",
+            connection_id="con_fake",
             name="Temperatura w salonie",
             kind="sensor",
             capabilities={"get_state"},
@@ -48,25 +58,25 @@ def _make_group() -> DeviceGroup:
     return DeviceGroup(
         id="grp_bathroom",
         name="Łazienka",
-        device_ids=["int_fake:light.bathroom", "int_fake:light.bathroom_mirror"],
+        device_ids=["con_fake:light.bathroom", "con_fake:light.bathroom_mirror"],
     )
 
 
 def _make_raw_devices() -> list[Device]:
     """Urządzenia z natywnymi (nieprzestrzennymi) ID — dokładnie takie, jakie
-    zwraca `DeviceIntegration.list_devices()`, zanim `SmartHomePlugin.build()`
-    nada im przestrzeń nazw integracji."""
+    zwraca `HomeAssistantClient.list_devices()`, zanim `HomeAssistantExtension.build()`
+    nada im przestrzeń nazw połączenia."""
     return [
         Device(
             id="light.bathroom",
-            integration_id="",
+            connection_id="",
             name="Światło w łazience",
             kind="light",
             capabilities={"turn_on", "turn_off", "get_state"},
         ),
         Device(
             id="light.bathroom_mirror",
-            integration_id="",
+            connection_id="",
             name="Światło w łazience — lustro",
             kind="light",
             capabilities={"turn_on", "turn_off", "get_state"},
@@ -74,8 +84,8 @@ def _make_raw_devices() -> list[Device]:
     ]
 
 
-class FakeIntegration(DeviceIntegration):
-    """Integracja testowa nagrywająca wywołania, bez żadnego realnego I/O."""
+class FakeHomeAssistantClient:
+    """Klient testowy nagrywający wywołania, bez żadnego realnego I/O."""
 
     def __init__(self, failing_device_id: str | None = None, devices: list[Device] | None = None) -> None:
         self.invocations: list[tuple[str, str]] = []
@@ -93,58 +103,58 @@ class FakeIntegration(DeviceIntegration):
 
 
 # --------------------------------------------------------------------------
-# SmartHomeToolExecutor — capability gating, delegacja i częściowy sukces grupy
+# HomeAssistantToolExecutor — capability gating, delegacja i częściowy sukces grupy
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
 async def test_executor_rejects_capability_device_does_not_support():
-    integration = FakeIntegration()
+    client = FakeHomeAssistantClient()
     device_registry = DeviceRegistry(_make_devices())
-    executor = SmartHomeToolExecutor(device_registry, {"int_fake": integration})
+    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
 
-    # Sensor nie deklaruje 'turn_on' — narzędzie musi odmówić bez wywoływania integracji.
-    result = await executor.execute("turn_on", {"entity_id": "int_fake:sensor.living_room_temp"})
+    # Sensor nie deklaruje 'turn_on' — narzędzie musi odmówić bez wywoływania klienta.
+    result = await executor.execute("turn_on", {"entity_id": "con_fake:sensor.living_room_temp"})
 
     assert result.is_error is True
-    assert integration.invocations == []
+    assert client.invocations == []
 
 
 @pytest.mark.anyio
-async def test_executor_strips_integration_namespace_from_entity_ref():
-    integration = FakeIntegration()
+async def test_executor_strips_connection_namespace_from_entity_ref():
+    client = FakeHomeAssistantClient()
     device_registry = DeviceRegistry(_make_devices())
-    executor = SmartHomeToolExecutor(device_registry, {"int_fake": integration})
+    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
 
-    result = await executor.execute("turn_off", {"entity_id": "int_fake:light.bathroom"})
+    result = await executor.execute("turn_off", {"entity_id": "con_fake:light.bathroom"})
 
     assert result.is_error is False
-    assert integration.invocations == [("light.bathroom", "turn_off")]
+    assert client.invocations == [("light.bathroom", "turn_off")]
 
 
 @pytest.mark.anyio
 async def test_executor_reports_unknown_entity():
-    integration = FakeIntegration()
+    client = FakeHomeAssistantClient()
     device_registry = DeviceRegistry(_make_devices())
-    executor = SmartHomeToolExecutor(device_registry, {"int_fake": integration})
+    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
 
     result = await executor.execute("get_state", {"entity_id": "nieistniejący:ref"})
 
     assert result.is_error is True
-    assert integration.invocations == []
+    assert client.invocations == []
 
 
 @pytest.mark.anyio
 async def test_executor_group_aggregates_partial_failure():
-    integration = FakeIntegration(failing_device_id="light.bathroom_mirror")
+    client = FakeHomeAssistantClient(failing_device_id="light.bathroom_mirror")
     device_registry = DeviceRegistry(_make_devices(), [_make_group()])
-    executor = SmartHomeToolExecutor(device_registry, {"int_fake": integration})
+    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
 
     result = await executor.execute("turn_on", {"entity_id": "grp_bathroom"})
 
     assert result.is_error is False  # częściowy sukces nie jest twardym błędem
     assert "1/2" in result.content
-    assert set(integration.invocations) == {
+    assert set(client.invocations) == {
         ("light.bathroom", "turn_on"),
         ("light.bathroom_mirror", "turn_on"),
     }
@@ -152,20 +162,20 @@ async def test_executor_group_aggregates_partial_failure():
 
 @pytest.mark.anyio
 async def test_executor_group_with_missing_member_never_leaks_native_ref():
-    integration = FakeIntegration()
+    client = FakeHomeAssistantClient()
     missing_group = DeviceGroup(
         id="grp_bathroom",
         name="Łazienka",
-        device_ids=["int_fake:light.bathroom", "int_fake:light.nieistniejące"],
+        device_ids=["con_fake:light.bathroom", "con_fake:light.nieistniejące"],
     )
     device_registry = DeviceRegistry(_make_devices(), [missing_group])
-    executor = SmartHomeToolExecutor(device_registry, {"int_fake": integration})
+    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
 
     result = await executor.execute("turn_on", {"entity_id": "grp_bathroom"})
 
     # Raport o brakującym członku grupy nigdy nie ujawnia surowego, wewnętrznego
-    # namespaced ref pluginu (format 'integration_id:native_id') — nawet ścieżką błędu.
-    assert "int_fake:light.nieistniejące" not in result.content
+    # namespaced ref rozszerzenia (format 'connection_id:native_id') — nawet ścieżką błędu.
+    assert "con_fake:light.nieistniejące" not in result.content
     assert "nieznane urządzenie" in result.content
 
 
@@ -197,10 +207,7 @@ def _entity_spec(ref: str, name: str, tool_names: tuple[str, ...]) -> EntitySpec
 
 @pytest.mark.anyio
 async def test_gateway_opaque_id_is_deterministic_and_stable_across_builds():
-    seen_refs: list[str] = []
-
     async def dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
-        seen_refs.append(str(arguments.get("entity_id")))
         return ToolResult(content="ok")
 
     contribution = PluginContribution(
@@ -389,26 +396,46 @@ def test_context_builder_omits_empty_channels():
 
 
 # --------------------------------------------------------------------------
-# DateTimePlugin — symetria Fakt<->narzędzie (wizja, sekcja 4.5)
+# BasicToolsExtension — symetria Fakt<->narzędzie
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
-async def test_datetime_plugin_get_time_dispatch_matches_fact_value_from_same_build():
-    plugin = DateTimePlugin()
+async def test_basic_tools_get_time_dispatch_matches_fact_value_from_same_build():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        extension = BasicToolsExtension(data_dir=Path(tmp_dir) / "basic_tools")
 
-    contribution = await plugin.build(facts=[])
-    result = await contribution.dispatch("get_time", {})
+        contribution = await extension.build(facts=[])
+        result = await contribution.dispatch("get_time", {})
 
-    assert len(contribution.facts) == 1
-    assert contribution.facts[0].key == "aktualna_data_i_godzina"
-    assert result.is_error is False
-    assert result.content == contribution.facts[0].value
+        assert len(contribution.facts) == 1
+        assert contribution.facts[0].key == "aktualna_data_i_godzina"
+        assert result.is_error is False
+        assert result.content == contribution.facts[0].value
+
+
+@pytest.mark.anyio
+async def test_basic_tools_disabled_returns_empty_contribution():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        extension = BasicToolsExtension(data_dir=Path(tmp_dir) / "basic_tools")
+        await extension.set_enabled(False)
+
+        contribution = await extension.build(facts=[])
+
+        assert contribution.tools == []
+        assert contribution.entities == []
+        assert contribution.facts == []
+
+
+def test_basic_tools_build_router_mounts_without_error():
+    extension = BasicToolsExtension()
+    router = extension.build_router()
+    assert isinstance(router, APIRouter)
 
 
 # --------------------------------------------------------------------------
-# Pełna pętla agentyczna (ReAct) w AgentEngine — Gateway + SmartHomePlugin end-to-end,
-# bez śladu pluginu/integracji w odpowiedzi, adresowanie po opaque entity_id
+# Pełna pętla agentyczna (ReAct) w AgentEngine — Gateway + HomeAssistantExtension
+# end-to-end, bez śladu rozszerzenia w odpowiedzi, adresowanie po opaque entity_id
 # --------------------------------------------------------------------------
 
 
@@ -437,30 +464,27 @@ class ToolCallingMockProvider(BaseLLMProvider):
         return True
 
 
-async def _setup_smart_home_plugin(tmp_dir: str) -> tuple[SmartHomePlugin, list[FakeIntegration], str]:
-    """Rejestruje FakeIntegration w SmartHomePlugin i tworzy jedną włączoną instancję."""
-    created: list[FakeIntegration] = []
+async def _setup_home_assistant_extension(tmp_dir: str) -> tuple[HomeAssistantExtension, list[FakeHomeAssistantClient], str]:
+    """Wstrzykuje `FakeHomeAssistantClient` przez `client_factory` i tworzy jedno włączone połączenie."""
+    created: list[FakeHomeAssistantClient] = []
 
-    def factory(options: dict[str, Any]) -> FakeIntegration:
-        integration = FakeIntegration(devices=_make_raw_devices())
-        created.append(integration)
-        return integration
+    def factory(config: HAConnectionConfig) -> FakeHomeAssistantClient:
+        client = FakeHomeAssistantClient(devices=_make_raw_devices())
+        created.append(client)
+        return client
 
-    from shared import ProviderTypeSpecDTO
-
-    plugin = SmartHomePlugin(data_dir=Path(tmp_dir) / "smart_home")
-    plugin.register_integration_type("FAKE", factory, ProviderTypeSpecDTO(type="FAKE", label="Fake", options_schema=[]))
-    integration_cfg = await plugin.create_integration_instance(
-        provider_type="FAKE", name="Fake HA", options={}, enabled=True, custom_id="int_fake"
+    extension = HomeAssistantExtension(data_dir=Path(tmp_dir) / "home_assistant", client_factory=factory)
+    connection_cfg = await extension.create_connection(
+        name="Fake HA", base_url="http://fake", access_token="secret", enabled=True, custom_id="con_fake"
     )
-    return plugin, created, integration_cfg.id
+    return extension, created, connection_cfg.id
 
 
 @pytest.mark.anyio
 async def test_agent_engine_react_loop_turns_on_single_device_via_opaque_entity_id():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        plugin, created_integrations, integration_id = await _setup_smart_home_plugin(tmp_dir)
-        gateway = Gateway(plugins=[plugin])
+        extension, created_clients, connection_id = await _setup_home_assistant_extension(tmp_dir)
+        gateway = Gateway(plugins=[extension])
 
         # Odkrywamy opaque ID encji "Światło w łazience" tak, jak zrobiłby to agent
         # na podstawie kanału Encji w kontekście (osobne wywołanie build() — dowód
@@ -474,8 +498,8 @@ async def test_agent_engine_react_loop_turns_on_single_device_via_opaque_entity_
 
         chunks = [chunk async for chunk in engine.interact_stream(session_id="s1", prompt="Włącz światło w łazience")]
 
-        integration = created_integrations[-1]
-        assert integration.invocations == [("light.bathroom", "turn_on")]
+        client = created_clients[-1]
+        assert client.invocations == [("light.bathroom", "turn_on")]
         assert len(llm_provider.calls_seen) == 2
         second_turn_messages = llm_provider.calls_seen[1]
         assert any(m.role == "tool" and "turn_on wykonane" in m.content for m in second_turn_messages)
@@ -489,13 +513,13 @@ async def test_agent_engine_react_loop_turns_on_single_device_via_opaque_entity_
 @pytest.mark.anyio
 async def test_agent_engine_react_loop_turns_on_group_with_partial_success_report():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        plugin, created_integrations, integration_id = await _setup_smart_home_plugin(tmp_dir)
-        await plugin.create_group(
+        extension, created_clients, connection_id = await _setup_home_assistant_extension(tmp_dir)
+        await extension.create_group(
             name="Łazienka",
-            device_ids=[f"{integration_id}:light.bathroom", f"{integration_id}:light.bathroom_mirror"],
+            device_ids=[f"{connection_id}:light.bathroom", f"{connection_id}:light.bathroom_mirror"],
             custom_id="grp_bathroom",
         )
-        gateway = Gateway(plugins=[plugin])
+        gateway = Gateway(plugins=[extension])
 
         discovery_build = await gateway.build()
         group_entity = next(e for e in discovery_build.entities if e.name == "Łazienka")
@@ -509,3 +533,149 @@ async def test_agent_engine_react_loop_turns_on_group_with_partial_success_repor
         second_turn_messages = llm_provider.calls_seen[1]
         tool_result_message = next(m for m in second_turn_messages if m.role == "tool")
         assert "2/2" in tool_result_message.content
+
+
+# --------------------------------------------------------------------------
+# Deklaracje widoczności katalogu — filtrowanie i nadpisywanie nazwy w build()
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_build_excludes_device_disabled_by_declaration():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        extension, _, connection_id = await _setup_home_assistant_extension(tmp_dir)
+        await extension.save_declaration(
+            connection_id,
+            DeviceDeclarationFileContent(entries={"light.bathroom_mirror": DeviceDeclarationEntry(enabled=False)}),
+        )
+
+        contribution = await extension.build(facts=[])
+
+        names = {e.name for e in contribution.entities}
+        assert "Światło w łazience" in names
+        assert "Światło w łazience — lustro" not in names
+
+
+@pytest.mark.anyio
+async def test_build_applies_display_name_override_from_declaration():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        extension, _, connection_id = await _setup_home_assistant_extension(tmp_dir)
+        await extension.save_declaration(
+            connection_id,
+            DeviceDeclarationFileContent(entries={"light.bathroom": DeviceDeclarationEntry(display_name="Lampka łazienkowa")}),
+        )
+
+        contribution = await extension.build(facts=[])
+
+        names = {e.name for e in contribution.entities}
+        assert "Lampka łazienkowa" in names
+        assert "Światło w łazience" not in names
+
+
+@pytest.mark.anyio
+async def test_build_with_no_declaration_file_shows_everything():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        extension, _, _connection_id = await _setup_home_assistant_extension(tmp_dir)
+
+        contribution = await extension.build(facts=[])
+
+        names = {e.name for e in contribution.entities}
+        assert names == {"Światło w łazience", "Światło w łazience — lustro"}
+
+
+# --------------------------------------------------------------------------
+# Przełącznik enabled całego rozszerzenia — Home Assistant i Basic Tools
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_home_assistant_build_returns_empty_contribution_when_disabled():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        extension, _, _connection_id = await _setup_home_assistant_extension(tmp_dir)
+        await extension.set_enabled(False)
+
+        contribution = await extension.build(facts=[])
+
+        assert contribution.tools == []
+        assert contribution.entities == []
+
+
+@pytest.mark.anyio
+async def test_extension_state_defaults_to_enabled_true_without_state_file():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        extension = HomeAssistantExtension(data_dir=Path(tmp_dir) / "home_assistant")
+        assert await extension.is_enabled() is True
+
+
+# --------------------------------------------------------------------------
+# Generyczny rejestr rozszerzeń — lista + przełącznik przez REST
+# --------------------------------------------------------------------------
+
+
+class _FakeNetworkExtension:
+    """`NetworkExtension` testowy z trywialnym, w pełni izolowanym stanem enabled."""
+
+    def __init__(self, extension_id: str, label: str, enabled: bool = True) -> None:
+        self.extension_id = extension_id
+        self.label = label
+        self._enabled = enabled
+        self.router_hits = 0
+
+    async def is_enabled(self) -> bool:
+        return self._enabled
+
+    async def set_enabled(self, value: bool) -> None:
+        self._enabled = value
+
+    def build_router(self) -> APIRouter:
+        router = APIRouter()
+
+        @router.get("/ping")
+        async def ping():
+            self.router_hits += 1
+            return {"pong": True}
+
+        return router
+
+
+def test_extensions_registry_router_lists_and_toggles_extensions():
+    first = _FakeNetworkExtension("ext_a", "Rozszerzenie A", enabled=True)
+    second = _FakeNetworkExtension("ext_b", "Rozszerzenie B", enabled=False)
+    router = create_extensions_registry_router([first, second])
+
+    from fastapi import FastAPI
+
+    app = FastAPI()
+    app.include_router(router)
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/extensions")
+        assert response.status_code == 200
+        body = response.json()
+        assert {(e["id"], e["enabled"]) for e in body["extensions"]} == {("ext_a", True), ("ext_b", False)}
+
+        response = client.put("/api/v1/extensions/ext_b", json={"enabled": True})
+        assert response.status_code == 200
+        assert response.json()["enabled"] is True
+
+        response = client.put("/api/v1/extensions/unknown", json={"enabled": True})
+        assert response.status_code == 404
+
+
+def test_network_gateway_mounts_extension_router_under_its_prefix():
+    extension = _FakeNetworkExtension("ext_a", "Rozszerzenie A")
+
+    # `agent_engine`/`backend_registry`/`prompt_store` są tu wyłącznie domykane
+    # przez pod-routery jako referencje (dereferencjonowane dopiero przy
+    # trafieniu w ich endpoint) — ten test wywołuje wyłącznie endpoint rozszerzenia.
+    app = create_gateway_app(
+        agent_engine=None,  # type: ignore[arg-type]
+        backend_registry=None,  # type: ignore[arg-type]
+        prompt_store=None,  # type: ignore[arg-type]
+        extensions=[extension],
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/extensions/ext_a/ping")
+        assert response.status_code == 200
+        assert response.json() == {"pong": True}

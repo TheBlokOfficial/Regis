@@ -13,9 +13,8 @@
 > **Rewizja po pierwszym wdrożeniu**: sekcje 2 (Dostawca kontekstu), 3, i nowa
 > 4.5 zostały zaktualizowane w kolejnej sesji projektowej, **po** tym, jak
 > pierwsza wersja tej wizji została już zaimplementowana (patrz commit
-> `b55bbb0` + poprawki `bec9d21`). Kod na moment tej rewizji **jeszcze nie**
-> odzwierciedla poniższych zmian dot. Faktów — to świeży dług do spłacenia,
-> nie opis stanu obecnego.
+> `b55bbb0` + poprawki `bec9d21`). Ta rewizja jest od tamtej pory w pełni
+> zaimplementowana — patrz sekcja 10 niżej.
 
 ---
 
@@ -196,12 +195,17 @@ zamiast dynamicznego ładowania pluginów (YAGNI).
 
 ## 10. Status otwartych punktów
 
-**Rozbieżność wizja↔kod do zaadresowania w kolejnym kroku implementacyjnym**:
-sekcje 2, 3 i 4.5 (Fakty jako pole `PluginContribution`, usunięcie osobnego
-`ContextProvider`/`context_providers/`) nie są jeszcze odzwierciedlone w
-zaimplementowanym kodzie — ten sam dokument w chwili pierwszego wdrożenia
-(commit `b55bbb0`) opisywał wciąż osobną rolę Dostawcy kontekstu. Wymaga
-osobnego promptu naprawczego, analogicznego do poprzedniej rundy poprawek.
+**Zamknięte**: sekcje 2, 3 i 4.5 (Fakty jako pole `PluginContribution`,
+usunięcie osobnego `ContextProvider`/`context_providers/`) są w pełni
+zaimplementowane — `agent/plugin_contract.py` (`PluginContribution.facts`,
+`PluginProvider.build(facts)`) i `agent/gateway.py` (agregacja
+`accumulated_facts` między rozszerzeniami tej samej tury) realizują tę wizję
+bez odstępstw. Nie ma dziś w kodzie żadnego pliku `context_provider_contract.py`
+ani osobnego katalogu `context_providers/` — jedyny ślad to `DateTimeContextProvider`
+jako nazwa ilustracyjna w sekcji 8 tego dokumentu, zrealizowana w kodzie jako
+`BasicToolsExtension` (`server/extensions/basic_tools/extension.py`).
 
-Jedyny pozostały czysto implementacyjny detal (niearchitektoniczny): wybór
-konkretnej funkcji skrótu do opaque ID (sekcja 4.2).
+Wybór konkretnej funkcji skrótu do opaque ID (sekcja 4.2) też jest zamknięty:
+`Gateway._compute_opaque_id` używa SHA-256 obciętego do 16 znaków.
+
+Status: bez otwartych punktów wymagających osobnego promptu naprawczego.

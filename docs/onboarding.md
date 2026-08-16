@@ -36,18 +36,17 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
 - **`options.base_url`**: Adres serwera Ollama (domyślnie: `http://localhost:11434`).
 
-### Parametry integracji (`services/server/data/plugins/smart_home/integrations/*.json`, zarządzane przez `SmartHomePlugin`):
-- **`type`**: Identyfikator zarejestrowanego typu integracji (np. `HOME_ASSISTANT`).
-- **`enabled`**: Czy integracja aktywnie dostarcza urządzenia agentowi (wiele integracji może być włączonych jednocześnie).
-- **`options.base_url`** / **`options.access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token).
+### Parametry rozszerzenia Home Assistant (`services/server/data/extensions/home_assistant/connections/*.json`, zarządzane przez `HomeAssistantExtension`):
+- **`base_url`** / **`access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token) — pola jawne, nie schema-driven (Home Assistant jest jedynym, znanym z góry backendem tego rozszerzenia).
+- **`enabled`**: Czy połączenie aktywnie dostarcza urządzenia agentowi (wiele połączeń może być włączonych jednocześnie, np. „HA — parter” + „HA — piętro”).
 
-Grupy urządzeń (prywatna, plugin-wide konfiguracja — nie per-integracja) przechowywane są analogicznie w `services/server/data/plugins/smart_home/groups/*.json`.
+Grupy urządzeń (prywatna, rozszerzenie-wide konfiguracja — nie per-połączenie) przechowywane są analogicznie w `services/server/data/extensions/home_assistant/groups/*.json`. Deklaracje widoczności katalogu (`enabled`/`display_name` per urządzenie) — w `declarations/{connection_id}.json`; brak pliku oznacza pełną widoczność. Przełącznik `enabled` całego rozszerzenia (wspólny dla wszystkich Rozszerzeń, ten sam mechanizm co `basic_tools`) — w `state.json`.
 
 ### Prompty systemowe (`services/server/data/prompts/*.json`, zarządzane przez `PromptStore`):
 - Treść instrukcji systemowej faktycznie wysyłanej do LLM. Aktywny prompt wskazuje `services/server/data/active_prompt.json`.
 - **Uwaga**: `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` jest wyłącznie **fallbackiem i szablonem pierwszego uruchomienia**. `PromptStore.ensure_defaults()` tworzy plik tylko wtedy, gdy katalog `data/prompts/` jest pusty — późniejsza zmiana stałej w kodzie **nie zmienia** promptu, którego używa działający agent. Po rozszerzeniu możliwości agenta (np. włączeniu tool callingu) zaktualizuj aktywny prompt w zakładce **Prompty** w Web UI, inaczej model dalej będzie działał wg starych instrukcji.
 
-Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), a promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), a nie ręczna edycja plików JSON. Integracje na razie konfiguruje się wyłącznie przez REST (`/api/v1/integrations`) — dedykowana zakładka w Web UI jest zaplanowana.
+Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), a Home Assistant/innych rozszerzeń — zakładka **Rozszerzenia** (REST API `/api/v1/extensions/home_assistant/connections` i `/api/v1/extensions`), a nie ręczna edycja plików JSON.
 
 ---
 
@@ -62,17 +61,15 @@ Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](mani
 | Warstwa | Katalog | Odpowiedzialność | Co wie o warstwie niżej |
 | :--- | :--- | :--- | :--- |
 | **0 — Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct, `Gateway` (agregator 3 kanałów) | Tylko protokół `PluginProvider` |
-| **1 — Pluginy** | `server/plugins/` | Domena możliwości (dziś: smart home, data/godzina), deklaracja narzędzi, encji i opcjonalnie faktów | Tylko własny kontrakt (np. `DeviceIntegration`) |
-| **2 — Integracje** | `server/integrations/` | Konkretne implementacje (dziś: Home Assistant) | — |
+| **1 — Rozszerzenia** | `server/extensions/` | Domena możliwości (dziś: Home Assistant, data/godzina), deklaracja narzędzi, encji i opcjonalnie faktów; opcjonalnie własna obecność sieciowa (`NetworkExtension`) | Nic — rozszerzenie samo orkiestruje swój backend wewnętrznie (dziś: `HomeAssistantClient`) |
 
-Fakty nie mają osobnej kategorii — są opcjonalnym wkładem zwykłego Pluginu, na równi z narzędziami i encjami. Gateway buduje pluginy sekwencyjnie, w kolejności rejestracji, i przekazuje każdemu kolejnemu Fakty zebrane od pluginów zbudowanych wcześniej w tej samej turze (dowód: `DateTimePlugin`, jedno narzędzie `get_time` + bliźniaczy Fakt).
+Fakty nie mają osobnej kategorii — są opcjonalnym wkładem zwykłego rozszerzenia, na równi z narzędziami i encjami. Gateway buduje rozszerzenia sekwencyjnie, w kolejności rejestracji, i przekazuje każdemu kolejnemu Fakty zebrane od rozszerzeń zbudowanych wcześniej w tej samej turze (dowód: `BasicToolsExtension`, jedno narzędzie `get_time` + bliźniaczy Fakt).
 
-**Zasada nadrzędna**: żadna warstwa nie zna z góry implementacji warstwy poniżej — te rejestrują się same, jawnie, w `main.py`. Dodanie nowej integracji albo nowego pluginu **nie wymaga zmiany kernela**.
+**Zasada nadrzędna**: żadna warstwa nie zna z góry implementacji warstwy poniżej — te rejestrują się same, jawnie, w `main.py`. Dodanie nowego rozszerzenia **nie wymaga zmiany kernela ani sieci**.
 
 Praktycznie:
-- **Nowy plugin**: klasa z polem `plugin_id: str` i metodą `async def build(facts: list[Fact]) -> PluginContribution` w `server/plugins/`, dopisana do `Gateway(plugins=[...])` w `main.py`. Jeśli plugin proaktywnie dostarcza kontekst, dopisuje `facts` do zwracanego `PluginContribution` — pod warunkiem, że ta sama treść jest też dostępna przez narzędzie (wizja, sekcja 4.5).
-- **Nowa integracja**: implementacja kontraktu pluginu (np. `DeviceIntegration`) w `server/integrations/`, eksportująca `TYPE_NAME`, `SCHEMA` i `create()`, zarejestrowana przez `plugin.register_integration_type(...)` w `main.py`. Szczegóły: [`docs/specs/adding-integrations.md`](specs/adding-integrations.md).
-- Agent adresuje encje (urządzenia, grupy) wyłącznie przez opaque `entity_id` nadany przez Gateway — nigdy po przyjaznej nazwie ani natywnym ID integracji.
+- **Nowe rozszerzenie**: pakiet w `server/extensions/` z klasą, która strukturalnie spełnia `PluginProvider` — pole `plugin_id: str` i metoda `async def build(facts: list[Fact]) -> PluginContribution` — dopisana do `Gateway(plugins=[...])` w `main.py`. Jeśli rozszerzenie proaktywnie dostarcza kontekst, dopisuje `facts` do zwracanego `PluginContribution` — pod warunkiem, że ta sama treść jest też dostępna przez narzędzie (wizja, sekcja 4.5). Opcjonalnie implementuje też `NetworkExtension` (`server/network/extension_contract.py`) dla własnej konfiguracji przez REST — patrz `docs/manifest.md`, sekcja 5.
+- Agent adresuje encje (urządzenia, grupy) wyłącznie przez opaque `entity_id` nadany przez Gateway — nigdy po przyjaznej nazwie ani natywnym ID połączenia.
 
 ---
 
@@ -85,7 +82,7 @@ python -m uv run --package server python -m server.main
 
 > **Znane ograniczenie**: `server.main` nie eksportuje modułowego obiektu ASGI —
 > aplikacja FastAPI powstaje wewnątrz asynchronicznej funkcji `main()`, po
-> wcześniejszej inicjalizacji rejestru backendów, `PromptStore` i pluginów.
+> wcześniejszej inicjalizacji rejestru backendów, `PromptStore` i rozszerzeń.
 > Dlatego `uvicorn server.main:app --reload` kończy się błędem
 > *"Attribute 'app' not found in module 'server.main'"*, a tryb hot-reload nie
 > jest dostępny. Odblokowanie go wymaga zmiany w kodzie (fabryka aplikacji
@@ -114,13 +111,14 @@ python -m uv run --package server python -m server.main
 | | `GET /api/v1/agent/prompts/{id}` | Pobranie pojedynczego promptu |
 | | `PUT/DELETE /api/v1/agent/prompts/{id}` | Edycja i usunięcie promptu (usunięcie aktywnego jest zablokowane) |
 | | `PUT /api/v1/agent/prompts/{id}/activate` | Ustawienie promptu jako aktywnego systemowego |
-| **Integrations** | `GET /api/v1/integrations/schemas` | Schematy pól opcji zarejestrowanych typów integracji |
-| | `GET /api/v1/integrations` | Lista skonfigurowanych integracji (sekrety maskowane) |
-| | `POST /api/v1/integrations` | Utworzenie nowej instancji integracji |
-| | `PUT /api/v1/integrations/{id}` | Edycja instancji (w tym włączenie/wyłączenie) |
-| | `DELETE /api/v1/integrations/{id}` | Usunięcie instancji integracji |
-| **Device Groups** | `GET/POST /api/v1/integrations/groups` | Lista i tworzenie grup urządzeń |
-| | `PUT/DELETE /api/v1/integrations/groups/{id}` | Edycja i usunięcie grupy |
+| **Extensions (rejestr)** | `GET /api/v1/extensions` | Lista zarejestrowanych rozszerzeń i ich stan enabled |
+| | `PUT /api/v1/extensions/{id}` | Włączenie/wyłączenie rozszerzenia (generyczne, dla wszystkich) |
+| **Home Assistant** | `GET/POST /api/v1/extensions/home_assistant/connections` | Lista i tworzenie połączeń (sekrety maskowane) |
+| | `PUT/DELETE /api/v1/extensions/home_assistant/connections/{id}` | Edycja (w tym włączenie/wyłączenie) i usunięcie połączenia |
+| | `GET/PUT /api/v1/extensions/home_assistant/connections/{id}/catalog` | Katalog urządzeń połączenia i zapis deklaracji widoczności/nazwy |
+| | `GET/POST /api/v1/extensions/home_assistant/groups` | Lista i tworzenie grup urządzeń |
+| | `PUT/DELETE /api/v1/extensions/home_assistant/groups/{id}` | Edycja i usunięcie grupy |
+| **Basic Tools** | — | Brak własnych endpointów — enable/disable przez rejestr generyczny powyżej |
 
 > **Planowane, jeszcze nieistniejące**: bramka WebSocket (`ws://127.0.0.1:8000/ws`)
 > dla komunikacji rozproszonej. W kodzie nie ma dziś żadnego endpointu WS —
@@ -161,7 +159,7 @@ Podczas prac nad projektem należy bezwzględnie stosować ustandaryzowany cykl 
    - Przed modyfikacją kodu sprawdź rzeczywisty stan plików, sygnatury i mechanizmy — nie zgaduj (zasada z [`AGENTS.md`](../AGENTS.md)). Dotyczy to również dokumentacji: każde zdanie w `docs/` traktuj jako hipotezę do potwierdzenia w kodzie.
 2. **Implementacja i Spójność Kontraktów**:
    - Zmiany w strukturach komunikacyjnych dodawaj w `packages/shared/src/shared/contracts.py`.
-   - **Respektuj kierunek zależności warstw** (sekcja 3): kernel nie może importować z `plugins/` ani `integrations/`, a plugin nie może importować z `integrations/` konkretnej integracji na sztywno. Weryfikacja:
+   - **Respektuj kierunek zależności warstw** (sekcja 3): kernel nie może importować z `extensions/` po nazwie, a sieć (`network/gateway.py`) nie może importować żadnej konkretnej klasy rozszerzenia — obie strony znają wyłącznie protokół (`PluginProvider`/`NetworkExtension`). Weryfikacja (komenda zostaje nazwana po starych katalogach celowo — zero trafień potwierdza również, że nic ich nie odtworzyło):
      ```bash
      grep -rn "from server.plugins\|from server.integrations" services/server/src/server/agent/
      ```

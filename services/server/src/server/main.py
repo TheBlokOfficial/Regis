@@ -7,10 +7,9 @@ from server.agent.backend import BackendRegistry
 from server.agent.context import ContextBuilder
 from server.agent.gateway import Gateway
 from server.agent.prompts import PromptStore
-from server.plugins.datetime_plugin import DateTimePlugin
-from server.plugins.smart_home import SmartHomePlugin
+from server.extensions.basic_tools import BasicToolsExtension
+from server.extensions.home_assistant import HomeAssistantExtension
 from server.config import load_settings
-from server.integrations import home_assistant as ha_integration
 from server.network.gateway import create_gateway_app
 
 # 1. Konfiguracja jednolitych, minimalistycznych logów
@@ -33,19 +32,17 @@ async def main() -> None:
     prompt_store = PromptStore()
     await prompt_store.ensure_defaults()
 
-    # 4. Inicjalizacja pluginu Smart Home (Warstwa 1) — Gateway go nie zna z góry, wpinamy go
-    #    tutaj, w kompozycji aplikacji, jako jeden z (dziś jedynych) zarejestrowanych PluginProvider.
-    #    Plugin z kolei nie zna żadnej konkretnej integracji na sztywno — każda integracja
-    #    (Warstwa 2) rejestruje się w nim jawnie, tutaj, w kompozycji aplikacji.
-    smart_home_plugin = SmartHomePlugin()
-    smart_home_plugin.register_integration_type(
-        ha_integration.TYPE_NAME, ha_integration.create, ha_integration.SCHEMA
-    )
-    datetime_plugin = DateTimePlugin()
+    # 4. Inicjalizacja Rozszerzeń (Warstwa 1) — Gateway ich nie zna z góry, wpinamy je
+    #    tutaj, w kompozycji aplikacji, jako zarejestrowane PluginProvider. Home Assistant
+    #    jest jedynym, znanym z góry backendem swojego rozszerzenia — bez dynamicznej
+    #    rejestracji typów integracji (usunięta jako niepotrzebny polimorfizm, patrz
+    #    `docs/manifest.md`, "Świadome decyzje projektowe").
+    home_assistant_extension = HomeAssistantExtension()
+    basic_tools_extension = BasicToolsExtension()
 
-    # 5. Inicjalizacja Gateway — jedyny agregator Warstwy 0, spinający Pluginy w trzy
+    # 5. Inicjalizacja Gateway — jedyny agregator Warstwy 0, spinający Rozszerzenia w trzy
     #    płaskie kanały treści agenta (narzędzia, encje, fakty).
-    gateway = Gateway(plugins=[smart_home_plugin, datetime_plugin])
+    gateway = Gateway(plugins=[home_assistant_extension, basic_tools_extension])
 
     # 6. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus, skonfigurowanym limitem historii, PromptStore i Gateway
     context_builder = ContextBuilder(max_history_messages=settings.max_history_messages)
@@ -59,13 +56,14 @@ async def main() -> None:
     )
     await agent_engine.initialize()
 
-    # 7. Inicjalizacja bramki sieciowej z rejestrem backendów, magazynem promptów i tym samym
-    #    pluginem Smart Home (współdzielona instancja — konfiguracja przez REST jest od razu widoczna dla agenta)
+    # 7. Inicjalizacja bramki sieciowej z rejestrem backendów, magazynem promptów i tymi
+    #    samymi instancjami Rozszerzeń (współdzielone — konfiguracja przez REST jest od
+    #    razu widoczna dla agenta, bo Gateway buduje kontekst od zera co turę).
     app = create_gateway_app(
         agent_engine=agent_engine,
         backend_registry=backend_registry,
         prompt_store=prompt_store,
-        smart_home_plugin=smart_home_plugin,
+        extensions=[home_assistant_extension, basic_tools_extension],
     )
 
     # 8. Start serwera uvicorn

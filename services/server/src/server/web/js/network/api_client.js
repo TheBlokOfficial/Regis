@@ -365,4 +365,204 @@ export class ApiClient {
       throw error;
     }
   }
+
+  // ==========================================================================
+  // METODY ROZSZERZENIA (REJESTR GENERYCZNY)
+  // ==========================================================================
+
+  async getExtensions() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania listy rozszerzeń:', error);
+      return null;
+    }
+  }
+
+  async setExtensionEnabled(extensionId, enabled) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/${extensionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd przełączania rozszerzenia '${extensionId}':`, error);
+      throw error;
+    }
+  }
+
+  // ==========================================================================
+  // METODY ROZSZERZENIA HOME ASSISTANT
+  // ==========================================================================
+
+  async getHAConnections() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania listy połączeń Home Assistant:', error);
+      return null;
+    }
+  }
+
+  async createHAConnection(data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd tworzenia połączenia Home Assistant:', error);
+      throw error;
+    }
+  }
+
+  async updateHAConnection(connectionId, data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections/${connectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd aktualizacji połączenia '${connectionId}':`, error);
+      throw error;
+    }
+  }
+
+  async deleteHAConnection(connectionId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections/${connectionId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd usuwania połączenia '${connectionId}':`, error);
+      throw error;
+    }
+  }
+
+  async getHACatalog(connectionId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections/${connectionId}/catalog`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd pobierania katalogu połączenia '${connectionId}':`, error);
+      return null;
+    }
+  }
+
+  async updateHACatalog(connectionId, entries) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections/${connectionId}/catalog`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd zapisu katalogu połączenia '${connectionId}':`, error);
+      throw error;
+    }
+  }
+
+  async getHAGroups() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/groups`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania listy grup Home Assistant:', error);
+      return null;
+    }
+  }
+
+  async createHAGroup(data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd tworzenia grupy Home Assistant:', error);
+      throw error;
+    }
+  }
+
+  async updateHAGroup(groupId, data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/groups/${groupId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd aktualizacji grupy '${groupId}':`, error);
+      throw error;
+    }
+  }
+
+  async deleteHAGroup(groupId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/groups/${groupId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd usuwania grupy '${groupId}':`, error);
+      throw error;
+    }
+  }
 }

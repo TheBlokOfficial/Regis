@@ -1,17 +1,16 @@
 """Magazyn urządzeń i grup na czas jednej interakcji agenta — czysto wewnętrzna
-sprawa pluginu (Gateway nigdy go nie widzi).
+sprawa rozszerzenia (Gateway nigdy go nie widzi).
 
-W przeciwieństwie do dzisiejszego `DeviceRegistry` addonu, ten rejestr NIE
-dopasowuje po nazwie — agent adresuje encje po opaque ID nadanym przez
-Gateway, które plugin tłumaczy z powrotem na wewnętrzny ref (klucz tego
-rejestru) zanim w ogóle tu trafi (wizja, sekcja 4.2).
+Agent adresuje encje po opaque ID nadanym przez Gateway, które rozszerzenie
+tłumaczy z powrotem na wewnętrzny ref (klucz tego rejestru) zanim w ogóle tu
+trafi.
 """
 
-from server.plugins.smart_home.models import Device, DeviceGroup
+from server.extensions.home_assistant.models import Device, DeviceGroup
 
 
 class DeviceRegistry:
-    """Agreguje urządzenia i grupy ze wszystkich włączonych integracji na czas jednej interakcji agenta."""
+    """Agreguje urządzenia i grupy ze wszystkich włączonych połączeń na czas jednej interakcji agenta."""
 
     def __init__(self, devices: list[Device], groups: list[DeviceGroup] | None = None) -> None:
         self._devices = devices
