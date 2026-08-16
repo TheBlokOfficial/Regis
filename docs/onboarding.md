@@ -71,7 +71,7 @@ Fakty nie mają osobnej kategorii — są opcjonalnym wkładem zwykłego Pluginu
 
 Praktycznie:
 - **Nowy plugin**: klasa z polem `plugin_id: str` i metodą `async def build(facts: list[Fact]) -> PluginContribution` w `server/plugins/`, dopisana do `Gateway(plugins=[...])` w `main.py`. Jeśli plugin proaktywnie dostarcza kontekst, dopisuje `facts` do zwracanego `PluginContribution` — pod warunkiem, że ta sama treść jest też dostępna przez narzędzie (wizja, sekcja 4.5).
-- **Nowa integracja**: implementacja kontraktu pluginu (np. `DeviceIntegration`) w `server/integrations/`, eksportująca `TYPE_NAME`, `SCHEMA` i `create()`, zarejestrowana przez `plugin.register_integration_type(...)` w `main.py`. Szczegóły: [`docs/adding-integrations.md`](adding-integrations.md).
+- **Nowa integracja**: implementacja kontraktu pluginu (np. `DeviceIntegration`) w `server/integrations/`, eksportująca `TYPE_NAME`, `SCHEMA` i `create()`, zarejestrowana przez `plugin.register_integration_type(...)` w `main.py`. Szczegóły: [`docs/specs/adding-integrations.md`](specs/adding-integrations.md).
 - Agent adresuje encje (urządzenia, grupy) wyłącznie przez opaque `entity_id` nadany przez Gateway — nigdy po przyjaznej nazwie ani natywnym ID integracji.
 
 ---
