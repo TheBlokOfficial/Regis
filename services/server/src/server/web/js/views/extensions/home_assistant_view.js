@@ -164,16 +164,12 @@ export class HomeAssistantExtensionView {
           .map(
             (entry) => `
             <div class="ha-declared-card" data-entity-id="${escapeAttr(entry.entity_id)}">
-              <div class="ha-declared-card-header">
-                <span class="ha-declared-entity-id" title="${escapeAttr(entry.entity_id)}">${escapeHtml(entry.entity_id)}</span>
-                <span class="badge-chip">${escapeHtml(entry.kind || '?')}</span>
-                <button class="btn btn-sm btn-ghost-danger" data-remove-entity="${escapeAttr(entry.entity_id)}" title="Usuń">✕</button>
-              </div>
+              <span class="ha-declared-entity-id" title="${escapeAttr(entry.entity_id)}">${escapeHtml(entry.entity_id)}</span>
               <input type="text" class="form-control ha-declared-label" data-entity-id="${escapeAttr(entry.entity_id)}" value="${escapeAttr(entry.effective_name)}" />
-              ${!entry.display_name ? '<span class="ha-declared-default-hint">Domyślna nazwa z Home Assistant — warto nadać własną.</span>' : ''}
-              <div class="ha-declared-caps">
-                ${(entry.capabilities || []).map((cap) => `<span class="badge-chip">${escapeHtml(cap)}</span>`).join('')}
-              </div>
+              ${!entry.display_name ? '<span class="ha-declared-default-hint" title="Domyślna nazwa z Home Assistant — warto nadać własną.">●</span>' : ''}
+              <span class="ha-declared-kind">${escapeHtml(entry.kind || '?')}</span>
+              <span class="ha-declared-caps-text">${(entry.capabilities || []).map((cap) => escapeHtml(cap)).join(' · ')}</span>
+              <button class="btn btn-sm btn-ghost-danger ha-declared-remove" data-remove-entity="${escapeAttr(entry.entity_id)}" title="Usuń">✕</button>
             </div>
           `
           )

@@ -344,55 +344,118 @@
   color: var(--text-muted-aa);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin-top: 22px;
-  padding-top: 16px;
+  margin-top: 20px;
+  padding-top: 14px;
   margin-bottom: 12px;
   border-top: 1px solid var(--border-subtle);
 }
 
+/* Lista zadeklarowanych urządzeń — jeden zewnętrzny border na cały kontener
+   (nie ramka na każdym elemencie), wiersze rozdzielone cienkim separatorem.
+   Wzorowane na `.ha-search-dropdown` (ta sama sekcja, spójny wzorzec). */
 .ha-declared-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 
 .ha-declared-card {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  transition: background-color var(--transition-fast);
 }
 
-.ha-declared-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.ha-declared-card + .ha-declared-card {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ha-declared-card:hover {
+  background-color: var(--bg-surface-hover);
 }
 
 .ha-declared-entity-id {
-  flex: 1;
+  flex: 0 1 200px;
   min-width: 0;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--text-muted-aa);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ha-declared-default-hint {
-  font-size: 0.74rem;
-  font-style: italic;
-  color: var(--text-muted-aa);
-  margin-top: -4px;
+/* Pole nazwy — bez ramki/tła w spoczynku, wygląda jak zwykły tekst.
+   Ramkę fokusu (kolor + box-shadow) dziedziczy z `.form-control:focus`
+   w forms.css — tu dokładamy tylko stan spoczynku/hover i tło na fokus. */
+.ha-declared-label {
+  flex: 1 1 160px;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 5px 8px;
 }
 
-.ha-declared-caps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.ha-declared-label:hover {
+  border-color: var(--border-subtle);
+}
+
+.ha-declared-label:focus {
+  background-color: var(--bg-base);
+}
+
+/* Kropka-wskaźnik przy nazwie domyślnej z Home Assistant — dymek z podpowiedzią
+   (title) zamiast osobnego wiersza tekstu, żeby zmieścić się w jednym wierszu karty. */
+.ha-declared-default-hint {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--text-muted-aa);
+  cursor: help;
+}
+
+/* Plakietka rodzaju — wyróżniona samym tłem, bez ramki (mniejszy ciężar wizualny
+   niż `.badge-chip`, ale nadal odróżnialna od otoczenia). */
+.ha-declared-kind {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 23px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-hover);
+  color: #a0a0ab;
+  font-family: var(--font-mono);
+  font-size: 0.70rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Możliwości urządzenia — zwykły wyciszony tekst rozdzielony " · ", bez tła
+   i bez ramek (informacja drugorzędna, nie wymaga wizualnego wyróżnienia). */
+.ha-declared-caps-text {
+  flex-shrink: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted-aa);
+}
+
+.ha-declared-remove {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.ha-declared-card:hover .ha-declared-remove {
+  opacity: 1;
 }
 
 .ha-group-device-options {
