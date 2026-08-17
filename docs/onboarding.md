@@ -68,7 +68,7 @@ Fakty nie mają osobnej kategorii — są opcjonalnym wkładem zwykłego rozszer
 **Zasada nadrzędna**: żadna warstwa nie zna z góry implementacji warstwy poniżej — te rejestrują się same, jawnie, w `main.py`. Dodanie nowego rozszerzenia **nie wymaga zmiany kernela ani sieci**.
 
 Praktycznie:
-- **Nowe rozszerzenie**: pakiet w `server/extensions/` z klasą, która strukturalnie spełnia `PluginProvider` — pole `plugin_id: str` i metoda `async def build(facts: list[Fact]) -> PluginContribution` — dopisana do `Gateway(plugins=[...])` w `main.py`. Jeśli rozszerzenie proaktywnie dostarcza kontekst, dopisuje `facts` do zwracanego `PluginContribution` — pod warunkiem, że ta sama treść jest też dostępna przez narzędzie (wizja, sekcja 4.5). Opcjonalnie implementuje też `NetworkExtension` (`server/network/extension_contract.py`) dla własnej konfiguracji przez REST — patrz `docs/manifest.md`, sekcja 5.
+- **Nowe rozszerzenie**: pakiet w `server/extensions/` z klasą, która strukturalnie spełnia `PluginProvider` — pole `plugin_id: str` i metoda `async def build(facts: list[Fact]) -> PluginContribution` — dopisana do `Gateway(plugins=[...])` w `main.py`. Jeśli rozszerzenie proaktywnie dostarcza kontekst, dopisuje `facts` do zwracanego `PluginContribution` — pod warunkiem, że ta sama treść jest też dostępna przez narzędzie (zasada symetrii Fakt↔narzędzie, `docs/manifest.md`, sekcja 5). Opcjonalnie implementuje też `NetworkExtension` (`server/network/extension_contract.py`) dla własnej konfiguracji przez REST — patrz `docs/manifest.md`, sekcja 5.
 - Agent adresuje encje (urządzenia, grupy) wyłącznie przez opaque `entity_id` nadany przez Gateway — nigdy po przyjaznej nazwie ani natywnym ID połączenia.
 
 ---
