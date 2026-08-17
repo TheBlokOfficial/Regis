@@ -612,18 +612,30 @@ async def test_agent_engine_react_loop_turns_on_single_device_via_opaque_entity_
         memory_manager = MemoryManager(data_dir=Path(tmp_dir) / "sessions")
         engine = AgentEngine(llm_provider=llm_provider, memory_manager=memory_manager, gateway=gateway)
 
-        chunks = [chunk async for chunk in engine.interact_stream(session_id="s1", prompt="Włącz światło w łazience")]
+        stream_events = [event async for event in engine.interact_stream(session_id="s1", prompt="Włącz światło w łazience")]
 
         client = created_clients[-1]
         assert client.invocations == [("light.bathroom", "turn_on")]
         assert len(llm_provider.calls_seen) == 2
         second_turn_messages = llm_provider.calls_seen[1]
         assert any(m.role == "tool" and "turn_on wykonane" in m.content for m in second_turn_messages)
+
+        chunks = [event.payload["chunk"] for event in stream_events if event.type == "chunk"]
         assert "".join(chunks) == "Włączyłem światło."
+
+        tool_start_events = [event for event in stream_events if event.type == "tool_start"]
+        tool_result_events = [event for event in stream_events if event.type == "tool_result"]
+        assert len(tool_start_events) == 1
+        assert tool_start_events[0].payload["name"] == "turn_on"
+        assert len(tool_result_events) == 1
+        assert tool_result_events[0].payload["is_error"] is False
+        assert "turn_on wykonane" in tool_result_events[0].payload["content"]
 
         history = memory_manager.get_history(session_id="s1")
         assert history[-1].role == "assistant"
         assert history[-1].content == "Włączyłem światło."
+        persisted_steps = history[-1].metadata["steps"]
+        assert [step["type"] for step in persisted_steps] == ["tool_call", "tool_result"]
 
 
 @pytest.mark.anyio

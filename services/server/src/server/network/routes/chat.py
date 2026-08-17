@@ -53,17 +53,17 @@ def create_chat_router(agent_engine: AgentEngine) -> APIRouter:
 
         async def event_generator():
             try:
-                async for chunk in agent_engine.interact_stream(
+                async for event in agent_engine.interact_stream(
                     session_id=req.session_id,
                     prompt=req.message,
                 ):
-                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                    yield f"data: {json.dumps({**event.payload, 'type': event.type})}\n\n"
                 yield "data: [DONE]\n\n"
             except asyncio.CancelledError:
-                yield f"data: {json.dumps({'cancelled': True})}\n\n"
+                yield f"data: {json.dumps({'type': 'cancelled'})}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as err:
-                error_payload = json.dumps({"error": str(err)})
+                error_payload = json.dumps({"type": "error", "error": str(err)})
                 yield f"data: {error_payload}\n\n"
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")

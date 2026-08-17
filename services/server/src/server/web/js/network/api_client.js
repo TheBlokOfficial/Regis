@@ -202,9 +202,7 @@ export class ApiClient {
   async streamChatMessage(
     sessionId = 'session_default',
     message = '',
-    onChunk = null,
-    onError = null,
-    onComplete = null,
+    { onChunk = null, onToolStart = null, onToolResult = null, onError = null, onCancelled = null, onComplete = null } = {},
     signal = null
   ) {
     try {
@@ -242,12 +240,24 @@ export class ApiClient {
             }
             try {
               const parsed = JSON.parse(rawData);
-              if (parsed.error) {
-                if (onError) onError(new Error(parsed.error));
-                return;
-              }
-              if (parsed.chunk && onChunk) {
-                onChunk(parsed.chunk);
+              switch (parsed.type) {
+                case 'chunk':
+                  if (onChunk) onChunk(parsed.chunk);
+                  break;
+                case 'tool_start':
+                  if (onToolStart) onToolStart(parsed);
+                  break;
+                case 'tool_result':
+                  if (onToolResult) onToolResult(parsed);
+                  break;
+                case 'error':
+                  if (onError) onError(new Error(parsed.error));
+                  return;
+                case 'cancelled':
+                  if (onCancelled) onCancelled();
+                  break;
+                default:
+                  console.warn('[ApiClient] Nieznany typ ramki SSE:', parsed);
               }
             } catch (e) {
               console.warn('[ApiClient] Błąd parsowania ramki SSE:', rawData, e);

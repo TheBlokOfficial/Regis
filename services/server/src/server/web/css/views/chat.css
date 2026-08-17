@@ -527,12 +527,49 @@
   }
 }
 
-.chat-thinking-block {
+.chat-thinking-block,
+.chat-collapsible-step {
   background: transparent;
   border: none;
   margin: 6px 0 10px 0;
   font-size: 0.88rem;
   animation: thinkingBlockIn 0.25s ease forwards;
+}
+
+/* Kroki wywołań narzędzi (drzewko ReAct) — kolorystyka wg statusu, reużywa layoutu
+   zwijania bloku myślenia (.thinking-summary/.thinking-chevron/.thinking-content-*) */
+.chat-collapsible-step .step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-collapsible-step.step-running .thinking-summary {
+  color: var(--text-muted);
+}
+
+.chat-collapsible-step.step-done .thinking-summary {
+  color: var(--accent-success);
+}
+
+.chat-collapsible-step.step-error .thinking-summary {
+  color: var(--accent-danger);
+}
+
+.step-args,
+.step-result {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.step-args {
+  margin: 0 0 6px 0;
+}
+
+.step-result {
+  color: var(--text-secondary);
 }
 
 .thinking-summary {
@@ -565,7 +602,8 @@
   flex-shrink: 0;
 }
 
-.chat-thinking-block[data-open="true"] .thinking-chevron {
+.chat-thinking-block[data-open="true"] .thinking-chevron,
+.chat-collapsible-step[data-open="true"] .thinking-chevron {
   transform: rotate(90deg);
 }
 
@@ -577,7 +615,8 @@
   overflow: hidden;
 }
 
-.chat-thinking-block[data-open="true"] .thinking-content-wrapper {
+.chat-thinking-block[data-open="true"] .thinking-content-wrapper,
+.chat-collapsible-step[data-open="true"] .thinking-content-wrapper {
   grid-template-rows: 1fr;
 }
 

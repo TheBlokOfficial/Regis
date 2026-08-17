@@ -13,6 +13,13 @@ export class ChatView {
     this.currentAssistantMessageEl = null;
     this.currentAssistantTextEl = null;
     this.accumulatedText = '';
+    // Stan renderowania na żywo drzewka kroków ReAct (tekst/COT przeplecione z wywołaniami
+    // narzędzi) — kroki i przebiegi tekstu dokładane są przyrostowo do DOM w kolejności
+    // faktycznego przyjścia zdarzeń SSE, bez pełnego przerenderowania na każdy token
+    // (zachowuje stan rozwinięcia node'ów, które użytkownik otworzył w trakcie streamu).
+    this.currentTextRunEl = null;
+    this.currentTextRunText = '';
+    this.stepElsByCallId = new Map();
     this.userHasScrolledUp = false;
     this.pollInterval = null;
     this._documentClickBound = false;
@@ -126,11 +133,12 @@ export class ChatView {
         this.userHasScrolledUp = !isAtBottom;
       });
 
-      // Delegowany toggle dla bloków myślenia
+      // Delegowany toggle dla zwijanych node'ów (blok myślenia + kroki ReAct) —
+      // wspólna klasa bazowa .chat-collapsible, żeby jeden listener obsłużył oba warianty
       container.addEventListener('click', (e) => {
         const summary = e.target.closest('.thinking-summary');
         if (!summary) return;
-        const block = summary.closest('.chat-thinking-block');
+        const block = summary.closest('.chat-collapsible');
         if (!block) return;
         const isOpen = block.dataset.open === 'true';
         block.dataset.open = isOpen ? 'false' : 'true';
@@ -369,8 +377,12 @@ export class ChatView {
 
         if (lastMsg && lastMsg.role === 'assistant') {
           this.accumulatedText = lastMsg.content || '';
+          // Fallback pollingu (SSE nieaktywne, np. po odświeżeniu strony w trakcie generowania)
+          // nie ma dostępu do kroków pośrednich w toku — pokazuje tylko narastający tekst,
+          // całe drzewko kroków pojawi się dopiero po zakończeniu tury (metadata.steps
+          // trafi do historii). Świadomy gap, patrz docs/manifest.md.
           if (this.currentAssistantTextEl) {
-            this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText, res.is_generating);
+            this.renderTextRunIncremental(this.currentAssistantTextEl, this.accumulatedText, res.is_generating);
           }
           this.scrollToBottom();
         }
@@ -418,7 +430,7 @@ export class ChatView {
       res.messages.forEach((msg, idx) => {
         const isLast = idx === res.messages.length - 1;
         const isStreamingMsg = isLast && res.is_generating && msg.role === 'assistant';
-        const row = this.appendMessageElement(msg.role, msg.content, msg.timestamp, isStreamingMsg);
+        const row = this.appendMessageElement(msg.role, msg.content, msg.timestamp, isStreamingMsg, msg.metadata);
         if (msg.role === 'assistant') {
           lastAssistantRow = row;
           lastAssistantContent = msg.content || '';
@@ -477,6 +489,12 @@ export class ChatView {
     this.accumulatedText = '';
     this.currentAssistantMessageEl = this.appendMessageElement('assistant', '', Date.now() / 1000, true);
     this.currentAssistantTextEl = this.currentAssistantMessageEl.querySelector('.message-text');
+    // Zawartość budowana jest przyrostowo (appendStreamingText/appendStepNode), nie przez
+    // jednorazowy formatMessageText — startujemy od pustego kontenera.
+    if (this.currentAssistantTextEl) this.currentAssistantTextEl.innerHTML = '';
+    this.currentTextRunEl = null;
+    this.currentTextRunText = '';
+    this.stepElsByCallId = new Map();
 
     this.abortController = new AbortController();
 
@@ -485,27 +503,40 @@ export class ChatView {
     // a callbacki poniżej nie mogą wtedy nadpisywać stanu UI aktywnej w danej chwili sesji.
     const streamSessionId = this.activeSessionId;
 
-    // 3. Strumieniowanie via SSE
+    // 3. Strumieniowanie via SSE — tekst i kroki tool-callingu przychodzą w faktycznej
+    // kolejności chronologicznej, więc dokładamy je do DOM w tej samej kolejności zamiast
+    // rekonstruować przeplot po text_offset (to potrzebne tylko przy replayu z historii).
     await this.apiClient.streamChatMessage(
       streamSessionId,
       message,
-      (chunk) => {
-        if (this.activeSessionId !== streamSessionId) return;
-        this.accumulatedText += chunk;
-        if (this.currentAssistantTextEl) {
-          this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText, true);
-        }
-        this.scrollToBottom();
-      },
-      (error) => {
-        console.error('[ChatView] Błąd strumieniowania:', error);
-        if (this.activeSessionId === streamSessionId && this.currentAssistantTextEl) {
-          this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText + `\n\n[Błąd: ${error.message}]`, false);
-        }
-        this.finishStreaming(streamSessionId);
-      },
-      () => {
-        this.finishStreaming(streamSessionId);
+      {
+        onChunk: (chunk) => {
+          if (this.activeSessionId !== streamSessionId) return;
+          this.accumulatedText += chunk;
+          this.appendStreamingText(chunk);
+          this.scrollToBottom();
+        },
+        onToolStart: (evt) => {
+          if (this.activeSessionId !== streamSessionId) return;
+          this.appendStepNode(evt);
+          this.scrollToBottom();
+        },
+        onToolResult: (evt) => {
+          if (this.activeSessionId !== streamSessionId) return;
+          this.updateStepNode(evt);
+          this.scrollToBottom();
+        },
+        onError: (error) => {
+          console.error('[ChatView] Błąd strumieniowania:', error);
+          if (this.activeSessionId === streamSessionId) {
+            this.accumulatedText += `\n\n[Błąd: ${error.message}]`;
+            this.appendStreamingText(`\n\n[Błąd: ${error.message}]`);
+          }
+          this.finishStreaming(streamSessionId);
+        },
+        onComplete: () => {
+          this.finishStreaming(streamSessionId);
+        },
       },
       this.abortController.signal
     );
@@ -519,16 +550,40 @@ export class ChatView {
       return;
     }
     this.stopPolling();
-    if (this.currentAssistantTextEl) {
-      this.updateAssistantStreamingText(this.currentAssistantTextEl, this.accumulatedText, false);
-    }
+    this.finalizeCurrentTextRun();
     this.setGeneratingState(false);
     this.loadSessionsList();
   }
 
-  updateAssistantStreamingText(element, text, isStreaming = false) {
-    if (!element) return;
+  // Dokłada fragment tekstu do bieżącego "przebiegu" tekstu (ciągłego odcinka tekstu/COT
+  // między dwoma wywołaniami narzędzi, albo od początku tury do pierwszego wywołania).
+  // Nowy przebieg tworzony jest leniwie — po `appendStepNode` bieżący przebieg jest
+  // sfinalizowany i wyzerowany, więc kolejny chunk tekstu automatycznie zacznie nowy.
+  appendStreamingText(chunkText) {
+    if (!this.currentAssistantTextEl) return;
+    if (!this.currentTextRunEl) {
+      this.currentTextRunEl = document.createElement('div');
+      this.currentTextRunEl.className = 'message-text-run';
+      this.currentAssistantTextEl.appendChild(this.currentTextRunEl);
+      this.currentTextRunText = '';
+    }
+    this.currentTextRunText += chunkText;
+    this.renderTextRunIncremental(this.currentTextRunEl, this.currentTextRunText, true);
+  }
 
+  // Zamyka bieżący przebieg tekstu (usuwa kursor streamowania, domyka blok myślenia jeśli
+  // otwarty) — wołane przed dołożeniem node'a kroku i na końcu całej tury.
+  finalizeCurrentTextRun() {
+    if (this.currentTextRunEl) {
+      this.renderTextRunIncremental(this.currentTextRunEl, this.currentTextRunText, false);
+    }
+  }
+
+  // Renderuje pojedynczy przebieg tekstu przyrostowo do już istniejącego elementu DOM,
+  // zachowując stan rozwinięcia bloku myślenia (`data-open`) między wywołaniami zamiast
+  // resetować go przy każdym tokenie — identyczna logika jak dawne `updateAssistantStreamingText`,
+  // tylko skopowana do jednego przebiegu zamiast całej wiadomości.
+  renderTextRunIncremental(element, text, isStreaming) {
     const thinkStart = text.indexOf('<think>');
     let thinkHtml = '';
     let restText = text;
@@ -559,12 +614,11 @@ export class ChatView {
         if (titleEl && titleEl.textContent !== statusTitle) {
           titleEl.textContent = statusTitle;
         }
-        // Płynne zwinięcie gdy myślenie się kończy
         if (isThinkingDone && existingBlock.dataset.open === 'true') {
           existingBlock.dataset.open = 'false';
         }
       } else {
-        thinkHtml = `<div class="chat-thinking-block" data-open="true"><div class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></div><div class="thinking-content-wrapper"><div class="thinking-content-inner"><div class="thinking-content">${escapedThink}</div></div></div></div>`;
+        thinkHtml = `<div class="chat-collapsible chat-thinking-block" data-open="true"><div class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></div><div class="thinking-content-wrapper"><div class="thinking-content-inner"><div class="thinking-content">${escapedThink}</div></div></div></div>`;
       }
     }
 
@@ -583,6 +637,131 @@ export class ChatView {
     } else {
       element.innerHTML = thinkHtml + `<div class="message-rest-content">${formattedRest}${cursorHtml}</div>`;
     }
+  }
+
+  // Dołącza node kroku wywołania narzędzia na koniec bieżącej wiadomości assistant, w stanie
+  // "running" — finalizuje wcześniejszy przebieg tekstu, żeby kolejność DOM odzwierciedlała
+  // faktyczną kolejność zdarzeń SSE.
+  appendStepNode(evt) {
+    if (!this.currentAssistantTextEl) return;
+    this.finalizeCurrentTextRun();
+
+    const step = { callId: evt.call_id, name: evt.name, arguments: evt.arguments, content: null, isError: null };
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = this.renderStepNode(step);
+    const stepEl = wrapper.firstElementChild;
+    this.currentAssistantTextEl.appendChild(stepEl);
+    this.stepElsByCallId.set(evt.call_id, stepEl);
+
+    this.currentTextRunEl = null;
+    this.currentTextRunText = '';
+  }
+
+  // Aktualizuje istniejący node kroku po nadejściu wyniku (status running -> done/error).
+  updateStepNode(evt) {
+    const stepEl = this.stepElsByCallId.get(evt.call_id);
+    if (!stepEl) return;
+
+    const status = evt.is_error ? 'error' : 'done';
+    stepEl.classList.remove('step-running');
+    stepEl.classList.add(`step-${status}`);
+
+    const iconEl = stepEl.querySelector('.step-icon');
+    if (iconEl) iconEl.innerHTML = evt.is_error ? Icons.AlertCircle() : Icons.CheckCircle2();
+
+    const contentEl = stepEl.querySelector('.thinking-content');
+    if (contentEl && evt.content) {
+      const argsEl = contentEl.querySelector('.step-args');
+      const argsHtml = argsEl ? argsEl.outerHTML : '';
+      contentEl.innerHTML = `${argsHtml}<div class="step-result">${this.escapeHtml(evt.content)}</div>`;
+    }
+  }
+
+  // Buduje HTML pojedynczego node'a kroku — reużywana zarówno przy dokładaniu na żywo
+  // (appendStepNode, status zawsze "running" bo isError jeszcze null), jak i przy replayu
+  // z historii (status wynika wprost z zapisanego isError).
+  renderStepNode(step) {
+    const status = step.isError === null || step.isError === undefined ? 'running' : step.isError ? 'error' : 'done';
+    const icon = status === 'running' ? Icons.Puzzle() : status === 'error' ? Icons.AlertCircle() : Icons.CheckCircle2();
+    const title = this.humanizeToolName(step.name);
+    const argsHtml =
+      step.arguments && Object.keys(step.arguments).length
+        ? `<pre class="step-args">${this.escapeHtml(JSON.stringify(step.arguments, null, 2))}</pre>`
+        : '';
+    const contentHtml = step.content ? `<div class="step-result">${this.escapeHtml(step.content)}</div>` : '';
+
+    return `<div class="chat-collapsible chat-collapsible-step step-${status}" data-open="false" data-call-id="${this.escapeHtml(step.callId || '')}">
+      <div class="thinking-summary step-summary"><span class="step-icon">${icon}</span><span class="thinking-title-text">${this.escapeHtml(title)}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></div>
+      <div class="thinking-content-wrapper"><div class="thinking-content-inner"><div class="thinking-content">${argsHtml}${contentHtml}</div></div></div>
+    </div>`;
+  }
+
+  // Mapuje nazwę narzędzia na czytelny tytuł node'a ("get_time" -> "Get time").
+  humanizeToolName(name) {
+    if (!name) return 'Narzędzie';
+    const short = name.includes('.') ? name.split('.').pop() : name;
+    return short.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  }
+
+  // Łączy płaskie pary wpisów `tool_call`+`tool_result` (ten sam call_id) z
+  // `metadata.steps` historii w jeden obiekt kroku — ścieżka live tego nie potrzebuje,
+  // bo `stepElsByCallId` już buduje się scalone przez appendStepNode/updateStepNode.
+  mergeStepPairs(rawSteps) {
+    const byId = new Map();
+    for (const s of rawSteps) {
+      const existing = byId.get(s.call_id) || {
+        callId: s.call_id,
+        name: s.name,
+        textOffset: s.text_offset,
+        arguments: null,
+        content: null,
+        isError: null,
+      };
+      if (s.type === 'tool_call') {
+        existing.arguments = s.arguments;
+        existing.textOffset = s.text_offset;
+      } else if (s.type === 'tool_result') {
+        existing.content = s.content;
+        existing.isError = s.is_error;
+      }
+      byId.set(s.call_id, existing);
+    }
+    return [...byId.values()];
+  }
+
+  // Dzieli pełny tekst finalnej odpowiedzi na segmenty tekst/krok wg `textOffset` zapisanego
+  // przy każdym kroku — potrzebne tylko przy replayu z historii, gdzie nie mamy naturalnej
+  // kolejności zdarzeń SSE, tylko płaski tekst + listę kroków.
+  buildSegments(text, steps) {
+    const sorted = [...steps].sort((a, b) => a.textOffset - b.textOffset);
+    const segments = [];
+    let cursor = 0;
+    for (const step of sorted) {
+      const offset = Math.min(Math.max(step.textOffset, 0), text.length);
+      if (offset > cursor) {
+        segments.push({ kind: 'text', content: text.slice(cursor, offset) });
+        cursor = offset;
+      }
+      segments.push({ kind: 'step', step });
+    }
+    if (cursor < text.length) {
+      segments.push({ kind: 'text', content: text.slice(cursor) });
+    }
+    return segments;
+  }
+
+  // Buduje statyczny HTML całej wiadomości assistant z historii, przeplatając segmenty
+  // tekstu (przez formatMessageText — obsługa <think>) z node'ami kroków.
+  renderAssistantHistoryHtml(content, rawSteps) {
+    const steps = this.mergeStepPairs(rawSteps || []);
+    if (!steps.length) return this.formatMessageText(content);
+    const segments = this.buildSegments(content, steps);
+    return segments
+      .map((seg) => {
+        if (seg.kind === 'step') return this.renderStepNode(seg.step);
+        return `<div class="message-text-run">${this.formatMessageText(seg.content)}</div>`;
+      })
+      .join('');
   }
 
   formatRestContent(restText) {
@@ -624,7 +803,7 @@ export class ChatView {
     }
   }
 
-  appendMessageElement(role, content, timestamp, isStreaming = false) {
+  appendMessageElement(role, content, timestamp, isStreaming = false, metadata = null) {
     const container = document.getElementById('chat-messages-container');
     if (!container) return null;
 
@@ -635,7 +814,10 @@ export class ChatView {
     const avatarHtml = isUser ? Icons.User() : Icons.Bot();
     const authorName = isUser ? 'Ty' : 'Regis OS';
 
-    const formattedContent = this.formatMessageText(content) + (isStreaming ? '<span class="streaming-cursor"></span>' : '');
+    const hasSteps = !isUser && metadata && Array.isArray(metadata.steps) && metadata.steps.length > 0;
+    const formattedContent = hasSteps
+      ? this.renderAssistantHistoryHtml(content, metadata.steps)
+      : this.formatMessageText(content) + (isStreaming ? '<span class="streaming-cursor"></span>' : '');
 
     if (isUser) {
       row.innerHTML = `
@@ -685,7 +867,7 @@ export class ChatView {
       const isStreaming = thinkEnd === -1;
       const statusTitle = isStreaming ? 'Regis myśli...' : 'Przemyślenia Agenta';
 
-      thinkHtml = `<div class="chat-thinking-block" data-open="${isStreaming ? 'true' : 'false'}"><div class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></div><div class="thinking-content-wrapper"><div class="thinking-content-inner"><div class="thinking-content">${escapedThink}</div></div></div></div>`;
+      thinkHtml = `<div class="chat-collapsible chat-thinking-block" data-open="${isStreaming ? 'true' : 'false'}"><div class="thinking-summary">${Icons.Sparkles()}<span class="thinking-title-text">${statusTitle}</span><span class="thinking-chevron">${Icons.ChevronRight()}</span></div><div class="thinking-content-wrapper"><div class="thinking-content-inner"><div class="thinking-content">${escapedThink}</div></div></div></div>`;
       content = restText;
     }
 

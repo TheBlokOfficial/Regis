@@ -1,5 +1,6 @@
 import asyncio
-from typing import AsyncIterator, Any
+from dataclasses import dataclass
+from typing import AsyncIterator, Any, Literal, TypedDict
 from shared import ChatResponseDTO, Event, EventBus, get_logger
 from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse, OllamaProvider, ToolCallRequest
 from server.agent.context import ContextBuilder
@@ -9,6 +10,35 @@ from server.agent.prompts import PromptStore
 from server.events import ServerEventType
 
 logger = get_logger("regis.agent")
+
+
+class ToolStepPayload(TypedDict):
+    """Pojedynczy wpis kroku pętli ReAct w kolejności chronologicznej.
+
+    `text_offset` to długość dotychczas zakumulowanego tekstu finalnej
+    odpowiedzi assistant w momencie wystąpienia kroku — pozwala frontendowi
+    wpleść node kroku między segmenty tekstu, zarówno w strumieniu live, jak
+    i przy replayu z `ChatMessageDTO.metadata["steps"]`. Kształt płaski (pola
+    zawsze obecne, `None` gdy nieużywane w danym wariancie) zamiast opcjonalnych
+    kluczy — prostszy do konsumpcji bez rozgałęzień w JS.
+    """
+
+    type: Literal["tool_call", "tool_result"]
+    call_id: str
+    name: str
+    text_offset: int
+    arguments: dict[str, Any] | None
+    content: str | None
+    is_error: bool | None
+
+
+@dataclass
+class StreamEvent:
+    """Ustrukturyzowany element strumienia `interact_stream` — jeden do jednego
+    z rodzajem zdarzenia `EventBus`, gotowy do serializacji SSE przez wywołującego."""
+
+    type: Literal["chunk", "tool_start", "tool_result", "done", "error", "cancelled"]
+    payload: dict[str, Any]
 
 
 class AgentEngine:
@@ -112,6 +142,8 @@ class AgentEngine:
 
         self._generation_buffers[session_id] = ""
 
+        steps: list[ToolStepPayload] = []
+
         try:
             # 3. Budowa kontekstu tej tury od zera: narzędzia + encje + fakty (Gateway,
             #    wizja sekcja 2 i 3) — nigdy cache'owane między turami.
@@ -148,11 +180,48 @@ class AgentEngine:
 
                 working_messages.append(LLMMessage(role="assistant", content=turn_text, tool_calls=pending_calls))
                 for call in pending_calls:
+                    step_start: ToolStepPayload = {
+                        "type": "tool_call",
+                        "call_id": call.id,
+                        "name": call.name,
+                        "text_offset": len(self._generation_buffers.get(session_id, "")),
+                        "arguments": call.arguments,
+                        "content": None,
+                        "is_error": None,
+                    }
+                    steps.append(step_start)
+                    await self.event_bus.publish(
+                        Event(
+                            type=ServerEventType.TOOL_CALL_START,
+                            payload={"session_id": session_id, **step_start},
+                            sender="agent_engine",
+                        )
+                    )
+
                     result = await dispatch_tool(call.name, call.arguments)
                     logger.info(
                         f"Wywołano narzędzie '{call.name}' [sesja: '{session_id}']: "
                         f"{'błąd' if result.is_error else 'ok'}"
                     )
+
+                    step_result: ToolStepPayload = {
+                        "type": "tool_result",
+                        "call_id": call.id,
+                        "name": call.name,
+                        "text_offset": len(self._generation_buffers.get(session_id, "")),
+                        "arguments": None,
+                        "content": result.content,
+                        "is_error": result.is_error,
+                    }
+                    steps.append(step_result)
+                    await self.event_bus.publish(
+                        Event(
+                            type=ServerEventType.TOOL_CALL_RESULT,
+                            payload={"session_id": session_id, **step_result},
+                            sender="agent_engine",
+                        )
+                    )
+
                     working_messages.append(
                         LLMMessage(role="tool", content=result.content, tool_call_id=call.id, tool_name=call.name)
                     )
@@ -169,6 +238,7 @@ class AgentEngine:
                 session_id=session_id,
                 role="assistant",
                 content=full_assistant_text,
+                metadata={"steps": steps} if steps else None,
             )
 
             await self.event_bus.publish(
@@ -184,6 +254,7 @@ class AgentEngine:
                     session_id=session_id,
                     role="assistant",
                     content=partial_text + " [Przerwano]",
+                    metadata={"steps": steps} if steps else None,
                 )
             await self.event_bus.publish(
                 Event(type=ServerEventType.CHAT_CANCELLED, payload={"session_id": session_id}, sender="agent_engine")
@@ -198,7 +269,7 @@ class AgentEngine:
                 session_id=session_id,
                 role="assistant",
                 content=f"[Błąd generowania odpowiedzi: {err}]",
-                metadata={"is_error": True},
+                metadata={"is_error": True, "steps": steps} if steps else {"is_error": True},
             )
             await self.event_bus.publish(
                 Event(type=ServerEventType.CHAT_ERROR, payload={"session_id": session_id, "error": str(err)}, sender="agent_engine")
@@ -212,15 +283,16 @@ class AgentEngine:
         self,
         session_id: str = "session_default",
         prompt: str = "",
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[StreamEvent]:
         """Główna strumieniowa pętla konwersacyjna. Utrwala zapytanie i odpowiedź w pamięci sesji.
 
         Subskrybuje zdarzenia `EventBus` dotyczące tej konkretnej sesji na czas trwania
-        strumieniowania i tłumaczy je z powrotem na strumień tokenów dla wywołującego.
+        strumieniowania i tłumaczy je z powrotem na strumień ustrukturyzowanych zdarzeń
+        (tekst, start/wynik wywołania narzędzia) dla wywołującego.
 
         :param session_id: Identyfikator sesji backendowej.
         :param prompt: Nowa treść wiadomości użytkownika.
-        :yields: Kolejne fragmenty tekstu (tokeny/chunking).
+        :yields: Kolejne `StreamEvent` (fragmenty tekstu oraz kroki tool-callingu).
         """
         if self.is_session_busy(session_id):
             logger.warning(f"Sesja '{session_id}' jest zajęta. Odrzucono nakładające się zapytanie.")
@@ -228,25 +300,43 @@ class AgentEngine:
 
         logger.info(f"Strumieniowa interakcja [Sesja: '{session_id}']: '{prompt}'")
 
-        queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+        queue: asyncio.Queue[StreamEvent] = asyncio.Queue()
+
+        def _step_payload(event: Event[Any]) -> dict[str, Any]:
+            # "type" wewnątrz ToolStepPayload ("tool_call"/"tool_result") jest zbędny tutaj —
+            # StreamEvent.type ("tool_start"/"tool_result") już jednoznacznie opisuje rodzaj
+            # zdarzenia SSE; zostawienie obu kolidowałoby przy spreadzie payloadu w routes/chat.py.
+            return {k: v for k, v in event.payload.items() if k not in ("session_id", "type")}
 
         async def on_chunk(event: Event[Any]) -> None:
             if event.payload.get("session_id") == session_id:
-                await queue.put(("chunk", event.payload.get("chunk", "")))
+                await queue.put(StreamEvent(type="chunk", payload={"chunk": event.payload.get("chunk", "")}))
+
+        async def on_tool_start(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(StreamEvent(type="tool_start", payload=_step_payload(event)))
+
+        async def on_tool_result(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(StreamEvent(type="tool_result", payload=_step_payload(event)))
 
         async def on_done(event: Event[Any]) -> None:
             if event.payload.get("session_id") == session_id:
-                await queue.put(("done", None))
+                await queue.put(StreamEvent(type="done", payload={}))
 
         async def on_error(event: Event[Any]) -> None:
             if event.payload.get("session_id") == session_id:
-                await queue.put(("error", event.payload.get("error", "Nieznany błąd generowania.")))
+                await queue.put(
+                    StreamEvent(type="error", payload={"error": event.payload.get("error", "Nieznany błąd generowania.")})
+                )
 
         async def on_cancelled(event: Event[Any]) -> None:
             if event.payload.get("session_id") == session_id:
-                await queue.put(("cancelled", None))
+                await queue.put(StreamEvent(type="cancelled", payload={}))
 
         self.event_bus.subscribe(ServerEventType.CHAT_CHUNK, on_chunk)
+        self.event_bus.subscribe(ServerEventType.TOOL_CALL_START, on_tool_start)
+        self.event_bus.subscribe(ServerEventType.TOOL_CALL_RESULT, on_tool_result)
         self.event_bus.subscribe(ServerEventType.CHAT_DONE, on_done)
         self.event_bus.subscribe(ServerEventType.CHAT_ERROR, on_error)
         self.event_bus.subscribe(ServerEventType.CHAT_CANCELLED, on_cancelled)
@@ -261,17 +351,19 @@ class AgentEngine:
 
         try:
             while True:
-                kind, value = await queue.get()
-                if kind == "chunk":
-                    yield value
-                elif kind == "done":
+                stream_event = await queue.get()
+                if stream_event.type in ("chunk", "tool_start", "tool_result"):
+                    yield stream_event
+                elif stream_event.type == "done":
                     break
-                elif kind == "cancelled":
+                elif stream_event.type == "cancelled":
                     raise asyncio.CancelledError()
-                elif kind == "error":
-                    raise RuntimeError(value)
+                elif stream_event.type == "error":
+                    raise RuntimeError(stream_event.payload.get("error"))
         finally:
             self.event_bus.unsubscribe(ServerEventType.CHAT_CHUNK, on_chunk)
+            self.event_bus.unsubscribe(ServerEventType.TOOL_CALL_START, on_tool_start)
+            self.event_bus.unsubscribe(ServerEventType.TOOL_CALL_RESULT, on_tool_result)
             self.event_bus.unsubscribe(ServerEventType.CHAT_DONE, on_done)
             self.event_bus.unsubscribe(ServerEventType.CHAT_ERROR, on_error)
             self.event_bus.unsubscribe(ServerEventType.CHAT_CANCELLED, on_cancelled)
