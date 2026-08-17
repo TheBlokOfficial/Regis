@@ -36,17 +36,16 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
 - **`options.base_url`**: Adres serwera Ollama (domyślnie: `http://localhost:11434`).
 
-### Parametry rozszerzenia Home Assistant (`services/server/data/extensions/home_assistant/connections/*.json`, zarządzane przez `HomeAssistantExtension`):
-- **`base_url`** / **`access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token) — pola jawne, nie schema-driven (Home Assistant jest jedynym, znanym z góry backendem tego rozszerzenia).
-- **`enabled`**: Czy połączenie aktywnie dostarcza urządzenia agentowi (wiele połączeń może być włączonych jednocześnie, np. „HA — parter” + „HA — piętro”).
+### Parametry rozszerzenia Home Assistant (`services/server/data/extensions/home_assistant/config.json`, zarządzane przez `HomeAssistantExtension`):
+- **`base_url`** / **`access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token) — pola jawne, nie schema-driven (Home Assistant jest jedynym, znanym z góry backendem tego rozszerzenia). Home Assistant jest traktowany jako **jeden, globalny zasób (singleton)** — jeden `base_url`/`access_token`, bez wielości nazwanych połączeń. Puste pola oznaczają rozszerzenie nieskonfigurowane.
 
-Grupy urządzeń (prywatna, rozszerzenie-wide konfiguracja — nie per-połączenie) przechowywane są analogicznie w `services/server/data/extensions/home_assistant/groups/*.json`. Deklaracje widoczności katalogu (`enabled`/`display_name` per urządzenie) — w `declarations/{connection_id}.json`; brak pliku oznacza pełną widoczność. Przełącznik `enabled` całego rozszerzenia (wspólny dla wszystkich Rozszerzeń, ten sam mechanizm co `basic_tools`) — w `state.json`.
+Grupy urządzeń (prywatna, rozszerzenie-wide konfiguracja) przechowywane są w `services/server/data/extensions/home_assistant/groups/*.json`. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Przełącznik `enabled` całego rozszerzenia (wspólny dla wszystkich Rozszerzeń, ten sam mechanizm co `basic_tools`) — w `state.json`.
 
 ### Prompty systemowe (`services/server/data/prompts/*.json`, zarządzane przez `PromptStore`):
 - Treść instrukcji systemowej faktycznie wysyłanej do LLM. Aktywny prompt wskazuje `services/server/data/active_prompt.json`.
 - **Uwaga**: `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` jest wyłącznie **fallbackiem i szablonem pierwszego uruchomienia**. `PromptStore.ensure_defaults()` tworzy plik tylko wtedy, gdy katalog `data/prompts/` jest pusty — późniejsza zmiana stałej w kodzie **nie zmienia** promptu, którego używa działający agent. Po rozszerzeniu możliwości agenta (np. włączeniu tool callingu) zaktualizuj aktywny prompt w zakładce **Prompty** w Web UI, inaczej model dalej będzie działał wg starych instrukcji.
 
-Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), a Home Assistant/innych rozszerzeń — zakładka **Rozszerzenia** (REST API `/api/v1/extensions/home_assistant/connections` i `/api/v1/extensions`), a nie ręczna edycja plików JSON.
+Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), a Home Assistant/innych rozszerzeń — zakładka **Rozszerzenia** (REST API `/api/v1/extensions/home_assistant/config` i `/api/v1/extensions`), a nie ręczna edycja plików JSON.
 
 ---
 
@@ -113,9 +112,10 @@ python -m uv run --package server python -m server.main
 | | `PUT /api/v1/agent/prompts/{id}/activate` | Ustawienie promptu jako aktywnego systemowego |
 | **Extensions (rejestr)** | `GET /api/v1/extensions` | Lista zarejestrowanych rozszerzeń i ich stan enabled |
 | | `PUT /api/v1/extensions/{id}` | Włączenie/wyłączenie rozszerzenia (generyczne, dla wszystkich) |
-| **Home Assistant** | `GET/POST /api/v1/extensions/home_assistant/connections` | Lista i tworzenie połączeń (sekrety maskowane) |
-| | `PUT/DELETE /api/v1/extensions/home_assistant/connections/{id}` | Edycja (w tym włączenie/wyłączenie) i usunięcie połączenia |
-| | `GET/PUT /api/v1/extensions/home_assistant/connections/{id}/catalog` | Katalog urządzeń połączenia i zapis deklaracji widoczności/nazwy |
+| **Home Assistant** | `GET/PUT /api/v1/extensions/home_assistant/config` | Odczyt (token maskowany) i zapis konfiguracji singletona (`base_url`/`access_token`) |
+| | `GET /api/v1/extensions/home_assistant/catalog` | Surowy katalog wszystkich encji HA — do wyszukiwarki w UI, nie to, co widzi agent |
+| | `GET/POST /api/v1/extensions/home_assistant/declared` | Zadeklarowana lista (to, co widzi agent) i dodanie encji po `entity_id` |
+| | `PUT/DELETE /api/v1/extensions/home_assistant/declared/{entity_id}` | Zmiana nazwy i usunięcie z zadeklarowanej listy |
 | | `GET/POST /api/v1/extensions/home_assistant/groups` | Lista i tworzenie grup urządzeń |
 | | `PUT/DELETE /api/v1/extensions/home_assistant/groups/{id}` | Edycja i usunięcie grupy |
 | **Basic Tools** | — | Brak własnych endpointów — enable/disable przez rejestr generyczny powyżej |

@@ -405,22 +405,66 @@ export class ApiClient {
   // METODY ROZSZERZENIA HOME ASSISTANT
   // ==========================================================================
 
-  async getHAConnections() {
+  async getHAConfig() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections`);
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/config`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
       return await response.json();
     } catch (error) {
-      console.error('[ApiClient] Błąd pobierania listy połączeń Home Assistant:', error);
+      console.error('[ApiClient] Błąd pobierania konfiguracji Home Assistant:', error);
       return null;
     }
   }
 
-  async createHAConnection(data) {
+  async updateHAConfig(data) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd zapisu konfiguracji Home Assistant:', error);
+      throw error;
+    }
+  }
+
+  async getHACatalog() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/catalog`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania katalogu Home Assistant:', error);
+      return null;
+    }
+  }
+
+  async getHADeclaredDevices() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/declared`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania zadeklarowanych urządzeń Home Assistant:', error);
+      return null;
+    }
+  }
+
+  async addHADeclaredDevice(data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/declared`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -431,14 +475,14 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.error('[ApiClient] Błąd tworzenia połączenia Home Assistant:', error);
+      console.error('[ApiClient] Błąd dodawania zadeklarowanego urządzenia Home Assistant:', error);
       throw error;
     }
   }
 
-  async updateHAConnection(connectionId, data) {
+  async updateHADeclaredDevice(entityId, data) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections/${connectionId}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/declared/${encodeURIComponent(entityId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -449,14 +493,14 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.error(`[ApiClient] Błąd aktualizacji połączenia '${connectionId}':`, error);
+      console.error(`[ApiClient] Błąd aktualizacji zadeklarowanego urządzenia '${entityId}':`, error);
       throw error;
     }
   }
 
-  async deleteHAConnection(connectionId) {
+  async deleteHADeclaredDevice(entityId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections/${connectionId}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/declared/${encodeURIComponent(entityId)}`, {
         method: 'DELETE',
       });
       if (!response.ok) {
@@ -465,38 +509,7 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.error(`[ApiClient] Błąd usuwania połączenia '${connectionId}':`, error);
-      throw error;
-    }
-  }
-
-  async getHACatalog(connectionId) {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections/${connectionId}/catalog`);
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error(`[ApiClient] Błąd pobierania katalogu połączenia '${connectionId}':`, error);
-      return null;
-    }
-  }
-
-  async updateHACatalog(connectionId, entries) {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/connections/${connectionId}/catalog`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entries }),
-      });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error(`[ApiClient] Błąd zapisu katalogu połączenia '${connectionId}':`, error);
+      console.error(`[ApiClient] Błąd usuwania zadeklarowanego urządzenia '${entityId}':`, error);
       throw error;
     }
   }

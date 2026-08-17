@@ -12,16 +12,17 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, HTTPException, status
 
 from server.extensions.home_assistant.dto import (
+    AddDeclaredDeviceRequest,
     CatalogEntryDTO,
-    CreateHAConnectionRequest,
     CreateHAGroupRequest,
-    HAConnectionDTO,
+    DeclaredDeviceDTO,
     HAGroupDTO,
-    UpdateCatalogRequest,
-    UpdateHAConnectionRequest,
+    HomeAssistantConfigDTO,
+    UpdateDeclaredDeviceRequest,
     UpdateHAGroupRequest,
+    UpdateHomeAssistantConfigRequest,
 )
-from server.extensions.home_assistant.models import DeviceDeclarationEntry, DeviceDeclarationFileContent, HAConnectionConfig
+from server.extensions.home_assistant.models import DeclaredDeviceEntry, Device, HomeAssistantConfig
 
 if TYPE_CHECKING:
     from server.extensions.home_assistant.extension import HomeAssistantExtension
@@ -35,102 +36,80 @@ def _mask_token(token: str) -> str:
     return f"{'•' * (len(token) - len(visible))}{visible}"
 
 
-def _to_dto(cfg: HAConnectionConfig) -> HAConnectionDTO:
-    return HAConnectionDTO(
-        id=cfg.id,
-        name=cfg.name,
-        base_url=cfg.base_url,
-        access_token=_mask_token(cfg.access_token),
-        enabled=cfg.enabled,
+def _to_config_dto(cfg: HomeAssistantConfig) -> HomeAssistantConfigDTO:
+    return HomeAssistantConfigDTO(base_url=cfg.base_url, access_token=_mask_token(cfg.access_token))
+
+
+def _to_declared_dto(entity_id: str, entry: DeclaredDeviceEntry, resolved: Device | None) -> DeclaredDeviceDTO:
+    return DeclaredDeviceDTO(
+        entity_id=entity_id,
+        display_name=entry.display_name,
+        effective_name=resolved.name if resolved is not None else (entry.display_name or entity_id),
+        kind=resolved.kind if resolved is not None else "",
+        capabilities=sorted(resolved.capabilities.keys()) if resolved is not None else [],
     )
 
 
 def create_home_assistant_router(extension: "HomeAssistantExtension") -> APIRouter:
-    """Tworzy router dla punktów końcowych połączeń, katalogu i grup Home Assistant."""
+    """Tworzy router dla punktów końcowych konfiguracji, katalogu, zadeklarowanych urządzeń i grup."""
     router = APIRouter()
 
     # --------------------------------------------------------------------------
-    # Połączenia
+    # Konfiguracja singletona
     # --------------------------------------------------------------------------
 
-    @router.get("/connections", response_model=list[HAConnectionDTO], tags=["Home Assistant"])
-    async def get_connections() -> list[HAConnectionDTO]:
-        instances = await extension.list_connections()
-        return [_to_dto(cfg) for cfg in instances.values()]
+    @router.get("/config", response_model=HomeAssistantConfigDTO, tags=["Home Assistant"])
+    async def get_config() -> HomeAssistantConfigDTO:
+        return _to_config_dto(await extension.get_config())
 
-    @router.post("/connections", response_model=HAConnectionDTO, status_code=status.HTTP_201_CREATED, tags=["Home Assistant"])
-    async def create_connection(req: CreateHAConnectionRequest) -> HAConnectionDTO:
-        created = await extension.create_connection(
-            name=req.name,
-            base_url=req.base_url,
-            access_token=req.access_token,
-            enabled=req.enabled,
-            custom_id=req.custom_id,
-        )
-        return _to_dto(created)
+    @router.put("/config", response_model=HomeAssistantConfigDTO, tags=["Home Assistant"])
+    async def update_config(req: UpdateHomeAssistantConfigRequest) -> HomeAssistantConfigDTO:
+        updated = await extension.save_config(base_url=req.base_url, access_token=req.access_token)
+        return _to_config_dto(updated)
 
-    @router.put("/connections/{connection_id}", response_model=HAConnectionDTO, tags=["Home Assistant"])
-    async def update_connection(connection_id: str, req: UpdateHAConnectionRequest) -> HAConnectionDTO:
+    # --------------------------------------------------------------------------
+    # Surowy katalog HA — do wyszukiwarki w UI, nie to, co widzi agent
+    # --------------------------------------------------------------------------
+
+    @router.get("/catalog", response_model=list[CatalogEntryDTO], tags=["Home Assistant"])
+    async def get_catalog() -> list[CatalogEntryDTO]:
+        devices = await extension.get_catalog()
+        return [CatalogEntryDTO(entity_id=d.id, friendly_name=d.name, kind=d.kind) for d in devices]
+
+    # --------------------------------------------------------------------------
+    # Zadeklarowane urządzenia — jedyne źródło prawdy o tym, co widzi agent
+    # --------------------------------------------------------------------------
+
+    @router.get("/declared", response_model=list[DeclaredDeviceDTO], tags=["Home Assistant"])
+    async def get_declared() -> list[DeclaredDeviceDTO]:
+        declared = await extension.get_declared_devices()
+        resolved_by_id = {d.id: d for d in await extension.resolve_devices()}
+        return [_to_declared_dto(entity_id, entry, resolved_by_id.get(entity_id)) for entity_id, entry in declared.entries.items()]
+
+    @router.post("/declared", response_model=DeclaredDeviceDTO, status_code=status.HTTP_201_CREATED, tags=["Home Assistant"])
+    async def add_declared(req: AddDeclaredDeviceRequest) -> DeclaredDeviceDTO:
+        await extension.add_declared_device(entity_id=req.entity_id, display_name=req.display_name)
+        resolved_by_id = {d.id: d for d in await extension.resolve_devices()}
+        return _to_declared_dto(req.entity_id, DeclaredDeviceEntry(display_name=req.display_name), resolved_by_id.get(req.entity_id))
+
+    @router.put("/declared/{entity_id}", response_model=DeclaredDeviceDTO, tags=["Home Assistant"])
+    async def update_declared(entity_id: str, req: UpdateDeclaredDeviceRequest) -> DeclaredDeviceDTO:
         try:
-            updated = await extension.update_connection(
-                connection_id=connection_id,
-                name=req.name,
-                base_url=req.base_url,
-                access_token=req.access_token,
-                enabled=req.enabled,
-            )
+            entry = await extension.update_declared_device(entity_id=entity_id, display_name=req.display_name)
         except ValueError as err:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
-        return _to_dto(updated)
+        resolved_by_id = {d.id: d for d in await extension.resolve_devices()}
+        return _to_declared_dto(entity_id, entry, resolved_by_id.get(entity_id))
 
-    @router.delete("/connections/{connection_id}", tags=["Home Assistant"])
-    async def delete_connection(connection_id: str):
-        deleted = await extension.delete_connection(connection_id)
+    @router.delete("/declared/{entity_id}", tags=["Home Assistant"])
+    async def delete_declared(entity_id: str):
+        deleted = await extension.remove_declared_device(entity_id)
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Połączenie o ID '{connection_id}' nie istnieje.",
+                detail=f"Urządzenie '{entity_id}' nie jest zadeklarowane.",
             )
-        return {"success": True, "deleted_id": connection_id}
-
-    # --------------------------------------------------------------------------
-    # Katalog urządzeń — per połączenie, z zastosowaną deklaracją widoczności
-    # --------------------------------------------------------------------------
-
-    @router.get("/connections/{connection_id}/catalog", response_model=list[CatalogEntryDTO], tags=["Home Assistant"])
-    async def get_catalog(connection_id: str) -> list[CatalogEntryDTO]:
-        connections = await extension.list_connections()
-        config = connections.get(connection_id)
-        if config is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Połączenie o ID '{connection_id}' nie istnieje.")
-
-        entries = await extension.resolve_devices(connection_id, config)
-        return [
-            CatalogEntryDTO(ref=device.id, label=device.name, kind=device.kind, capabilities=sorted(device.capabilities), enabled=enabled)
-            for device, enabled in entries
-        ]
-
-    @router.put("/connections/{connection_id}/catalog", response_model=list[CatalogEntryDTO], tags=["Home Assistant"])
-    async def update_catalog(connection_id: str, req: UpdateCatalogRequest) -> list[CatalogEntryDTO]:
-        connections = await extension.list_connections()
-        config = connections.get(connection_id)
-        if config is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Połączenie o ID '{connection_id}' nie istnieje.")
-
-        prefix = f"{connection_id}:"
-        entries = {
-            entry.ref[len(prefix):] if entry.ref.startswith(prefix) else entry.ref: DeviceDeclarationEntry(
-                enabled=entry.enabled, display_name=entry.display_name
-            )
-            for entry in req.entries
-        }
-        await extension.save_declaration(connection_id, DeviceDeclarationFileContent(entries=entries))
-
-        resolved = await extension.resolve_devices(connection_id, config)
-        return [
-            CatalogEntryDTO(ref=device.id, label=device.name, kind=device.kind, capabilities=sorted(device.capabilities), enabled=enabled)
-            for device, enabled in resolved
-        ]
+        return {"success": True, "deleted_id": entity_id}
 
     # --------------------------------------------------------------------------
     # Grupy urządzeń

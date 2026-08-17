@@ -237,9 +237,9 @@
 .ha-empty-hint {
   color: var(--text-muted-aa);
   font-size: 0.86rem;
+  overflow-wrap: anywhere;
 }
 
-.ha-connection-row,
 .ha-group-row {
   display: flex;
   align-items: center;
@@ -251,11 +251,6 @@
   margin-bottom: 8px;
 }
 
-.ha-connection-row.selected {
-  border-color: var(--border-medium);
-}
-
-.ha-connection-info,
 .ha-group-info {
   display: flex;
   flex-direction: column;
@@ -263,68 +258,141 @@
   min-width: 0;
 }
 
-.ha-connection-name,
 .ha-group-name {
   font-size: 0.88rem;
   font-weight: 500;
   color: var(--text-primary);
 }
 
-.ha-connection-meta,
 .ha-group-meta {
   font-size: 0.76rem;
   color: var(--text-muted-aa);
   font-family: var(--font-mono);
 }
 
-.ha-connection-actions {
+.ha-config-form-card {
+  margin-top: 4px;
+}
+
+.ha-device-search {
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.ha-search-dropdown-wrap {
+  position: relative;
+}
+
+.ha-search-dropdown-wrap::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  height: 28px;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: linear-gradient(to bottom, transparent, var(--bg-base));
+  pointer-events: none;
+}
+
+.ha-search-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+}
+
+.ha-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.ha-search-result:hover {
+  background: var(--bg-surface-hover);
+}
+
+.ha-search-result-name {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.ha-search-result-meta {
+  font-size: 0.76rem;
+  color: var(--text-muted-aa);
+  font-family: var(--font-mono);
+}
+
+.ha-subsection-title {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted-aa);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 22px;
+  padding-top: 16px;
+  margin-bottom: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ha-declared-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ha-declared-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.ha-declared-card-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
 }
 
-.ha-badge-on {
-  color: var(--accent-success);
-  border-color: rgba(34, 197, 94, 0.3);
-}
-
-.ha-badge-off {
+.ha-declared-entity-id {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
   color: var(--text-muted-aa);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.ha-connection-form-card {
-  margin-top: 12px;
-}
-
-.ha-connection-select {
-  width: auto;
-  min-width: 200px;
-}
-
-.ha-catalog-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.86rem;
-}
-
-.ha-catalog-table th {
-  text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border-subtle);
+.ha-declared-default-hint {
+  font-size: 0.74rem;
+  font-style: italic;
   color: var(--text-muted-aa);
-  font-weight: 500;
-  font-size: 0.78rem;
+  margin-top: -4px;
 }
 
-.ha-catalog-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border-subtle);
-  vertical-align: middle;
-}
-
-.ha-catalog-label {
-  min-width: 180px;
+.ha-declared-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .ha-group-device-options {

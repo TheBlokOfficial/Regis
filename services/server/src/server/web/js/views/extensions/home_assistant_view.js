@@ -1,10 +1,10 @@
 /**
  * Widok szczegółowy rozszerzenia Home Assistant — w pełni domenowy (nie
  * generyczny/schema-driven, w przeciwieństwie do formularzy dostawców LLM).
- * Trzy sekcje: Połączenia (CRUD, `base_url`/`access_token` hardcoded),
- * Katalog urządzeń per połączenie (deklaracja widoczności/nazwy), Grupy
- * (multi-select nad sumą włączonych wpisów katalogu wszystkich włączonych
- * połączeń).
+ * Trzy sekcje: Konfiguracja (singleton — jeden `base_url`/`access_token`),
+ * Urządzenia (wyszukiwarka nad surowym katalogiem HA + opt-in zadeklarowana
+ * lista, jedyne źródło prawdy o tym, co widzi agent), Grupy (multi-select
+ * nad zadeklarowaną listą).
  */
 export class HomeAssistantExtensionView {
   constructor() {
@@ -12,12 +12,12 @@ export class HomeAssistantExtensionView {
     this.apiClient = null;
     this.showToast = null;
 
-    this.connections = [];
+    this.config = { base_url: '', access_token: '' };
+    this.declaredDevices = [];
     this.groups = [];
-    this.selectedConnectionId = null;
     this.catalog = [];
+    this.searchQuery = '';
 
-    this.isEditingConnection = null; // id połączenia w edycji, lub 'new', lub null
     this.isCreatingGroup = false;
   }
 
@@ -29,23 +29,17 @@ export class HomeAssistantExtensionView {
   }
 
   async _loadAndRender() {
-    const [connections, groups] = await Promise.all([this.apiClient.getHAConnections(), this.apiClient.getHAGroups()]);
-    this.connections = connections || [];
+    const [config, declared, groups, catalog] = await Promise.all([
+      this.apiClient.getHAConfig(),
+      this.apiClient.getHADeclaredDevices(),
+      this.apiClient.getHAGroups(),
+      this.apiClient.getHACatalog(),
+    ]);
+    this.config = config || { base_url: '', access_token: '' };
+    this.declaredDevices = declared || [];
     this.groups = groups || [];
-
-    if (!this.selectedConnectionId || !this.connections.some((c) => c.id === this.selectedConnectionId)) {
-      this.selectedConnectionId = this.connections[0]?.id ?? null;
-    }
-    await this._loadCatalog();
+    this.catalog = catalog || [];
     this._render();
-  }
-
-  async _loadCatalog() {
-    if (!this.selectedConnectionId) {
-      this.catalog = [];
-      return;
-    }
-    this.catalog = (await this.apiClient.getHACatalog(this.selectedConnectionId)) || [];
   }
 
   _render() {
@@ -53,19 +47,18 @@ export class HomeAssistantExtensionView {
       <div class="ha-view">
         <section class="ha-section">
           <div class="ha-section-header">
-            <span class="ha-section-title">Połączenia</span>
-            <button class="btn btn-sm btn-primary" id="ha-btn-new-connection">+ Nowe połączenie</button>
+            <span class="ha-section-title">Konfiguracja</span>
           </div>
-          <div class="ha-connections-list">${this._renderConnectionsList()}</div>
-          <div id="ha-connection-form">${this.isEditingConnection ? this._renderConnectionForm() : ''}</div>
+          ${this._renderConfigForm()}
         </section>
 
         <section class="ha-section">
           <div class="ha-section-header">
-            <span class="ha-section-title">Katalog urządzeń</span>
-            ${this.connections.length > 0 ? this._renderConnectionSelect() : ''}
+            <span class="ha-section-title">Urządzenia</span>
           </div>
-          ${this._renderCatalog()}
+          ${this._renderDeviceSearch()}
+          <div id="ha-search-results"></div>
+          ${this._renderDeclaredList()}
         </section>
 
         <section class="ha-section">
@@ -79,117 +72,112 @@ export class HomeAssistantExtensionView {
       </div>
     `;
     this._bindEvents();
+    this._renderSearchResults();
     if (this.isCreatingGroup) this._renderGroupForm();
   }
 
   // --------------------------------------------------------------------------
-  // Połączenia
+  // Konfiguracja
   // --------------------------------------------------------------------------
 
-  _renderConnectionsList() {
-    if (this.connections.length === 0) {
-      return `<p class="ha-empty-hint">Brak skonfigurowanych połączeń.</p>`;
-    }
-    return this.connections
-      .map(
-        (c) => `
-        <div class="ha-connection-row ${c.id === this.selectedConnectionId ? 'selected' : ''}">
-          <div class="ha-connection-info">
-            <span class="ha-connection-name">${escapeHtml(c.name)}</span>
-            <span class="ha-connection-meta">${escapeHtml(c.base_url)} · token ${escapeHtml(c.access_token)}</span>
-          </div>
-          <div class="ha-connection-actions">
-            <span class="badge-status ${c.enabled ? 'ha-badge-on' : 'ha-badge-off'}">${c.enabled ? 'włączone' : 'wyłączone'}</span>
-            <button class="btn btn-sm btn-subtle" data-select-connection="${escapeAttr(c.id)}">Katalog</button>
-            <button class="btn btn-sm btn-subtle" data-edit-connection="${escapeAttr(c.id)}">Edytuj</button>
-            <button class="btn btn-sm btn-ghost-danger" data-delete-connection="${escapeAttr(c.id)}">Usuń</button>
-          </div>
-        </div>
-      `
-      )
-      .join('');
-  }
-
-  _renderConnectionForm() {
-    const isNew = this.isEditingConnection === 'new';
-    const existing = isNew ? null : this.connections.find((c) => c.id === this.isEditingConnection);
-    if (!isNew && !existing) return '';
-
+  _renderConfigForm() {
+    const isConfigured = Boolean(this.config.base_url && this.config.access_token);
     return `
-      <div class="form-card ha-connection-form-card">
-        <div class="form-card-title">${isNew ? 'Nowe połączenie' : `Edycja: ${escapeHtml(existing.name)}`}</div>
+      <div class="form-card ha-config-form-card">
         <div class="form-row">
-          <div class="form-group">
-            <label for="ha-input-name">Nazwa</label>
-            <input type="text" id="ha-input-name" class="form-control" value="${isNew ? '' : escapeAttr(existing.name)}" placeholder="np. HA — parter" />
-          </div>
           <div class="form-group">
             <label for="ha-input-base-url">Adres serwera</label>
-            <input type="text" id="ha-input-base-url" class="form-control" value="${isNew ? '' : escapeAttr(existing.base_url)}" placeholder="http://homeassistant.local:8123" />
+            <input type="text" id="ha-input-base-url" class="form-control" value="${escapeAttr(this.config.base_url)}" placeholder="http://homeassistant.local:8123" />
           </div>
-        </div>
-        <div class="form-row">
           <div class="form-group">
             <label for="ha-input-token">Długoterminowy token dostępu</label>
-            <input type="password" id="ha-input-token" class="form-control" placeholder="${isNew ? 'eyJhbGciOi...' : 'Zostaw puste, aby zachować obecny'}" />
-          </div>
-          <div class="form-group">
-            <label for="ha-input-enabled">Stan</label>
-            <select id="ha-input-enabled" class="form-control">
-              <option value="true" ${isNew || existing?.enabled ? 'selected' : ''}>Włączone</option>
-              <option value="false" ${!isNew && !existing?.enabled ? 'selected' : ''}>Wyłączone</option>
-            </select>
+            <input type="password" id="ha-input-token" class="form-control" placeholder="${isConfigured ? 'Zostaw puste, aby zachować obecny' : 'eyJhbGciOi...'}" />
           </div>
         </div>
+        ${isConfigured ? `<p class="ha-empty-hint">Obecny token: ${escapeHtml(truncateMaskedToken(this.config.access_token))}</p>` : ''}
         <div class="form-actions">
-          <button class="btn btn-primary" id="ha-btn-save-connection">Zapisz</button>
-          <button class="btn btn-ghost" id="ha-btn-cancel-connection">Anuluj</button>
+          <button class="btn btn-primary" id="ha-btn-save-config">Zapisz</button>
         </div>
       </div>
     `;
   }
 
   // --------------------------------------------------------------------------
-  // Katalog
+  // Wyszukiwarka i zadeklarowana lista urządzeń (opt-in)
   // --------------------------------------------------------------------------
 
-  _renderConnectionSelect() {
+  _renderDeviceSearch() {
     return `
-      <select class="form-control ha-connection-select" id="ha-catalog-connection-select">
-        ${this.connections.map((c) => `<option value="${escapeAttr(c.id)}" ${c.id === this.selectedConnectionId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
-      </select>
+      <div class="form-group ha-device-search">
+        <label for="ha-search-input">Dodaj urządzenie</label>
+        <input type="text" id="ha-search-input" class="form-control" placeholder="Szukaj po nazwie lub entity_id..." value="${escapeAttr(this.searchQuery)}" />
+      </div>
     `;
   }
 
-  _renderCatalog() {
-    if (!this.selectedConnectionId) {
-      return `<p class="ha-empty-hint">Dodaj połączenie, aby zobaczyć katalog urządzeń.</p>`;
+  _renderSearchResults() {
+    const resultsContainer = document.getElementById('ha-search-results');
+    if (!resultsContainer) return;
+
+    const declaredIds = new Set(this.declaredDevices.map((d) => d.entity_id));
+    const query = this.searchQuery.trim().toLowerCase();
+    const matches = (this.catalog || [])
+      .filter((entry) => !declaredIds.has(entry.entity_id))
+      .filter((entry) => !query || entry.friendly_name.toLowerCase().includes(query) || entry.entity_id.toLowerCase().includes(query));
+
+    if (matches.length === 0) {
+      resultsContainer.innerHTML = `<p class="ha-empty-hint">${this.catalog.length === 0 ? 'Skonfiguruj serwer, aby zobaczyć dostępne encje.' : 'Brak pasujących encji.'}</p>`;
+      return;
     }
-    if (this.catalog.length === 0) {
-      return `<p class="ha-empty-hint">Brak wykrytych urządzeń dla tego połączenia.</p>`;
-    }
-    return `
-      <table class="ha-catalog-table">
-        <thead>
-          <tr><th></th><th>Nazwa</th><th>Rodzaj</th><th>Możliwości</th></tr>
-        </thead>
-        <tbody>
-          ${this.catalog
+    resultsContainer.innerHTML = `
+      <div class="ha-search-dropdown-wrap">
+        <div class="ha-search-dropdown">
+          ${matches
             .map(
               (entry) => `
-              <tr data-ref="${escapeAttr(entry.ref)}">
-                <td><input type="checkbox" class="ha-catalog-enabled" data-ref="${escapeAttr(entry.ref)}" ${entry.enabled ? 'checked' : ''} /></td>
-                <td><input type="text" class="form-control ha-catalog-label" data-ref="${escapeAttr(entry.ref)}" value="${escapeAttr(entry.label)}" /></td>
-                <td><span class="badge-chip">${escapeHtml(entry.kind)}</span></td>
-                <td>${(entry.capabilities || []).map((cap) => `<span class="badge-chip">${escapeHtml(cap)}</span>`).join(' ')}</td>
-              </tr>
-            `
+            <button type="button" class="ha-search-result" data-add-entity="${escapeAttr(entry.entity_id)}">
+              <span class="ha-search-result-name">${escapeHtml(entry.friendly_name)}</span>
+              <span class="ha-search-result-meta">${escapeHtml(entry.entity_id)} · <span class="badge-chip">${escapeHtml(entry.kind)}</span></span>
+            </button>
+          `
             )
             .join('')}
-        </tbody>
-      </table>
-      <div class="form-actions">
-        <button class="btn btn-primary btn-sm" id="ha-btn-save-catalog">Zapisz katalog</button>
+        </div>
+      </div>
+    `;
+    resultsContainer.querySelectorAll('[data-add-entity]').forEach((btn) => {
+      btn.addEventListener('click', () => this._handleAddDeclaredDevice(btn.getAttribute('data-add-entity')));
+    });
+  }
+
+  _renderDeclaredList() {
+    const count = this.declaredDevices.length;
+    const header = `<div class="ha-subsection-title">Zadeklarowane urządzenia${count ? ` (${count})` : ''}</div>`;
+
+    if (count === 0) {
+      return `${header}<p class="ha-empty-hint">Brak zadeklarowanych urządzeń — dodaj przez wyszukiwarkę powyżej.</p>`;
+    }
+    return `
+      ${header}
+      <div class="ha-declared-list">
+        ${this.declaredDevices
+          .map(
+            (entry) => `
+            <div class="ha-declared-card" data-entity-id="${escapeAttr(entry.entity_id)}">
+              <div class="ha-declared-card-header">
+                <span class="ha-declared-entity-id" title="${escapeAttr(entry.entity_id)}">${escapeHtml(entry.entity_id)}</span>
+                <span class="badge-chip">${escapeHtml(entry.kind || '?')}</span>
+                <button class="btn btn-sm btn-ghost-danger" data-remove-entity="${escapeAttr(entry.entity_id)}" title="Usuń">✕</button>
+              </div>
+              <input type="text" class="form-control ha-declared-label" data-entity-id="${escapeAttr(entry.entity_id)}" value="${escapeAttr(entry.effective_name)}" />
+              ${!entry.display_name ? '<span class="ha-declared-default-hint">Domyślna nazwa z Home Assistant — warto nadać własną.</span>' : ''}
+              <div class="ha-declared-caps">
+                ${(entry.capabilities || []).map((cap) => `<span class="badge-chip">${escapeHtml(cap)}</span>`).join('')}
+              </div>
+            </div>
+          `
+          )
+          .join('')}
       </div>
     `;
   }
@@ -217,19 +205,11 @@ export class HomeAssistantExtensionView {
       .join('');
   }
 
-  async _renderGroupForm() {
+  _renderGroupForm() {
     const formContainer = document.getElementById('ha-group-form');
     if (!formContainer) return;
 
-    // Suma wpisów enabled=true katalogu wszystkich włączonych połączeń.
-    const enabledConnections = this.connections.filter((c) => c.enabled);
-    const catalogs = await Promise.all(enabledConnections.map((c) => this.apiClient.getHACatalog(c.id)));
-    const options = [];
-    catalogs.forEach((catalog, idx) => {
-      (catalog || [])
-        .filter((entry) => entry.enabled)
-        .forEach((entry) => options.push({ ref: entry.ref, label: `${enabledConnections[idx].name} — ${entry.label}` }));
-    });
+    const options = this.declaredDevices.map((entry) => ({ ref: entry.entity_id, label: entry.effective_name }));
 
     formContainer.innerHTML = `
       <div class="form-card">
@@ -243,7 +223,7 @@ export class HomeAssistantExtensionView {
           <div class="ha-group-device-options">
             ${
               options.length === 0
-                ? '<p class="ha-empty-hint">Brak włączonych urządzeń do wyboru — sprawdź katalogi połączeń.</p>'
+                ? '<p class="ha-empty-hint">Brak zadeklarowanych urządzeń do wyboru.</p>'
                 : options
                     .map(
                       (opt) => `
@@ -276,30 +256,20 @@ export class HomeAssistantExtensionView {
   // --------------------------------------------------------------------------
 
   _bindEvents() {
-    document.getElementById('ha-btn-new-connection')?.addEventListener('click', () => {
-      this.isEditingConnection = 'new';
-      this._render();
-    });
-    this.container.querySelectorAll('[data-edit-connection]')?.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.isEditingConnection = btn.getAttribute('data-edit-connection');
-        this._render();
-      });
-    });
-    document.getElementById('ha-btn-cancel-connection')?.addEventListener('click', () => {
-      this.isEditingConnection = null;
-      this._render();
-    });
-    document.getElementById('ha-btn-save-connection')?.addEventListener('click', () => this._handleSaveConnection());
-    this.container.querySelectorAll('[data-delete-connection]')?.forEach((btn) => {
-      btn.addEventListener('click', () => this._handleDeleteConnection(btn.getAttribute('data-delete-connection')));
-    });
-    this.container.querySelectorAll('[data-select-connection]')?.forEach((btn) => {
-      btn.addEventListener('click', () => this._handleSelectConnection(btn.getAttribute('data-select-connection')));
+    document.getElementById('ha-btn-save-config')?.addEventListener('click', () => this._handleSaveConfig());
+
+    const searchInput = document.getElementById('ha-search-input');
+    searchInput?.addEventListener('input', (e) => {
+      this.searchQuery = e.target.value;
+      this._renderSearchResults();
     });
 
-    document.getElementById('ha-catalog-connection-select')?.addEventListener('change', (e) => this._handleSelectConnection(e.target.value));
-    document.getElementById('ha-btn-save-catalog')?.addEventListener('click', () => this._handleSaveCatalog());
+    this.container.querySelectorAll('.ha-declared-label')?.forEach((input) => {
+      input.addEventListener('change', (e) => this._handleRenameDeclaredDevice(e.target.getAttribute('data-entity-id'), e.target.value));
+    });
+    this.container.querySelectorAll('[data-remove-entity]')?.forEach((btn) => {
+      btn.addEventListener('click', () => this._handleRemoveDeclaredDevice(btn.getAttribute('data-remove-entity')));
+    });
 
     document.getElementById('ha-btn-new-group')?.addEventListener('click', () => {
       this.isCreatingGroup = true;
@@ -310,72 +280,53 @@ export class HomeAssistantExtensionView {
     });
   }
 
-  async _handleSelectConnection(connectionId) {
-    this.selectedConnectionId = connectionId;
-    await this._loadCatalog();
-    this._render();
-  }
-
-  async _handleSaveConnection() {
-    const name = document.getElementById('ha-input-name')?.value.trim() || '';
+  async _handleSaveConfig() {
     const baseUrl = document.getElementById('ha-input-base-url')?.value.trim() || '';
     const token = document.getElementById('ha-input-token')?.value || '';
-    const enabled = document.getElementById('ha-input-enabled')?.value === 'true';
 
-    if (!name || !baseUrl) {
-      this.showToast('Nazwa i adres serwera są wymagane.', 'error');
+    if (!baseUrl) {
+      this.showToast('Adres serwera jest wymagany.', 'error');
       return;
     }
 
     try {
-      if (this.isEditingConnection === 'new') {
-        if (!token) {
-          this.showToast('Token dostępu jest wymagany dla nowego połączenia.', 'error');
-          return;
-        }
-        const created = await this.apiClient.createHAConnection({ name, base_url: baseUrl, access_token: token, enabled });
-        this.showToast('Utworzono połączenie.', 'success');
-        this.selectedConnectionId = created.id;
-      } else {
-        const payload = { name, base_url: baseUrl, enabled };
-        if (token) payload.access_token = token;
-        await this.apiClient.updateHAConnection(this.isEditingConnection, payload);
-        this.showToast('Zaktualizowano połączenie.', 'success');
-      }
-      this.isEditingConnection = null;
+      const payload = { base_url: baseUrl, access_token: token || this.config.access_token };
+      await this.apiClient.updateHAConfig(payload);
+      this.showToast('Zapisano konfigurację.', 'success');
       await this._loadAndRender();
     } catch (error) {
-      this.showToast(error.message || 'Błąd zapisu połączenia.', 'error');
+      this.showToast(error.message || 'Błąd zapisu konfiguracji.', 'error');
     }
   }
 
-  async _handleDeleteConnection(connectionId) {
+  async _handleAddDeclaredDevice(entityId) {
     try {
-      await this.apiClient.deleteHAConnection(connectionId);
-      this.showToast('Usunięto połączenie.', 'success');
-      if (this.selectedConnectionId === connectionId) this.selectedConnectionId = null;
+      await this.apiClient.addHADeclaredDevice({ entity_id: entityId });
+      this.showToast('Dodano urządzenie.', 'success');
+      this.searchQuery = '';
       await this._loadAndRender();
     } catch (error) {
-      this.showToast(error.message || 'Błąd usuwania połączenia.', 'error');
+      this.showToast(error.message || 'Błąd dodawania urządzenia.', 'error');
     }
   }
 
-  async _handleSaveCatalog() {
-    const rows = this.container.querySelectorAll('.ha-catalog-table tbody tr');
-    const entries = Array.from(rows).map((row) => {
-      const ref = row.getAttribute('data-ref');
-      const enabled = row.querySelector('.ha-catalog-enabled')?.checked ?? true;
-      const displayName = row.querySelector('.ha-catalog-label')?.value.trim() || null;
-      return { ref, enabled, display_name: displayName };
-    });
-
+  async _handleRenameDeclaredDevice(entityId, displayName) {
     try {
-      await this.apiClient.updateHACatalog(this.selectedConnectionId, entries);
-      this.showToast('Zapisano katalog urządzeń.', 'success');
-      await this._loadCatalog();
-      this._render();
+      await this.apiClient.updateHADeclaredDevice(entityId, { display_name: displayName.trim() || null });
+      this.showToast('Zaktualizowano nazwę.', 'success');
+      await this._loadAndRender();
     } catch (error) {
-      this.showToast(error.message || 'Błąd zapisu katalogu.', 'error');
+      this.showToast(error.message || 'Błąd aktualizacji nazwy.', 'error');
+    }
+  }
+
+  async _handleRemoveDeclaredDevice(entityId) {
+    try {
+      await this.apiClient.deleteHADeclaredDevice(entityId);
+      this.showToast('Usunięto urządzenie z listy.', 'success');
+      await this._loadAndRender();
+    } catch (error) {
+      this.showToast(error.message || 'Błąd usuwania urządzenia.', 'error');
     }
   }
 
@@ -417,4 +368,15 @@ function escapeHtml(str) {
 
 function escapeAttr(str) {
   return escapeHtml(str).replace(/"/g, '&quot;');
+}
+
+function truncateMaskedToken(masked) {
+  // Backend maskuje token do jego pełnej długości kropkami (z ostatnimi 4 znakami
+  // widocznymi) — dla długich tokenów (JWT) to ściana kropek wychodząca poza kartę.
+  // Wizualnie ograniczamy do stałej liczby kropek, sens (zamaskowane + końcówka) zostaje.
+  const MAX_DOTS = 24;
+  const visibleSuffix = masked.replace(/^•+/, '');
+  const dotsCount = masked.length - visibleSuffix.length;
+  if (dotsCount <= MAX_DOTS) return masked;
+  return `${'•'.repeat(MAX_DOTS)}${visibleSuffix}`;
 }

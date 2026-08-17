@@ -16,10 +16,8 @@ from server.extensions.basic_tools import BasicToolsExtension
 from server.extensions.home_assistant import HomeAssistantExtension
 from server.extensions.home_assistant.models import (
     Device,
-    DeviceDeclarationEntry,
-    DeviceDeclarationFileContent,
     DeviceGroup,
-    HAConnectionConfig,
+    HomeAssistantConfig,
 )
 from server.extensions.home_assistant.registry import DeviceRegistry
 from server.extensions.home_assistant.tools import HomeAssistantToolExecutor
@@ -28,28 +26,28 @@ from server.network.gateway import create_gateway_app
 from server.network.routes.extensions import create_extensions_registry_router
 
 
+_CORE_CAPS = {"turn_on": frozenset(), "turn_off": frozenset(), "get_state": frozenset()}
+
+
 def _make_devices() -> list[Device]:
     return [
         Device(
-            id="con_fake:light.bathroom",
-            connection_id="con_fake",
+            id="light.bathroom",
             name="Światło w łazience",
             kind="light",
-            capabilities={"turn_on", "turn_off", "get_state"},
+            capabilities=dict(_CORE_CAPS),
         ),
         Device(
-            id="con_fake:light.bathroom_mirror",
-            connection_id="con_fake",
+            id="light.bathroom_mirror",
             name="Światło w łazience — lustro",
             kind="light",
-            capabilities={"turn_on", "turn_off", "get_state"},
+            capabilities=dict(_CORE_CAPS),
         ),
         Device(
-            id="con_fake:sensor.living_room_temp",
-            connection_id="con_fake",
+            id="sensor.living_room_temp",
             name="Temperatura w salonie",
             kind="sensor",
-            capabilities={"get_state"},
+            capabilities={"get_state": frozenset()},
         ),
     ]
 
@@ -58,28 +56,24 @@ def _make_group() -> DeviceGroup:
     return DeviceGroup(
         id="grp_bathroom",
         name="Łazienka",
-        device_ids=["con_fake:light.bathroom", "con_fake:light.bathroom_mirror"],
+        device_ids=["light.bathroom", "light.bathroom_mirror"],
     )
 
 
 def _make_raw_devices() -> list[Device]:
-    """Urządzenia z natywnymi (nieprzestrzennymi) ID — dokładnie takie, jakie
-    zwraca `HomeAssistantClient.list_devices()`, zanim `HomeAssistantExtension.build()`
-    nada im przestrzeń nazw połączenia."""
+    """Urządzenia dokładnie takie, jakie zwraca `HomeAssistantClient.list_devices()`."""
     return [
         Device(
             id="light.bathroom",
-            connection_id="",
             name="Światło w łazience",
             kind="light",
-            capabilities={"turn_on", "turn_off", "get_state"},
+            capabilities=dict(_CORE_CAPS),
         ),
         Device(
             id="light.bathroom_mirror",
-            connection_id="",
             name="Światło w łazience — lustro",
             kind="light",
-            capabilities={"turn_on", "turn_off", "get_state"},
+            capabilities=dict(_CORE_CAPS),
         ),
     ]
 
@@ -111,22 +105,22 @@ class FakeHomeAssistantClient:
 async def test_executor_rejects_capability_device_does_not_support():
     client = FakeHomeAssistantClient()
     device_registry = DeviceRegistry(_make_devices())
-    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
+    executor = HomeAssistantToolExecutor(device_registry, client)
 
     # Sensor nie deklaruje 'turn_on' — narzędzie musi odmówić bez wywoływania klienta.
-    result = await executor.execute("turn_on", {"entity_id": "con_fake:sensor.living_room_temp"})
+    result = await executor.execute("turn_on", {"entity_id": "sensor.living_room_temp"})
 
     assert result.is_error is True
     assert client.invocations == []
 
 
 @pytest.mark.anyio
-async def test_executor_strips_connection_namespace_from_entity_ref():
+async def test_executor_invokes_device_by_native_entity_id():
     client = FakeHomeAssistantClient()
     device_registry = DeviceRegistry(_make_devices())
-    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
+    executor = HomeAssistantToolExecutor(device_registry, client)
 
-    result = await executor.execute("turn_off", {"entity_id": "con_fake:light.bathroom"})
+    result = await executor.execute("turn_off", {"entity_id": "light.bathroom"})
 
     assert result.is_error is False
     assert client.invocations == [("light.bathroom", "turn_off")]
@@ -136,9 +130,9 @@ async def test_executor_strips_connection_namespace_from_entity_ref():
 async def test_executor_reports_unknown_entity():
     client = FakeHomeAssistantClient()
     device_registry = DeviceRegistry(_make_devices())
-    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
+    executor = HomeAssistantToolExecutor(device_registry, client)
 
-    result = await executor.execute("get_state", {"entity_id": "nieistniejący:ref"})
+    result = await executor.execute("get_state", {"entity_id": "nieistniejący.ref"})
 
     assert result.is_error is True
     assert client.invocations == []
@@ -148,7 +142,7 @@ async def test_executor_reports_unknown_entity():
 async def test_executor_group_aggregates_partial_failure():
     client = FakeHomeAssistantClient(failing_device_id="light.bathroom_mirror")
     device_registry = DeviceRegistry(_make_devices(), [_make_group()])
-    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
+    executor = HomeAssistantToolExecutor(device_registry, client)
 
     result = await executor.execute("turn_on", {"entity_id": "grp_bathroom"})
 
@@ -161,22 +155,133 @@ async def test_executor_group_aggregates_partial_failure():
 
 
 @pytest.mark.anyio
-async def test_executor_group_with_missing_member_never_leaks_native_ref():
+async def test_executor_group_with_missing_member_never_leaks_raw_ref():
     client = FakeHomeAssistantClient()
     missing_group = DeviceGroup(
         id="grp_bathroom",
         name="Łazienka",
-        device_ids=["con_fake:light.bathroom", "con_fake:light.nieistniejące"],
+        device_ids=["light.bathroom", "light.nieistniejące"],
     )
     device_registry = DeviceRegistry(_make_devices(), [missing_group])
-    executor = HomeAssistantToolExecutor(device_registry, {"con_fake": client})
+    executor = HomeAssistantToolExecutor(device_registry, client)
 
     result = await executor.execute("turn_on", {"entity_id": "grp_bathroom"})
 
-    # Raport o brakującym członku grupy nigdy nie ujawnia surowego, wewnętrznego
-    # namespaced ref rozszerzenia (format 'connection_id:native_id') — nawet ścieżką błędu.
-    assert "con_fake:light.nieistniejące" not in result.content
+    # Raport o brakującym członku grupy nigdy nie ujawnia surowego ref-a
+    # brakującego urządzenia — nawet ścieżką błędu.
+    assert "light.nieistniejące" not in result.content
     assert "nieznane urządzenie" in result.content
+
+
+# --------------------------------------------------------------------------
+# Dekoder capabilities domeny 'light' i walidacja opcjonalnych pól 'turn_on'
+# w executorze (jasność/kolor/efekt to parametry turn_on, nie osobne narzędzia
+# — light/turn_on w HA przyjmuje je wszystkie w jednym wywołaniu).
+# --------------------------------------------------------------------------
+
+
+def test_decode_light_infers_brightness_and_color_from_color_modes():
+    from server.extensions.home_assistant.client import _decode_light
+
+    # supported_features=44 kodowałby EFFECT, ale bez effect_list cecha nie powstaje.
+    caps = _decode_light({"supported_color_modes": ["color_temp", "hs", "rgb"], "supported_features": 44})
+
+    assert set(caps) == {"turn_on", "turn_off", "get_state"}
+    assert caps["turn_on"] == frozenset({"brightness", "color_temp", "hs", "rgb"})
+
+
+def test_decode_light_adds_effect_feature_when_effect_list_present():
+    from server.extensions.home_assistant.client import _decode_light
+
+    caps = _decode_light({"supported_color_modes": ["onoff"], "supported_features": 4, "effect_list": ["rainbow"]})
+
+    assert "effect" in caps["turn_on"]
+
+
+def test_decode_light_ignores_legacy_supported_features_bits():
+    from server.extensions.home_assistant.client import _decode_light
+
+    # Bitmaska sugeruje legacy brightness/color, ale supported_color_modes mówi 'onoff' —
+    # dekoder ma ufać wyłącznie color_modes.
+    caps = _decode_light({"supported_color_modes": ["onoff"], "supported_features": 63})
+
+    assert caps["turn_on"] == frozenset()
+
+
+@pytest.mark.anyio
+async def test_executor_turn_on_rejects_both_color_params_given():
+    client = FakeHomeAssistantClient()
+    device = Device(
+        id="light.rgb",
+        name="Lampa RGB",
+        kind="light",
+        capabilities={**_CORE_CAPS, "turn_on": frozenset({"rgb", "color_temp"})},
+    )
+    device_registry = DeviceRegistry([device])
+    executor = HomeAssistantToolExecutor(device_registry, client)
+
+    result = await executor.execute(
+        "turn_on", {"entity_id": "light.rgb", "color_temp_kelvin": 4000, "rgb_color": [255, 0, 0]}
+    )
+
+    assert result.is_error is True
+    assert client.invocations == []
+
+
+@pytest.mark.anyio
+async def test_executor_turn_on_rejects_unsupported_feature():
+    client = FakeHomeAssistantClient()
+    device = Device(
+        id="light.temp_only",
+        name="Lampa temp-only",
+        kind="light",
+        capabilities={**_CORE_CAPS, "turn_on": frozenset({"color_temp"})},
+    )
+    device_registry = DeviceRegistry([device])
+    executor = HomeAssistantToolExecutor(device_registry, client)
+
+    result = await executor.execute("turn_on", {"entity_id": "light.temp_only", "rgb_color": [255, 0, 0]})
+
+    assert result.is_error is True
+    assert client.invocations == []
+
+
+@pytest.mark.anyio
+async def test_executor_turn_on_accepts_plain_call_without_light_params():
+    client = FakeHomeAssistantClient()
+    device = Device(
+        id="light.rgb",
+        name="Lampa RGB",
+        kind="light",
+        capabilities={**_CORE_CAPS, "turn_on": frozenset({"rgb", "color_temp"})},
+    )
+    device_registry = DeviceRegistry([device])
+    executor = HomeAssistantToolExecutor(device_registry, client)
+
+    result = await executor.execute("turn_on", {"entity_id": "light.rgb"})
+
+    assert result.is_error is False
+    assert client.invocations == [("light.rgb", "turn_on")]
+
+
+@pytest.mark.anyio
+async def test_executor_turn_on_accepts_supported_combination_of_light_params():
+    client = FakeHomeAssistantClient()
+    device = Device(
+        id="light.rgb",
+        name="Lampa RGB",
+        kind="light",
+        capabilities={**_CORE_CAPS, "turn_on": frozenset({"brightness", "rgb"})},
+    )
+    device_registry = DeviceRegistry([device])
+    executor = HomeAssistantToolExecutor(device_registry, client)
+
+    result = await executor.execute(
+        "turn_on", {"entity_id": "light.rgb", "brightness_pct": 50, "rgb_color": [255, 0, 0]}
+    )
+
+    assert result.is_error is False
+    assert client.invocations == [("light.rgb", "turn_on")]
 
 
 # --------------------------------------------------------------------------
@@ -464,26 +569,37 @@ class ToolCallingMockProvider(BaseLLMProvider):
         return True
 
 
-async def _setup_home_assistant_extension(tmp_dir: str) -> tuple[HomeAssistantExtension, list[FakeHomeAssistantClient], str]:
-    """Wstrzykuje `FakeHomeAssistantClient` przez `client_factory` i tworzy jedno włączone połączenie."""
+async def _setup_home_assistant_extension(
+    tmp_dir: str, declared: dict[str, str | None] | None = None
+) -> tuple[HomeAssistantExtension, list[FakeHomeAssistantClient]]:
+    """Wstrzykuje `FakeHomeAssistantClient` przez `client_factory`, konfiguruje singleton i deklaruje urządzenia.
+
+    :param declared: Mapa entity_id -> display_name do zadeklarowania. `None`
+        (domyślnie) deklaruje wszystkie urządzenia z `_make_raw_devices()` bez
+        nadpisania nazwy — wygodny domyślny stan dla testów, którym opt-in nie
+        jest przedmiotem badania.
+    """
     created: list[FakeHomeAssistantClient] = []
 
-    def factory(config: HAConnectionConfig) -> FakeHomeAssistantClient:
+    def factory(config: HomeAssistantConfig) -> FakeHomeAssistantClient:
         client = FakeHomeAssistantClient(devices=_make_raw_devices())
         created.append(client)
         return client
 
     extension = HomeAssistantExtension(data_dir=Path(tmp_dir) / "home_assistant", client_factory=factory)
-    connection_cfg = await extension.create_connection(
-        name="Fake HA", base_url="http://fake", access_token="secret", enabled=True, custom_id="con_fake"
-    )
-    return extension, created, connection_cfg.id
+    await extension.save_config(base_url="http://fake", access_token="secret")
+
+    to_declare = declared if declared is not None else {d.id: None for d in _make_raw_devices()}
+    for entity_id, display_name in to_declare.items():
+        await extension.add_declared_device(entity_id=entity_id, display_name=display_name)
+
+    return extension, created
 
 
 @pytest.mark.anyio
 async def test_agent_engine_react_loop_turns_on_single_device_via_opaque_entity_id():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        extension, created_clients, connection_id = await _setup_home_assistant_extension(tmp_dir)
+        extension, created_clients = await _setup_home_assistant_extension(tmp_dir)
         gateway = Gateway(plugins=[extension])
 
         # Odkrywamy opaque ID encji "Światło w łazience" tak, jak zrobiłby to agent
@@ -513,10 +629,10 @@ async def test_agent_engine_react_loop_turns_on_single_device_via_opaque_entity_
 @pytest.mark.anyio
 async def test_agent_engine_react_loop_turns_on_group_with_partial_success_report():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        extension, created_clients, connection_id = await _setup_home_assistant_extension(tmp_dir)
+        extension, created_clients = await _setup_home_assistant_extension(tmp_dir)
         await extension.create_group(
             name="Łazienka",
-            device_ids=[f"{connection_id}:light.bathroom", f"{connection_id}:light.bathroom_mirror"],
+            device_ids=["light.bathroom", "light.bathroom_mirror"],
             custom_id="grp_bathroom",
         )
         gateway = Gateway(plugins=[extension])
@@ -536,18 +652,14 @@ async def test_agent_engine_react_loop_turns_on_group_with_partial_success_repor
 
 
 # --------------------------------------------------------------------------
-# Deklaracje widoczności katalogu — filtrowanie i nadpisywanie nazwy w build()
+# Katalog opt-in — tylko zadeklarowane urządzenia widoczne w build()
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
-async def test_build_excludes_device_disabled_by_declaration():
+async def test_build_only_includes_declared_devices():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        extension, _, connection_id = await _setup_home_assistant_extension(tmp_dir)
-        await extension.save_declaration(
-            connection_id,
-            DeviceDeclarationFileContent(entries={"light.bathroom_mirror": DeviceDeclarationEntry(enabled=False)}),
-        )
+        extension, _ = await _setup_home_assistant_extension(tmp_dir, declared={"light.bathroom": None})
 
         contribution = await extension.build(facts=[])
 
@@ -559,10 +671,8 @@ async def test_build_excludes_device_disabled_by_declaration():
 @pytest.mark.anyio
 async def test_build_applies_display_name_override_from_declaration():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        extension, _, connection_id = await _setup_home_assistant_extension(tmp_dir)
-        await extension.save_declaration(
-            connection_id,
-            DeviceDeclarationFileContent(entries={"light.bathroom": DeviceDeclarationEntry(display_name="Lampka łazienkowa")}),
+        extension, _ = await _setup_home_assistant_extension(
+            tmp_dir, declared={"light.bathroom": "Lampka łazienkowa"}
         )
 
         contribution = await extension.build(facts=[])
@@ -573,14 +683,13 @@ async def test_build_applies_display_name_override_from_declaration():
 
 
 @pytest.mark.anyio
-async def test_build_with_no_declaration_file_shows_everything():
+async def test_build_with_no_declared_devices_shows_nothing():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        extension, _, _connection_id = await _setup_home_assistant_extension(tmp_dir)
+        extension, _ = await _setup_home_assistant_extension(tmp_dir, declared={})
 
         contribution = await extension.build(facts=[])
 
-        names = {e.name for e in contribution.entities}
-        assert names == {"Światło w łazience", "Światło w łazience — lustro"}
+        assert contribution.entities == []
 
 
 # --------------------------------------------------------------------------
@@ -591,7 +700,7 @@ async def test_build_with_no_declaration_file_shows_everything():
 @pytest.mark.anyio
 async def test_home_assistant_build_returns_empty_contribution_when_disabled():
     with tempfile.TemporaryDirectory() as tmp_dir:
-        extension, _, _connection_id = await _setup_home_assistant_extension(tmp_dir)
+        extension, _ = await _setup_home_assistant_extension(tmp_dir)
         await extension.set_enabled(False)
 
         contribution = await extension.build(facts=[])
