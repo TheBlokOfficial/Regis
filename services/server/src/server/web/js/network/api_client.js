@@ -569,25 +569,25 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // METODY SILNIKA ŚWIATA — SATELITY
+  // METODY SILNIKA ŚWIATA — NADAWCY (sender_id -> pokój)
   // ==========================================================================
 
-  async getSatellites() {
+  async getSenders() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/world/satellites`);
+      const response = await fetch(`${this.baseUrl}/api/v1/world/senders`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
       return await response.json();
     } catch (error) {
-      console.error('[ApiClient] Błąd pobierania listy satelit:', error);
+      console.error('[ApiClient] Błąd pobierania listy nadawców:', error);
       return null;
     }
   }
 
-  async registerSatellite(data) {
+  async registerSender(data) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/world/satellites`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/senders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -598,14 +598,14 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.error('[ApiClient] Błąd rejestracji satelity:', error);
+      console.error('[ApiClient] Błąd rejestracji nadawcy:', error);
       throw error;
     }
   }
 
-  async deleteSatellite(senderId) {
+  async deleteSender(senderId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/world/satellites/${encodeURIComponent(senderId)}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/senders/${encodeURIComponent(senderId)}`, {
         method: 'DELETE',
       });
       if (!response.ok) {

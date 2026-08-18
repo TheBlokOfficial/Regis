@@ -8,6 +8,10 @@ from server.agent.context import ContextBuilder
 from server.agent.prompts import PromptStore
 from server.config import load_settings
 from server.network.gateway import create_gateway_app
+from server.voice.gateway import create_voice_router
+from server.voice.stt import MockSTTProvider
+from server.voice.tts import MockTTSProvider
+from server.voice.wakeword import ThresholdEnergyWakeWordDetector
 from server.world import WorldEngine
 
 # 1. Konfiguracja jednolitych, minimalistycznych logów
@@ -47,7 +51,19 @@ async def main() -> None:
     )
     await agent_engine.initialize()
 
-    # 6. Inicjalizacja bramki sieciowej z rejestrem backendów, magazynem promptów i tą samą
+    # 6. Inicjalizacja gatewaya głosowego (server.voice) — rozłącznego z WorldEngine,
+    #    zna wyłącznie AgentEngine. STT/TTS to na razie dev-providerzy (mock) — konkretny
+    #    dostawca chmurowy jeszcze niewybrany (patrz docs/manifest.md, sekcja "server/voice/").
+    #    ThresholdEnergyWakeWordDetector to świadomy placeholder do czasu podłączenia
+    #    realnego modelu .onnx.
+    voice_router = create_voice_router(
+        agent_engine=agent_engine,
+        wakeword_detector_factory=ThresholdEnergyWakeWordDetector,
+        stt_provider=MockSTTProvider(),
+        tts_provider=MockTTSProvider(),
+    )
+
+    # 7. Inicjalizacja bramki sieciowej z rejestrem backendów, magazynem promptów i tą samą
     #    instancją WorldEngine — konfiguracja przez REST jest od razu widoczna dla agenta,
     #    bo `WorldEngine.build()` czyta stan na bieżąco, co turę.
     app = create_gateway_app(
@@ -55,9 +71,10 @@ async def main() -> None:
         backend_registry=backend_registry,
         prompt_store=prompt_store,
         world_engine=world_engine,
+        voice_router=voice_router,
     )
 
-    # 7. Start serwera uvicorn
+    # 8. Start serwera uvicorn
     config = uvicorn.Config(
         app,
         host=settings.host,

@@ -11,7 +11,7 @@ from server.agent.context_provider import NullWorldInterface
 from server.agent.memory import MemoryManager
 from server.world.client import HomeAssistantClient
 from server.world.engine import WorldEngine
-from server.world.models import Device, DeviceGroup, HomeAssistantConfig, SatelliteRegistration
+from server.world.models import Device, DeviceGroup, HomeAssistantConfig, SenderProfile
 from server.world.registry import DeviceRegistry
 from server.world.tools import HomeAssistantToolExecutor
 
@@ -110,7 +110,7 @@ def test_decode_light_infers_brightness_and_color_from_color_modes():
 
 
 # --------------------------------------------------------------------------
-# WorldEngine.build() — satelita/kanał niezależny od dostępności Home Assistant
+# WorldEngine.build() — pokój/voice_mode niezależne od dostępności Home Assistant
 # --------------------------------------------------------------------------
 
 
@@ -137,35 +137,45 @@ async def test_build_without_config_still_returns_time_tool_and_no_error():
 
         context_build = await engine.build()
 
-        assert [t.name for t in context_build.tool_definitions] == ["get_time"]
+        assert [t.name for t in context_build.tool_definitions] == ["get_time", "speak_in_room"]
         result = await context_build.dispatch("get_time", {})
         assert result.is_error is False
 
 
 @pytest.mark.anyio
-async def test_build_channel_and_room_framing_survives_missing_ha_config():
+async def test_build_voice_mode_and_room_framing_survives_missing_ha_config():
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
-        await engine.register_satellite(
-            "sat_1", SatelliteRegistration(room_key="salon", room_label="Salon", channel="voice")
-        )
+        await engine.register_sender("sat_1", SenderProfile(room_key="salon", room_label="Salon"))
 
-        context_build = await engine.build(sender_id="sat_1")
+        context_build = await engine.build(sender_id="sat_1", voice_mode=True)
 
         assert "głos" in context_build.dynamic_context
         assert "Salon" in context_build.dynamic_context
-        # Brak konfiguracji HA nie dodaje narzędzi domowych, ale nie psuje frazowania kanału.
-        assert [t.name for t in context_build.tool_definitions] == ["get_time"]
+        # Brak konfiguracji HA nie dodaje narzędzi domowych, ale nie psuje frazowania.
+        assert [t.name for t in context_build.tool_definitions] == ["get_time", "speak_in_room"]
 
 
 @pytest.mark.anyio
-async def test_build_unregistered_sender_id_has_no_channel_framing():
+async def test_build_unregistered_sender_id_has_no_room_framing():
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
 
         context_build = await engine.build(sender_id="unknown_sender")
 
         assert "Nadawca" not in context_build.dynamic_context
+
+
+@pytest.mark.anyio
+async def test_build_voice_mode_is_independent_of_room_registration():
+    """`voice_mode` to parametr wywołania dostarczany przez gateway (server.voice), nie
+    trwały stan World — musi zadziałać nawet bez zarejestrowanego przypisania do pokoju."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+
+        context_build = await engine.build(sender_id="unknown_sender", voice_mode=True)
+
+        assert "głos" in context_build.dynamic_context
 
 
 @pytest.mark.anyio
@@ -176,9 +186,7 @@ async def test_build_segregates_devices_by_room_and_marks_current_room():
             Device(id="light.kuchnia", name="Lampa2", kind="light", capabilities=dict(_CORE_CAPS), area="kuchnia"),
         ]
         engine, _ = await _engine_with_ha(tmp_dir, devices)
-        await engine.register_satellite(
-            "sat_1", SatelliteRegistration(room_key="salon", room_label="Salon", channel="text")
-        )
+        await engine.register_sender("sat_1", SenderProfile(room_key="salon", room_label="Salon"))
 
         context_build = await engine.build(sender_id="sat_1")
 
@@ -196,15 +204,57 @@ async def test_build_dispatch_can_act_on_device_outside_current_room():
             Device(id="light.kuchnia", name="Lampa2", kind="light", capabilities=dict(_CORE_CAPS), area="kuchnia"),
         ]
         engine, created = await _engine_with_ha(tmp_dir, devices)
-        await engine.register_satellite(
-            "sat_1", SatelliteRegistration(room_key="salon", room_label="Salon", channel="text")
-        )
+        await engine.register_sender("sat_1", SenderProfile(room_key="salon", room_label="Salon"))
 
         context_build = await engine.build(sender_id="sat_1")
         result = await context_build.dispatch("turn_on", {"entity_id": "light.kuchnia"})
 
         assert result.is_error is False
         assert created[-1].invocations == [("light.kuchnia", "turn_on")]
+
+
+# --------------------------------------------------------------------------
+# speak_in_room — rezolucja pokój -> sender_id, opaque redirect_sender_id
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_speak_in_room_resolves_room_to_sender_id():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+        await engine.register_sender("snd_kuchnia", SenderProfile(room_key="kuchnia", room_label="Kuchnia"))
+
+        context_build = await engine.build()
+        result = await context_build.dispatch("speak_in_room", {"room": "Kuchnia"})
+
+        assert result.is_error is False
+        assert result.redirect_sender_id == "snd_kuchnia"
+
+
+@pytest.mark.anyio
+async def test_speak_in_room_unknown_room_is_error_without_redirect():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+
+        context_build = await engine.build()
+        result = await context_build.dispatch("speak_in_room", {"room": "Piwnica"})
+
+        assert result.is_error is True
+        assert result.redirect_sender_id is None
+
+
+@pytest.mark.anyio
+async def test_speak_in_room_ambiguous_room_is_error():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+        await engine.register_sender("snd_a", SenderProfile(room_key="salon", room_label="Salon"))
+        await engine.register_sender("snd_b", SenderProfile(room_key="salon", room_label="Salon"))
+
+        context_build = await engine.build()
+        result = await context_build.dispatch("speak_in_room", {"room": "salon"})
+
+        assert result.is_error is True
+        assert result.redirect_sender_id is None
 
 
 # --------------------------------------------------------------------------

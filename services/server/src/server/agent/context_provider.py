@@ -28,11 +28,16 @@ class WorldInterface(Protocol):
     """Jedyny byt, z którym rozmawia kernel — analogicznie do `BaseLLMProvider`
     względem konkretnych dostawców: kernel zna kształt, nigdy implementację."""
 
-    async def build(self, sender_id: str | None = None) -> ContextBuild:
+    async def build(self, sender_id: str | None = None, voice_mode: bool = False) -> ContextBuild:
         """Buduje pełny wkład na czas jednej interakcji agenta.
 
         :param sender_id: Opaque identyfikator nadawcy (np. satelity) —
             nieinterpretowany przez kernel, przekazywany dalej bez zmian.
+        :param voice_mode: Mechaniczna flaga wywołania (dostarczana przez
+            gateway, który jako jedyny wie to z całą pewnością — np.
+            `server.voice`) — nieinterpretowana przez kernel, tylko przekazywana
+            dalej. Treść ewentualnego frazowania głosowego to wyłączna
+            odpowiedzialność implementacji `WorldInterface`.
         """
         ...
 
@@ -43,8 +48,8 @@ class NullWorldInterface:
     kernela: `agent/`+`memory/`+`context/`+`backend/`+`prompts/` da się wyjąć do
     innej aplikacji bez ciągnięcia za sobą `server.world`."""
 
-    async def build(self, sender_id: str | None = None) -> ContextBuild:
-        del sender_id
+    async def build(self, sender_id: str | None = None, voice_mode: bool = False) -> ContextBuild:
+        del sender_id, voice_mode
 
         async def _dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
             del arguments

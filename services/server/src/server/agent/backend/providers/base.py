@@ -37,6 +37,13 @@ class ToolResult:
 
     content: str
     is_error: bool = False
+    redirect_sender_id: str | None = None
+    """Opaque cel przekierowania dalszej dostawy odpowiedzi (np. `WorldEngine.speak_in_room`).
+
+    Kernel nie interpretuje znaczenia tego pola — traktuje je wyłącznie
+    mechanicznie, jako nowy tag publikacji zdarzeń `EventBus` dla reszty tej
+    tury (`agent/engine.py`, `_generate_in_background`). Semantyka ("dlaczego
+    przekierowano") to wyłączna wiedza silnika świata, który je ustawił."""
 
 
 @dataclass

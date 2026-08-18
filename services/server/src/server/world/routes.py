@@ -16,14 +16,14 @@ from server.world.dto import (
     DeclaredDeviceDTO,
     HAGroupDTO,
     HomeAssistantConfigDTO,
-    RegisterSatelliteRequest,
-    SatelliteDTO,
+    RegisterSenderRequest,
+    SenderProfileDTO,
     UpdateDeclaredDeviceRequest,
     UpdateHAGroupRequest,
     UpdateHomeAssistantConfigRequest,
 )
 from server.world.engine import WorldEngine
-from server.world.models import DeclaredDeviceEntry, Device, HomeAssistantConfig, SatelliteRegistration
+from server.world.models import DeclaredDeviceEntry, Device, HomeAssistantConfig, SenderProfile
 
 
 def _mask_token(token: str) -> str:
@@ -48,14 +48,8 @@ def _to_declared_dto(entity_id: str, entry: DeclaredDeviceEntry, resolved: Devic
     )
 
 
-def _to_satellite_dto(sender_id: str, reg: SatelliteRegistration) -> SatelliteDTO:
-    return SatelliteDTO(
-        sender_id=sender_id,
-        room_key=reg.room_key,
-        room_label=reg.room_label,
-        channel=reg.channel,
-        display_name=reg.display_name,
-    )
+def _to_sender_dto(sender_id: str, profile: SenderProfile) -> SenderProfileDTO:
+    return SenderProfileDTO(sender_id=sender_id, room_key=profile.room_key, room_label=profile.room_label)
 
 
 def create_world_router(engine: WorldEngine) -> APIRouter:
@@ -153,27 +147,25 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         return {"success": True, "deleted_id": group_id}
 
     # --------------------------------------------------------------------------
-    # Satelity — sender_id -> pokój + kanał komunikacji
+    # Nadawcy — sender_id -> pokój (zero wiedzy o kanale/urządzeniu, patrz world/models.py)
     # --------------------------------------------------------------------------
 
-    @router.get("/satellites", response_model=list[SatelliteDTO], tags=["World"])
-    async def get_satellites() -> list[SatelliteDTO]:
-        satellites = await engine.get_satellites()
-        return [_to_satellite_dto(sender_id, reg) for sender_id, reg in satellites.entries.items()]
+    @router.get("/senders", response_model=list[SenderProfileDTO], tags=["World"])
+    async def get_senders() -> list[SenderProfileDTO]:
+        senders = await engine.get_senders()
+        return [_to_sender_dto(sender_id, profile) for sender_id, profile in senders.entries.items()]
 
-    @router.post("/satellites", response_model=SatelliteDTO, status_code=status.HTTP_201_CREATED, tags=["World"])
-    async def register_satellite(req: RegisterSatelliteRequest) -> SatelliteDTO:
-        registration = SatelliteRegistration(
-            room_key=req.room_key, room_label=req.room_label, channel=req.channel, display_name=req.display_name
-        )
-        await engine.register_satellite(req.sender_id, registration)
-        return _to_satellite_dto(req.sender_id, registration)
+    @router.post("/senders", response_model=SenderProfileDTO, status_code=status.HTTP_201_CREATED, tags=["World"])
+    async def register_sender(req: RegisterSenderRequest) -> SenderProfileDTO:
+        profile = SenderProfile(room_key=req.room_key, room_label=req.room_label)
+        await engine.register_sender(req.sender_id, profile)
+        return _to_sender_dto(req.sender_id, profile)
 
-    @router.delete("/satellites/{sender_id}", tags=["World"])
-    async def delete_satellite(sender_id: str):
-        deleted = await engine.remove_satellite(sender_id)
+    @router.delete("/senders/{sender_id}", tags=["World"])
+    async def delete_sender(sender_id: str):
+        deleted = await engine.remove_sender(sender_id)
         if not deleted:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Satelita '{sender_id}' nie jest zarejestrowana.")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Nadawca '{sender_id}' nie jest zarejestrowany.")
         return {"success": True, "deleted_id": sender_id}
 
     return router

@@ -39,7 +39,19 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 ### Parametry `WorldEngine` (`services/server/data/world/config.json`, zarządzane przez `WorldEngine`):
 - **`base_url`** / **`access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token) — pola jawne, nie schema-driven (Home Assistant jest jedynym, znanym z góry backendem silnika). Home Assistant jest traktowany jako **jeden, globalny zasób (singleton)** — jeden `base_url`/`access_token`, bez wielości nazwanych połączeń. Puste pola oznaczają brak konfiguracji — `WorldEngine` degraduje się łagodnie (encje/narzędzia HA po prostu nie są dostarczane w danej turze), bez osobnego przełącznika `enabled`.
 
-Grupy urządzeń przechowywane są w `services/server/data/world/groups/*.json`. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Rejestr satelit (`sender_id -> pokój/kanał komunikacji`) — w `satellites.json`.
+Grupy urządzeń przechowywane są w `services/server/data/world/groups/*.json`. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Przypisania nadawców do pokoi (`sender_id -> pokój`, **bez** kanału komunikacji ani tożsamości urządzenia — to wiedza `server/voice/`, nie World) — w `senders.json`.
+
+### `server/voice/` — pipeline głosowy satelit
+
+Rozłączny z `WorldEngine` (patrz sekcja 3) — zna wyłącznie opaque `sender_id`,
+nigdy configu World. Dziś skonfigurowany w `main.py` z **dev-providerami STT/TTS
+(`MockSTTProvider`/`MockTTSProvider`)** i **placeholderowym detektorem wake-word
+(`ThresholdEnergyWakeWordDetector`)** — żaden z nich nie woła prawdziwej chmury
+ani prawdziwego modelu `.onnx`; wystarczają do przetestowania całego protokołu
+WS end-to-end (patrz `services/server/scripts/voice_satellite_sim.py`).
+Podłączenie realnego modelu wake-word i dostawcy STT/TTS w chmurze to kolejny,
+świadomie odłożony krok (brak wybranego dostawcy/pliku modelu na dzień pisania
+tego dokumentu).
 
 ### Prompty systemowe (`services/server/data/prompts/*.json`, zarządzane przez `PromptStore`):
 - Treść instrukcji systemowej faktycznie wysyłanej do LLM. Aktywny prompt wskazuje `services/server/data/active_prompt.json`.
@@ -60,7 +72,8 @@ Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](mani
 | Warstwa | Katalog | Odpowiedzialność | Co wie o warstwie niżej |
 | :--- | :--- | :--- | :--- |
 | **Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct | Tylko protokół `WorldInterface` (`agent/context_provider.py`) |
-| **WorldEngine** | `server/world/` | Jedyny, konkretny silnik świata (dziś: Home Assistant, satelity, `get_time`) | Nic — sam orkiestruje swoje backendy wewnętrznie (dziś: `HomeAssistantClient`) |
+| **WorldEngine** | `server/world/` | Jedyny, konkretny silnik świata (dziś: Home Assistant, przypisania nadawców do pokoi, `get_time`, `speak_in_room`) | Nic — sam orkiestruje swoje backendy wewnętrznie (dziś: `HomeAssistantClient`) |
+| **Voice** | `server/voice/` | WS gateway satelit, wake-word/VAD-signaling, STT/TTS | Wyłącznie publiczny kontrakt `AgentEngine` (`start_interaction()` + `EventBus`) — **nigdy World** |
 
 **Zasada nadrzędna**: kernel nie zna z góry implementacji `WorldEngine` — ten
 jest wstrzykiwany jawnie w `main.py` (`AgentEngine(world=world_engine)`),
@@ -70,6 +83,12 @@ używa `NullWorldInterface` — zwykły chat bez narzędzi.
 Praktycznie:
 - **Rozszerzanie możliwości agenta**: dziś to zwykła zmiana wewnątrz `server/world/` (nowa metoda, nowe narzędzie w `WorldEngine.build()`) — nie osobny pakiet z protokołem. Generyczna wielorozszerzeniowość została świadomie porzucona (`docs/manifest.md`, sekcja 5, "Świadome decyzje projektowe") — nie odtwarzaj jej bez konkretnego, realnego drugiego silnika świata w ręku.
 - Agent adresuje urządzenia wprost przez natywny `entity_id` Home Assistant — nie ma już warstwy opaque ID (uzasadnienie: `docs/manifest.md`, sekcja 5).
+- `server/voice/` i `server/world/` **nigdy się nie importują nawzajem** — jedyny wspólny mianownik to opaque `sender_id` przepływający przez kernel. `voice/` nie zna configu World (pokój), World nie zna configu voice (STT/TTS, kanał). Weryfikacja:
+  ```bash
+  grep -rn "from server.world" services/server/src/server/voice/
+  grep -rn "from server.voice" services/server/src/server/world/
+  ```
+  (poprawny wynik obu: brak trafień)
 
 ---
 
@@ -118,12 +137,22 @@ python -m uv run --package server python -m server.main
 | | `PUT/DELETE /api/v1/world/declared/{entity_id}` | Zmiana nazwy i usunięcie z zadeklarowanej listy |
 | | `GET/POST /api/v1/world/groups` | Lista i tworzenie grup urządzeń |
 | | `PUT/DELETE /api/v1/world/groups/{id}` | Edycja i usunięcie grupy |
-| **World (satelity)** | `GET/POST /api/v1/world/satellites` | Lista i rejestracja satelity (`sender_id -> pokój/kanał`) |
-| | `DELETE /api/v1/world/satellites/{sender_id}` | Usunięcie rejestracji satelity |
+| **World (nadawcy)** | `GET/POST /api/v1/world/senders` | Lista i rejestracja przypisania nadawcy do pokoju (`sender_id -> pokój`) |
+| | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
+| **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `server/voice/protocol.py` |
 
-> **Planowane, jeszcze nieistniejące**: bramka WebSocket (`ws://127.0.0.1:8000/ws`)
-> dla komunikacji rozproszonej. W kodzie nie ma dziś żadnego endpointu WS —
-> `gateway.py` rejestruje wyłącznie router REST/SSE i montuje SPA.
+> **Świadome założenie**: `WS /ws/voice/{sender_id}` nie ma żadnego uwierzytelniania
+> — spójne z resztą systemu (opaque `sender_id` bez auth, model zaufanej sieci
+> lokalnej). Do rewizji dopiero przy realnej potrzebie (np. wystawienie serwera
+> poza LAN).
+
+### Test manualny pipeline'u głosowego (bez sprzętu):
+Przy uruchomionym serwerze, symulator satelity przechodzi cały cykl protokołu
+(handshake → wake-word → nagrywanie → `utterance_end` → odbiór TTS) bez
+żadnego mikrofonu/głośnika/modelu wake-word:
+```bash
+python services/server/scripts/voice_satellite_sim.py [sender_id]
+```
 
 ### Uruchomienie testów:
 Przed zgłoszeniem zmian obowiązkowo uruchom pełny zestaw testów (`services/server/tests/`):

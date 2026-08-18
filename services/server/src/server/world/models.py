@@ -1,11 +1,15 @@
 """Model domenowy i konfiguracyjny silnika świata.
 
-`Device`/`DeviceGroup`/`SatelliteRegistration` są pojęciami należącymi
-wyłącznie do tego silnika, nie do kernela.
+`Device`/`DeviceGroup`/`SenderProfile` są pojęciami należącymi wyłącznie do
+tego silnika, nie do kernela. World nie ma pojęcia "satelity" — zna wyłącznie
+opaque `sender_id` i mapuje go na swój wewnętrzny pokój (worek na urządzenia,
+`Device.area`). Kanał komunikacji (głos/tekst) i tożsamość fizycznego
+urządzenia (satelita ESP32, Web UI, ...) to wiedza `server.voice`, nigdy World
+— World dostaje tę informację jako efemeryczny parametr wywołania
+(`WorldEngine.build(voice_mode=...)`), nigdy jako trwały stan.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -79,21 +83,21 @@ class DeclaredDevicesFileContent(BaseModel):
     entries: dict[str, DeclaredDeviceEntry] = Field(default_factory=dict)
 
 
-class SatelliteRegistration(BaseModel):
-    """Rejestracja jednego nadawcy (satelity/klienta) — kanał komunikacji i lokalizacja.
+class SenderProfile(BaseModel):
+    """Przypisanie jednego opaque `sender_id` do pokoju — jedyna wiedza World o nadawcy.
 
     `room_key` dopasowywany jest do natywnego `Device.area` (area_id Home
     Assistant) — zgodność nazw jest odpowiedzialnością administratora
-    rejestrującego satelitę, nie wymuszana strukturalnie.
+    rejestrującego nadawcę, nie wymuszana strukturalnie (ta sama zasada co
+    reszta konfiguracji World). Zero wiedzy o kanale komunikacji ani o typie
+    fizycznego urządzenia — to kompetencja `server.voice`.
     """
 
     room_key: str | None = Field(default=None, description="Dopasowywany do Device.area (area_id Home Assistant)")
     room_label: str | None = Field(default=None, description="Etykieta lokalizacji do wstawienia w prozę promptu")
-    channel: Literal["voice", "text"] = Field(default="text", description="Kanał komunikacji nadawcy")
-    display_name: str | None = Field(default=None, description="Przyjazna nazwa satelity, wyłącznie do UI")
 
 
-class SatelliteRegistrationsFileContent(BaseModel):
-    """Zawartość pliku rejestracji satelit. Klucz `entries` to opaque `sender_id`."""
+class SenderProfilesFileContent(BaseModel):
+    """Zawartość pliku przypisań nadawców do pokoi. Klucz `entries` to opaque `sender_id`."""
 
-    entries: dict[str, SatelliteRegistration] = Field(default_factory=dict)
+    entries: dict[str, SenderProfile] = Field(default_factory=dict)

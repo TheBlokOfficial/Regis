@@ -1,7 +1,5 @@
 """DTO prywatne dla REST API konfiguracji silnika świata."""
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 
@@ -73,21 +71,17 @@ class UpdateDeclaredDeviceRequest(BaseModel):
     display_name: str | None = Field(default=None)
 
 
-class SatelliteDTO(BaseModel):
-    """Rejestracja satelity dla API."""
+class SenderProfileDTO(BaseModel):
+    """Przypisanie nadawcy do pokoju dla API."""
 
     sender_id: str = Field(..., description="Opaque identyfikator nadawcy")
     room_key: str | None = Field(default=None)
     room_label: str | None = Field(default=None)
-    channel: Literal["voice", "text"] = Field(default="text")
-    display_name: str | None = Field(default=None)
 
 
-class RegisterSatelliteRequest(BaseModel):
-    """Żądanie dla POST /satellites."""
+class RegisterSenderRequest(BaseModel):
+    """Żądanie dla POST /senders."""
 
     sender_id: str = Field(...)
     room_key: str | None = Field(default=None)
     room_label: str | None = Field(default=None)
-    channel: Literal["voice", "text"] = Field(default="text")
-    display_name: str | None = Field(default=None)

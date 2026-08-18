@@ -30,8 +30,8 @@ from server.world.models import (
     DeviceGroupFileContent,
     DeviceGroupInstanceConfig,
     HomeAssistantConfig,
-    SatelliteRegistration,
-    SatelliteRegistrationsFileContent,
+    SenderProfile,
+    SenderProfilesFileContent,
 )
 from server.world.registry import DeviceRegistry
 from server.world.tools import HomeAssistantToolExecutor, TOOL_NAMES, build_tool_definitions
@@ -41,11 +41,12 @@ logger = get_logger("regis.world")
 ClientFactoryFn = Callable[[HomeAssistantConfig], HomeAssistantClient]
 
 _GET_TIME_TOOL = "get_time"
+_SPEAK_IN_ROOM_TOOL = "speak_in_room"
 
 
 class WorldEngine:
     """Jedyny silnik świata — konfiguracja Home Assistant (singleton), zadeklarowane
-    urządzenia, grupy i rejestr satelit. Implementuje `WorldInterface`."""
+    urządzenia, grupy i przypisania nadawców do pokoi. Implementuje `WorldInterface`."""
 
     def __init__(self, data_dir: Optional[Path] = None, client_factory: Optional[ClientFactoryFn] = None) -> None:
         service_root = get_service_root(__file__)
@@ -53,7 +54,7 @@ class WorldEngine:
         self.groups_dir = self.base_data_dir / "groups"
         self.config_path = self.base_data_dir / "config.json"
         self.declared_devices_path = self.base_data_dir / "declared_devices.json"
-        self.satellites_path = self.base_data_dir / "satellites.json"
+        self.senders_path = self.base_data_dir / "senders.json"
         self._lock = asyncio.Lock()
         self._defaults_ensured = False
         self._client_factory = client_factory
@@ -248,61 +249,78 @@ class WorldEngine:
         return sorted({d.area for d in devices if d.area})
 
     # --------------------------------------------------------------------------
-    # Rejestr satelit — sender_id -> pokój + kanał komunikacji
+    # Przypisania nadawców do pokoi — sender_id -> pokój (zero wiedzy o kanale/urządzeniu)
     # --------------------------------------------------------------------------
 
-    async def get_satellites(self) -> SatelliteRegistrationsFileContent:
-        """Wczytuje rejestr satelit. Brak pliku = pusty rejestr."""
+    async def get_senders(self) -> SenderProfilesFileContent:
+        """Wczytuje przypisania nadawców. Brak pliku = pusty rejestr."""
         await self._ensure_defaults()
-        return await asyncio.to_thread(ConfigStore(SatelliteRegistrationsFileContent, self.satellites_path).load)
+        return await asyncio.to_thread(ConfigStore(SenderProfilesFileContent, self.senders_path).load)
 
-    async def _save_satellites(self, content: SatelliteRegistrationsFileContent) -> None:
+    async def _save_senders(self, content: SenderProfilesFileContent) -> None:
         await self._ensure_defaults()
         async with self._lock:
-            await asyncio.to_thread(ConfigStore(SatelliteRegistrationsFileContent, self.satellites_path).save, content)
+            await asyncio.to_thread(ConfigStore(SenderProfilesFileContent, self.senders_path).save, content)
 
-    async def register_satellite(self, sender_id: str, registration: SatelliteRegistration) -> SatelliteRegistration:
-        """Rejestruje lub nadpisuje rejestrację satelity dla danego `sender_id`."""
-        current = await self.get_satellites()
-        current.entries[sender_id] = registration
-        await self._save_satellites(current)
-        logger.info(f"Zarejestrowano satelitę [{sender_id}].")
-        return registration
+    async def register_sender(self, sender_id: str, profile: SenderProfile) -> SenderProfile:
+        """Rejestruje lub nadpisuje przypisanie nadawcy do pokoju."""
+        current = await self.get_senders()
+        current.entries[sender_id] = profile
+        await self._save_senders(current)
+        logger.info(f"Przypisano nadawcę [{sender_id}] do pokoju.")
+        return profile
 
-    async def remove_satellite(self, sender_id: str) -> bool:
-        """Usuwa rejestrację satelity."""
-        current = await self.get_satellites()
+    async def remove_sender(self, sender_id: str) -> bool:
+        """Usuwa przypisanie nadawcy."""
+        current = await self.get_senders()
         if sender_id not in current.entries:
             return False
         del current.entries[sender_id]
-        await self._save_satellites(current)
-        logger.info(f"Usunięto rejestrację satelity [{sender_id}].")
+        await self._save_senders(current)
+        logger.info(f"Usunięto przypisanie nadawcy [{sender_id}].")
         return True
+
+    async def _find_sender_by_room(self, room: str) -> tuple[str | None, list[str]]:
+        """Odwraca `SenderProfile` po pokoju (`room_key` lub `room_label`, bez rozróżniania wielkości liter).
+
+        :return: `(sender_id, [])` przy jednoznacznym dopasowaniu, w przeciwnym razie
+            `(None, kandydaci)` — pusta lista kandydatów oznacza brak dopasowania.
+        """
+        senders = await self.get_senders()
+        needle = room.strip().lower()
+        matches = [
+            sid
+            for sid, profile in senders.entries.items()
+            if (profile.room_key and profile.room_key.lower() == needle)
+            or (profile.room_label and profile.room_label.lower() == needle)
+        ]
+        if len(matches) == 1:
+            return matches[0], []
+        return None, matches
 
     # --------------------------------------------------------------------------
     # WorldInterface — budowanie wkładu na czas jednej interakcji agenta
     # --------------------------------------------------------------------------
 
-    async def build(self, sender_id: str | None = None) -> ContextBuild:
+    async def build(self, sender_id: str | None = None, voice_mode: bool = False) -> ContextBuild:
         context_parts: list[str] = []
         now_value = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         context_parts.append(f"Aktualna data i godzina: {now_value}.")
 
-        # 1. Rejestracja satelity — niezależnie od dostępności Home Assistant.
-        registration: SatelliteRegistration | None = None
+        # 1. Przypisanie do pokoju — niezależnie od dostępności Home Assistant.
+        #    `voice_mode` to efemeryczny parametr wywołania (dostarczony przez gateway
+        #    server.voice, który jako jedyny wie to z całą pewnością) — nigdy trwały stan.
+        profile: SenderProfile | None = None
         if sender_id is not None:
-            satellites = await self.get_satellites()
-            registration = satellites.entries.get(sender_id)
-        if registration is not None:
-            if registration.channel == "voice":
-                context_parts.append(
-                    "Nadawca komunikuje się głosem — odpowiadaj krótkimi zdaniami, "
-                    "unikaj Markdown i list, dobierz treść pod syntezę mowy."
-                )
-            else:
-                context_parts.append("Nadawca komunikuje się tekstowo.")
-            if registration.room_label:
-                context_parts.append(f"Nadawca znajduje się w lokalizacji: {registration.room_label}.")
+            senders = await self.get_senders()
+            profile = senders.entries.get(sender_id)
+        if voice_mode:
+            context_parts.append(
+                "Nadawca komunikuje się głosem — odpowiadaj krótkimi zdaniami, "
+                "unikaj Markdown i list, dobierz treść pod syntezę mowy."
+            )
+        if profile is not None and profile.room_label:
+            context_parts.append(f"Nadawca znajduje się w lokalizacji: {profile.room_label}.")
 
         # 2. Home Assistant — łagodna degradacja, nie wpływa na framing z kroku 1.
         config = await self.get_config()
@@ -320,8 +338,8 @@ class WorldEngine:
                 self._render_devices_section(
                     devices,
                     groups,
-                    current_room_key=registration.room_key if registration else None,
-                    current_room_label=registration.room_label if registration else None,
+                    current_room_key=profile.room_key if profile else None,
+                    current_room_label=profile.room_label if profile else None,
                 )
             )
 
@@ -331,7 +349,25 @@ class WorldEngine:
                 name=_GET_TIME_TOOL,
                 description="Zwraca aktualną datę i godzinę.",
                 parameters={"type": "object", "properties": {}},
-            )
+            ),
+            ToolDefinition(
+                name=_SPEAK_IN_ROOM_TOOL,
+                description=(
+                    "Przełącza dalszą część TEJ odpowiedzi na odbiornik przypisany do podanego pokoju "
+                    "(np. przekierowanie mowy na inny głośnik). Użyj gdy użytkownik prosi o ogłoszenie/"
+                    "odpowiedź w innym pokoju niż ten, z którego przyszło pytanie."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "room": {
+                            "type": "string",
+                            "description": "Nazwa pokoju — ta sama etykieta co w nagłówkach listy urządzeń/lokalizacji.",
+                        }
+                    },
+                    "required": ["room"],
+                },
+            ),
         ]
         executor: HomeAssistantToolExecutor | None = None
         if devices or groups:
@@ -342,6 +378,17 @@ class WorldEngine:
         async def dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
             if name == _GET_TIME_TOOL:
                 return ToolResult(content=now_value)
+            if name == _SPEAK_IN_ROOM_TOOL:
+                room = str(arguments.get("room", ""))
+                target_sender_id, candidates = await self._find_sender_by_room(room)
+                if target_sender_id is None:
+                    if candidates:
+                        return ToolResult(
+                            is_error=True,
+                            content=f"W pokoju '{room}' jest zarejestrowanych wielu odbiorców — nie można jednoznacznie wybrać.",
+                        )
+                    return ToolResult(is_error=True, content=f"Brak zarejestrowanego odbiornika w pokoju '{room}'.")
+                return ToolResult(content=f"Przełączono dalszą odpowiedź na pokój '{room}'.", redirect_sender_id=target_sender_id)
             if executor is not None:
                 try:
                     return await executor.execute(name, arguments)
