@@ -3,14 +3,16 @@ import { getSenderId } from '../../sender_id.js';
 /**
  * Widok konfiguracji silnika świata (WorldEngine) — w pełni domenowy (nie
  * generyczny/schema-driven, w przeciwieństwie do formularzy dostawców LLM).
- * Cztery sekcje: Konfiguracja (singleton Home Assistant — jeden
- * `base_url`/`access_token`), Urządzenia (wyszukiwarka nad surowym katalogiem
- * HA + opt-in zadeklarowana lista, jedyne źródło prawdy o tym, co widzi
- * agent), Grupy (multi-select nad zadeklarowaną listą), Nadawcy (przypisanie
- * `sender_id -> pokój` — World nie wie nic o kanale komunikacji ani o typie
- * fizycznego urządzenia, to jedynie lokalizacja; Web UI jest pierwszym,
- * zawsze dostępnym nadawcą, więc sekcja od razu proponuje jej własny,
- * trwały `sender_id` do rejestracji).
+ * Pięć sekcji: Konfiguracja (singleton Home Assistant — jeden
+ * `base_url`/`access_token`), Pokoje (pełnoprawny byt World, niezależny od
+ * Home Assistant Areas — te są wyłącznie podpowiedzią/importem jednorazowym),
+ * Urządzenia (wyszukiwarka nad surowym katalogiem HA + opt-in zadeklarowana
+ * lista, jedyne źródło prawdy o tym, co widzi agent — każde z przypisanym
+ * pokojem), Grupy (multi-select nad zadeklarowaną listą), Nadawcy
+ * (przypisanie `sender_id -> pokój` — World nie wie nic o kanale komunikacji
+ * ani o typie fizycznego urządzenia; Web UI jest pierwszym, zawsze dostępnym
+ * nadawcą, więc sekcja od razu proponuje jej własny, trwały `sender_id` do
+ * rejestracji).
  */
 export class HomeAssistantExtensionView {
   constructor() {
@@ -24,10 +26,11 @@ export class HomeAssistantExtensionView {
     this.catalog = [];
     this.searchQuery = '';
     this.senders = [];
-    this.areas = [];
+    this.rooms = [];
 
     this.isCreatingGroup = false;
     this.isRegisteringSender = false;
+    this.isCreatingRoom = false;
   }
 
   async mount(container, apiClient, showToast) {
@@ -38,20 +41,20 @@ export class HomeAssistantExtensionView {
   }
 
   async _loadAndRender() {
-    const [config, declared, groups, catalog, senders, areas] = await Promise.all([
+    const [config, declared, groups, catalog, senders, rooms] = await Promise.all([
       this.apiClient.getHAConfig(),
       this.apiClient.getHADeclaredDevices(),
       this.apiClient.getHAGroups(),
       this.apiClient.getHACatalog(),
       this.apiClient.getSenders(),
-      this.apiClient.getWorldAreas(),
+      this.apiClient.getRooms(),
     ]);
     this.config = config || { base_url: '', access_token: '' };
     this.declaredDevices = declared || [];
     this.groups = groups || [];
     this.catalog = catalog || [];
     this.senders = senders || [];
-    this.areas = areas || [];
+    this.rooms = rooms || [];
     this._render();
   }
 
@@ -63,6 +66,18 @@ export class HomeAssistantExtensionView {
             <span class="ha-section-title">Konfiguracja</span>
           </div>
           ${this._renderConfigForm()}
+        </section>
+
+        <section class="ha-section">
+          <div class="ha-section-header">
+            <span class="ha-section-title">Pokoje</span>
+            <div class="ha-section-header-actions">
+              <button class="btn btn-sm btn-ghost" id="ha-btn-import-rooms" title="Jednorazowy import — bez ciągłej synchronizacji">Zaimportuj z HA Areas</button>
+              <button class="btn btn-sm btn-primary" id="ha-btn-new-room">+ Nowy pokój</button>
+            </div>
+          </div>
+          <div class="ha-rooms-list">${this._renderRoomsList()}</div>
+          <div id="ha-room-form"></div>
         </section>
 
         <section class="ha-section">
@@ -96,8 +111,108 @@ export class HomeAssistantExtensionView {
     `;
     this._bindEvents();
     this._renderSearchResults();
+    if (this.isCreatingRoom) this._renderRoomForm();
     if (this.isCreatingGroup) this._renderGroupForm();
     if (this.isRegisteringSender) this._renderSatelliteForm();
+  }
+
+  // --------------------------------------------------------------------------
+  // Pokoje — pełnoprawny byt World, niezależny od Home Assistant Areas
+  // --------------------------------------------------------------------------
+
+  _renderRoomsList() {
+    if (this.rooms.length === 0) {
+      return `<p class="ha-empty-hint">Brak pokoi — utwórz ręcznie albo zaimportuj z HA Areas.</p>`;
+    }
+    return this.rooms
+      .map(
+        (room) => `
+        <div class="ha-group-row" data-room-id="${escapeAttr(room.id)}">
+          <div class="ha-group-info">
+            <input type="text" class="form-control ha-room-name" data-room-id="${escapeAttr(room.id)}" value="${escapeAttr(room.name)}" />
+          </div>
+          <button class="btn btn-sm btn-ghost-danger" data-delete-room="${escapeAttr(room.id)}">Usuń</button>
+        </div>
+      `
+      )
+      .join('');
+  }
+
+  _renderRoomForm() {
+    const formContainer = document.getElementById('ha-room-form');
+    if (!formContainer) return;
+
+    formContainer.innerHTML = `
+      <div class="form-card">
+        <div class="form-card-title">Nowy pokój</div>
+        <div class="form-group">
+          <label for="ha-room-name">Nazwa pokoju</label>
+          <input type="text" id="ha-room-name" class="form-control" placeholder="np. Salon" />
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="ha-btn-save-room">Utwórz pokój</button>
+          <button class="btn btn-ghost" id="ha-btn-cancel-room">Anuluj</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('ha-btn-save-room')?.addEventListener('click', () => this._handleCreateRoom());
+    document.getElementById('ha-btn-cancel-room')?.addEventListener('click', () => {
+      this.isCreatingRoom = false;
+      formContainer.innerHTML = '';
+    });
+  }
+
+  async _handleCreateRoom() {
+    const name = document.getElementById('ha-room-name')?.value.trim() || '';
+    if (!name) {
+      this.showToast('Nazwa pokoju jest wymagana.', 'error');
+      return;
+    }
+    try {
+      await this.apiClient.createRoom({ name });
+      this.showToast('Utworzono pokój.', 'success');
+      this.isCreatingRoom = false;
+      await this._loadAndRender();
+    } catch (error) {
+      this.showToast(error.message || 'Błąd tworzenia pokoju.', 'error');
+    }
+  }
+
+  async _handleRenameRoom(roomId, name) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      this.showToast('Nazwa pokoju nie może być pusta.', 'error');
+      await this._loadAndRender();
+      return;
+    }
+    try {
+      await this.apiClient.updateRoom(roomId, { name: trimmed });
+      this.showToast('Zaktualizowano nazwę pokoju.', 'success');
+      await this._loadAndRender();
+    } catch (error) {
+      this.showToast(error.message || 'Błąd aktualizacji pokoju.', 'error');
+    }
+  }
+
+  async _handleDeleteRoom(roomId) {
+    try {
+      await this.apiClient.deleteRoom(roomId);
+      this.showToast('Usunięto pokój. Urządzenia/nadawcy przypisani do niego stają się nieprzypisani.', 'success');
+      await this._loadAndRender();
+    } catch (error) {
+      this.showToast(error.message || 'Błąd usuwania pokoju.', 'error');
+    }
+  }
+
+  async _handleImportRoomsFromHA() {
+    try {
+      const created = await this.apiClient.importRoomsFromHA();
+      this.showToast(created.length > 0 ? `Zaimportowano ${created.length} pokoi z HA Areas.` : 'Brak nowych pokoi do importu.', 'success');
+      await this._loadAndRender();
+    } catch (error) {
+      this.showToast(error.message || 'Błąd importu pokoi z HA.', 'error');
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -181,6 +296,10 @@ export class HomeAssistantExtensionView {
     if (count === 0) {
       return `${header}<p class="ha-empty-hint">Brak zadeklarowanych urządzeń — dodaj przez wyszukiwarkę powyżej.</p>`;
     }
+    const roomOptions = (selectedRoomId) =>
+      `<option value="">— brak pokoju —</option>` +
+      this.rooms.map((room) => `<option value="${escapeAttr(room.id)}" ${room.id === selectedRoomId ? 'selected' : ''}>${escapeHtml(room.name)}</option>`).join('');
+
     return `
       ${header}
       <div class="ha-declared-list">
@@ -192,6 +311,9 @@ export class HomeAssistantExtensionView {
               <input type="text" class="form-control ha-declared-label" data-entity-id="${escapeAttr(entry.entity_id)}" value="${escapeAttr(entry.effective_name)}" />
               ${!entry.display_name ? '<span class="ha-declared-default-hint" title="Domyślna nazwa z Home Assistant — warto nadać własną.">●</span>' : ''}
               <span class="ha-declared-kind">${escapeHtml(entry.kind || '?')}</span>
+              <select class="form-control ha-declared-room" data-entity-id="${escapeAttr(entry.entity_id)}">
+                ${roomOptions(entry.room_id)}
+              </select>
               <span class="ha-declared-caps-text">${(entry.capabilities || []).map((cap) => escapeHtml(cap)).join(' · ')}</span>
               <button class="btn btn-sm btn-ghost-danger ha-declared-remove" data-remove-entity="${escapeAttr(entry.entity_id)}" title="Usuń">✕</button>
             </div>
@@ -297,7 +419,7 @@ export class HomeAssistantExtensionView {
           <div class="ha-satellite-info">
             <span class="ha-satellite-name">${escapeHtml(s.sender_id)}</span>
             <span class="ha-satellite-meta">
-              ${s.room_label ? `<span class="ha-satellite-id">${escapeHtml(s.room_label)}</span>` : '<span class="ha-satellite-id">— brak pokoju —</span>'}
+              ${s.room_name ? `<span class="ha-satellite-id">${escapeHtml(s.room_name)}</span>` : '<span class="ha-satellite-id">— brak pokoju —</span>'}
             </span>
           </div>
           <button class="btn btn-sm btn-ghost-danger" data-delete-satellite="${escapeAttr(s.sender_id)}">Usuń</button>
@@ -311,7 +433,7 @@ export class HomeAssistantExtensionView {
     const formContainer = document.getElementById('ha-satellite-form');
     if (!formContainer) return;
 
-    const areaOptions = this.areas.map((area) => `<option value="${escapeAttr(area)}">${escapeHtml(area)}</option>`).join('');
+    const roomOptions = this.rooms.map((room) => `<option value="${escapeAttr(room.id)}">${escapeHtml(room.name)}</option>`).join('');
 
     formContainer.innerHTML = `
       <div class="form-card">
@@ -325,7 +447,7 @@ export class HomeAssistantExtensionView {
             <label for="ha-sat-room">Pokój (opcjonalnie)</label>
             <select id="ha-sat-room" class="form-control">
               <option value="">— brak —</option>
-              ${areaOptions}
+              ${roomOptions}
             </select>
           </div>
         </div>
@@ -345,7 +467,7 @@ export class HomeAssistantExtensionView {
 
   async _handleRegisterSatellite() {
     const senderId = document.getElementById('ha-sat-sender-id')?.value.trim() || '';
-    const roomKey = document.getElementById('ha-sat-room')?.value || null;
+    const roomId = document.getElementById('ha-sat-room')?.value || null;
 
     if (!senderId) {
       this.showToast('sender_id jest wymagany.', 'error');
@@ -355,8 +477,7 @@ export class HomeAssistantExtensionView {
     try {
       await this.apiClient.registerSender({
         sender_id: senderId,
-        room_key: roomKey || null,
-        room_label: roomKey || null,
+        room_id: roomId || null,
       });
       this.showToast('Zarejestrowano nadawcę.', 'success');
       this.isRegisteringSender = false;
@@ -392,8 +513,23 @@ export class HomeAssistantExtensionView {
     this.container.querySelectorAll('.ha-declared-label')?.forEach((input) => {
       input.addEventListener('change', (e) => this._handleRenameDeclaredDevice(e.target.getAttribute('data-entity-id'), e.target.value));
     });
+    this.container.querySelectorAll('.ha-declared-room')?.forEach((select) => {
+      select.addEventListener('change', (e) => this._handleAssignDeclaredDeviceRoom(e.target.getAttribute('data-entity-id'), e.target.value));
+    });
     this.container.querySelectorAll('[data-remove-entity]')?.forEach((btn) => {
       btn.addEventListener('click', () => this._handleRemoveDeclaredDevice(btn.getAttribute('data-remove-entity')));
+    });
+
+    document.getElementById('ha-btn-new-room')?.addEventListener('click', () => {
+      this.isCreatingRoom = true;
+      this._renderRoomForm();
+    });
+    document.getElementById('ha-btn-import-rooms')?.addEventListener('click', () => this._handleImportRoomsFromHA());
+    this.container.querySelectorAll('.ha-room-name')?.forEach((input) => {
+      input.addEventListener('change', (e) => this._handleRenameRoom(e.target.getAttribute('data-room-id'), e.target.value));
+    });
+    this.container.querySelectorAll('[data-delete-room]')?.forEach((btn) => {
+      btn.addEventListener('click', () => this._handleDeleteRoom(btn.getAttribute('data-delete-room')));
     });
 
     document.getElementById('ha-btn-new-group')?.addEventListener('click', () => {
@@ -448,12 +584,27 @@ export class HomeAssistantExtensionView {
   }
 
   async _handleRenameDeclaredDevice(entityId, displayName) {
+    await this._handleUpdateDeclaredDevice(entityId, { display_name: displayName.trim() || null }, 'Zaktualizowano nazwę.');
+  }
+
+  async _handleAssignDeclaredDeviceRoom(entityId, roomId) {
+    await this._handleUpdateDeclaredDevice(entityId, { room_id: roomId || null }, 'Zaktualizowano pokój.');
+  }
+
+  /** PUT /declared/{id} nadpisuje cały wpis — łączymy nowe pole ze stanem istniejącego wpisu. */
+  async _handleUpdateDeclaredDevice(entityId, patch, successMessage) {
+    const current = this.declaredDevices.find((d) => d.entity_id === entityId);
+    const payload = {
+      display_name: current?.display_name ?? null,
+      room_id: current?.room_id ?? null,
+      ...patch,
+    };
     try {
-      await this.apiClient.updateHADeclaredDevice(entityId, { display_name: displayName.trim() || null });
-      this.showToast('Zaktualizowano nazwę.', 'success');
+      await this.apiClient.updateHADeclaredDevice(entityId, payload);
+      this.showToast(successMessage, 'success');
       await this._loadAndRender();
     } catch (error) {
-      this.showToast(error.message || 'Błąd aktualizacji nazwy.', 'error');
+      this.showToast(error.message || 'Błąd aktualizacji urządzenia.', 'error');
     }
   }
 

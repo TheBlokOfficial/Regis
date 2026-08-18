@@ -30,6 +30,9 @@ from server.world.models import (
     DeviceGroupFileContent,
     DeviceGroupInstanceConfig,
     HomeAssistantConfig,
+    Room,
+    RoomFileContent,
+    RoomInstanceConfig,
     SenderProfile,
     SenderProfilesFileContent,
 )
@@ -52,6 +55,7 @@ class WorldEngine:
         service_root = get_service_root(__file__)
         self.base_data_dir = (data_dir or (service_root / "data" / "world")).resolve()
         self.groups_dir = self.base_data_dir / "groups"
+        self.rooms_dir = self.base_data_dir / "rooms"
         self.config_path = self.base_data_dir / "config.json"
         self.declared_devices_path = self.base_data_dir / "declared_devices.json"
         self.senders_path = self.base_data_dir / "senders.json"
@@ -60,13 +64,14 @@ class WorldEngine:
         self._client_factory = client_factory
 
     async def _ensure_defaults(self) -> None:
-        """Tworzy katalog grup jeśli nie istnieje. Silnik startuje bez konfiguracji i grup."""
+        """Tworzy katalogi grup/pokoi jeśli nie istnieją. Silnik startuje bez konfiguracji i grup."""
         if self._defaults_ensured:
             return
         async with self._lock:
             if self._defaults_ensured:
                 return
             self.groups_dir.mkdir(parents=True, exist_ok=True)
+            self.rooms_dir.mkdir(parents=True, exist_ok=True)
             self._defaults_ensured = True
 
     def _build_client(self, config: HomeAssistantConfig) -> HomeAssistantClient:
@@ -169,6 +174,91 @@ class WorldEngine:
             return False
 
     # --------------------------------------------------------------------------
+    # CRUD pokoi — pełnoprawny byt World, niezależny od Home Assistant Areas
+    # --------------------------------------------------------------------------
+
+    async def create_room(self, name: str, custom_id: Optional[str] = None) -> RoomInstanceConfig:
+        """Tworzy nowy pokój i zapisuje go w pliku JSON."""
+        await self._ensure_defaults()
+        room_id = custom_id or f"room_{uuid.uuid4().hex[:8]}"
+        if custom_id:
+            sanitize_identifier(custom_id, field_name="custom_id")
+        content = RoomFileContent(name=name)
+        file_path = self.rooms_dir / f"{room_id}.json"
+
+        async with self._lock:
+            await asyncio.to_thread(ConfigStore(RoomFileContent, file_path).save, content)
+
+        logger.info(f"Utworzono nowy pokój [{name}] z ID: {room_id}")
+        return RoomInstanceConfig(id=room_id, **content.model_dump())
+
+    async def list_rooms(self) -> dict[str, RoomInstanceConfig]:
+        """Wczytuje i zwraca słownik wszystkich pokoi {id: config}."""
+        await self._ensure_defaults()
+        instances: dict[str, RoomInstanceConfig] = {}
+
+        async with self._lock:
+            for file_path in sorted(self.rooms_dir.glob("*.json")):
+                try:
+                    room_id = file_path.stem
+                    content = await asyncio.to_thread(ConfigStore(RoomFileContent, file_path).load)
+                    instances[room_id] = RoomInstanceConfig(id=room_id, **content.model_dump())
+                except Exception as e:
+                    logger.error(f"Błąd podczas wczytywania pliku pokoju [{file_path}]: {e}")
+
+        return instances
+
+    async def update_room(self, room_id: str, name: str) -> RoomInstanceConfig:
+        """Zmienia nazwę istniejącego pokoju. Rzuca ValueError jeśli nie istnieje."""
+        sanitize_identifier(room_id, field_name="room_id")
+        await self._ensure_defaults()
+        file_path = self.rooms_dir / f"{room_id}.json"
+        if not file_path.exists():
+            raise ValueError(f"Pokój o ID '{room_id}' nie istnieje.")
+
+        async with self._lock:
+            updated = RoomFileContent(name=name)
+            await asyncio.to_thread(ConfigStore(RoomFileContent, file_path).save, updated)
+
+        logger.info(f"Zaktualizowano pokój [{room_id}].")
+        return RoomInstanceConfig(id=room_id, **updated.model_dump())
+
+    async def delete_room(self, room_id: str) -> bool:
+        """Usuwa plik pokoju z dysku. Urządzenia/nadawcy wskazujący na usunięty `room_id`
+        po prostu przestają mieć dopasowanie (cicho traktowani jak nieprzypisani,
+        patrz `_render_devices_section`) — bez cascade delete."""
+        sanitize_identifier(room_id, field_name="room_id")
+        await self._ensure_defaults()
+        async with self._lock:
+            file_path = self.rooms_dir / f"{room_id}.json"
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"Usunięto pokój [{room_id}] z dysku.")
+                return True
+            return False
+
+    async def import_rooms_from_ha(self) -> list[RoomInstanceConfig]:
+        """Jednorazowy import: tworzy pokój dla każdej unikalnej, niepustej Home Assistant
+        Area obecnej w surowym katalogu HA, która nie ma jeszcze odpowiednika po nazwie
+        (case-insensitive) wśród istniejących pokoi. Jawna akcja administratora — nie
+        automatyczna, ciągła synchronizacja (HA Areas zostają wyłącznie podpowiedzią)."""
+        raw_devices = await self.get_catalog()
+        ha_area_names = sorted({d.area for d in raw_devices if d.area})
+        if not ha_area_names:
+            return []
+
+        existing_rooms = await self.list_rooms()
+        existing_names_lower = {room.name.lower() for room in existing_rooms.values()}
+
+        created: list[RoomInstanceConfig] = []
+        for area_name in ha_area_names:
+            if area_name.lower() in existing_names_lower:
+                continue
+            created.append(await self.create_room(name=area_name))
+        logger.info(f"Zaimportowano {len(created)} pokoi z Home Assistant Areas.")
+        return created
+
+    # --------------------------------------------------------------------------
     # Zadeklarowane urządzenia — jedyne źródło prawdy o tym, co widzi agent
     # --------------------------------------------------------------------------
 
@@ -182,19 +272,23 @@ class WorldEngine:
         async with self._lock:
             await asyncio.to_thread(ConfigStore(DeclaredDevicesFileContent, self.declared_devices_path).save, content)
 
-    async def add_declared_device(self, entity_id: str, display_name: str | None = None) -> None:
+    async def add_declared_device(
+        self, entity_id: str, display_name: str | None = None, room_id: str | None = None
+    ) -> None:
         """Dodaje encję do zadeklarowanej listy (widoczna dla agenta od tej pory)."""
         current = await self.get_declared_devices()
-        current.entries[entity_id] = DeclaredDeviceEntry(display_name=display_name)
+        current.entries[entity_id] = DeclaredDeviceEntry(display_name=display_name, room_id=room_id)
         await self._save_declared_devices(current)
         logger.info(f"Zadeklarowano urządzenie [{entity_id}].")
 
-    async def update_declared_device(self, entity_id: str, display_name: str | None) -> DeclaredDeviceEntry:
-        """Zmienia `display_name` istniejącego wpisu. Rzuca ValueError jeśli nie istnieje."""
+    async def update_declared_device(
+        self, entity_id: str, display_name: str | None, room_id: str | None = None
+    ) -> DeclaredDeviceEntry:
+        """Zmienia `display_name`/`room_id` istniejącego wpisu. Rzuca ValueError jeśli nie istnieje."""
         current = await self.get_declared_devices()
         if entity_id not in current.entries:
             raise ValueError(f"Urządzenie '{entity_id}' nie jest zadeklarowane.")
-        current.entries[entity_id] = DeclaredDeviceEntry(display_name=display_name)
+        current.entries[entity_id] = DeclaredDeviceEntry(display_name=display_name, room_id=room_id)
         await self._save_declared_devices(current)
         return current.entries[entity_id]
 
@@ -240,7 +334,16 @@ class WorldEngine:
             if raw is None:
                 continue
             name = entry.display_name if entry.display_name else raw.name
-            result.append(Device(id=entity_id, name=name, kind=raw.kind, capabilities=raw.capabilities, area=raw.area))
+            result.append(
+                Device(
+                    id=entity_id,
+                    name=name,
+                    kind=raw.kind,
+                    capabilities=raw.capabilities,
+                    area=raw.area,
+                    room_id=entry.room_id,
+                )
+            )
         return result
 
     async def list_areas(self) -> list[str]:
@@ -281,18 +384,22 @@ class WorldEngine:
         return True
 
     async def _find_sender_by_room(self, room: str) -> tuple[str | None, list[str]]:
-        """Odwraca `SenderProfile` po pokoju (`room_key` lub `room_label`, bez rozróżniania wielkości liter).
+        """Odwraca `SenderProfile` po nazwie pokoju, w dwóch krokach: nazwa -> `Room.id`
+        (dopasowanie po `Room.name`, bez rozróżniania wielkości liter), potem `Room.id` ->
+        `sender_id` (dopasowanie po `SenderProfile.room_id`).
 
         :return: `(sender_id, [])` przy jednoznacznym dopasowaniu, w przeciwnym razie
-            `(None, kandydaci)` — pusta lista kandydatów oznacza brak dopasowania.
+            `(None, kandydaci)` — pusta lista kandydatów oznacza brak dopasowania nazwy pokoju.
         """
-        senders = await self.get_senders()
         needle = room.strip().lower()
+        rooms = await self.list_rooms()
+        matching_room_ids = {room_id for room_id, cfg in rooms.items() if cfg.name.lower() == needle}
+        if not matching_room_ids:
+            return None, []
+
+        senders = await self.get_senders()
         matches = [
-            sid
-            for sid, profile in senders.entries.items()
-            if (profile.room_key and profile.room_key.lower() == needle)
-            or (profile.room_label and profile.room_label.lower() == needle)
+            sid for sid, profile in senders.entries.items() if profile.room_id in matching_room_ids
         ]
         if len(matches) == 1:
             return matches[0], []
@@ -310,6 +417,7 @@ class WorldEngine:
         # 1. Przypisanie do pokoju — niezależnie od dostępności Home Assistant.
         #    `voice_mode` to efemeryczny parametr wywołania (dostarczony przez gateway
         #    server.voice, który jako jedyny wie to z całą pewnością) — nigdy trwały stan.
+        rooms_by_id = await self.list_rooms()
         profile: SenderProfile | None = None
         if sender_id is not None:
             senders = await self.get_senders()
@@ -319,8 +427,9 @@ class WorldEngine:
                 "Nadawca komunikuje się głosem — odpowiadaj krótkimi zdaniami, "
                 "unikaj Markdown i list, dobierz treść pod syntezę mowy."
             )
-        if profile is not None and profile.room_label:
-            context_parts.append(f"Nadawca znajduje się w lokalizacji: {profile.room_label}.")
+        current_room = rooms_by_id.get(profile.room_id) if (profile and profile.room_id) else None
+        if current_room is not None:
+            context_parts.append(f"Nadawca znajduje się w lokalizacji: {current_room.name}.")
 
         # 2. Home Assistant — łagodna degradacja, nie wpływa na framing z kroku 1.
         config = await self.get_config()
@@ -338,8 +447,8 @@ class WorldEngine:
                 self._render_devices_section(
                     devices,
                     groups,
-                    current_room_key=profile.room_key if profile else None,
-                    current_room_label=profile.room_label if profile else None,
+                    rooms_by_id=rooms_by_id,
+                    current_room_id=current_room.id if current_room else None,
                 )
             )
 
@@ -407,24 +516,25 @@ class WorldEngine:
     def _render_devices_section(
         devices: list[Device],
         groups: list[DeviceGroup],
-        current_room_key: str | None,
-        current_room_label: str | None = None,
+        rooms_by_id: dict[str, RoomInstanceConfig],
+        current_room_id: str | None,
     ) -> str:
-        """Renderuje listę urządzeń posegregowaną wg pokoju (`Device.area`) — pełna
-        adresowalność zawsze zachowana, segregacja to wyłącznie prezentacja."""
+        """Renderuje listę urządzeń posegregowaną wg `Device.room_id` (pełnoprawny pokój
+        World, niezależny od Home Assistant) — pełna adresowalność zawsze zachowana,
+        segregacja to wyłącznie prezentacja. Urządzenie wskazujące na usunięty/nieznany
+        `room_id` traktowane jest jak nieprzypisane (bez cascade delete przy usuwaniu pokoju)."""
         by_room: dict[str, list[Device]] = {}
         unassigned: list[Device] = []
         for device in devices:
-            if device.area:
-                by_room.setdefault(device.area, []).append(device)
+            if device.room_id and device.room_id in rooms_by_id:
+                by_room.setdefault(device.room_id, []).append(device)
             else:
                 unassigned.append(device)
 
         lines = ["Dostępne urządzenia (adresuj je po podanym entity_id):"]
-        for room, room_devices in sorted(by_room.items(), key=lambda item: item[0] != current_room_key):
-            is_current = room == current_room_key
-            label = current_room_label if (is_current and current_room_label) else room
-            header = f"### {label}" + (" (Twoja lokalizacja)" if is_current else "")
+        for room_id, room_devices in sorted(by_room.items(), key=lambda item: item[0] != current_room_id):
+            is_current = room_id == current_room_id
+            header = f"### {rooms_by_id[room_id].name}" + (" (Twoja lokalizacja)" if is_current else "")
             lines.append(header)
             for device in room_devices:
                 lines.append(f"- [{device.id}] {device.name} (możliwości: {_format_capabilities(device)})")

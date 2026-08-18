@@ -46,6 +46,7 @@ class CatalogEntryDTO(BaseModel):
     entity_id: str = Field(..., description="Natywny entity_id Home Assistant")
     friendly_name: str = Field(..., description="Nazwa zwrócona przez Home Assistant")
     kind: str = Field(..., description="Kategoria/domena encji (np. light, switch, sensor)")
+    ha_area: str | None = Field(default=None, description="Surowa podpowiedź HA Area — nigdy prawda o pokoju")
 
 
 class DeclaredDeviceDTO(BaseModel):
@@ -56,6 +57,8 @@ class DeclaredDeviceDTO(BaseModel):
     effective_name: str = Field(..., description="Nazwa widoczna dla agenta (display_name albo friendly_name z HA)")
     kind: str = Field(..., description="Kategoria urządzenia (np. light, switch, sensor)")
     capabilities: list[str] = Field(default_factory=list, description="Wspierane nazwy narzędzi")
+    room_id: str | None = Field(default=None, description="Jedyne źródło prawdy o przypisaniu do pokoju")
+    room_name: str | None = Field(default=None, description="Nazwa pokoju rozwiązana z room_id, do renderu w UI")
 
 
 class AddDeclaredDeviceRequest(BaseModel):
@@ -63,25 +66,46 @@ class AddDeclaredDeviceRequest(BaseModel):
 
     entity_id: str = Field(...)
     display_name: str | None = Field(default=None)
+    room_id: str | None = Field(default=None)
 
 
 class UpdateDeclaredDeviceRequest(BaseModel):
     """Żądanie dla PUT /declared/{entity_id}."""
 
     display_name: str | None = Field(default=None)
+    room_id: str | None = Field(default=None)
+
+
+class RoomDTO(BaseModel):
+    """Reprezentacja pokoju dla API."""
+
+    id: str = Field(..., description="Unikalne ID pokoju (np. room_a1b2c3d4)")
+    name: str = Field(..., description="Wyświetlana nazwa pokoju")
+
+
+class CreateRoomRequest(BaseModel):
+    """Żądanie dla POST /rooms."""
+
+    name: str = Field(...)
+    custom_id: str | None = Field(default=None)
+
+
+class UpdateRoomRequest(BaseModel):
+    """Żądanie dla PUT /rooms/{id}."""
+
+    name: str = Field(...)
 
 
 class SenderProfileDTO(BaseModel):
     """Przypisanie nadawcy do pokoju dla API."""
 
     sender_id: str = Field(..., description="Opaque identyfikator nadawcy")
-    room_key: str | None = Field(default=None)
-    room_label: str | None = Field(default=None)
+    room_id: str | None = Field(default=None)
+    room_name: str | None = Field(default=None, description="Nazwa pokoju rozwiązana z room_id, do renderu w UI")
 
 
 class RegisterSenderRequest(BaseModel):
     """Żądanie dla POST /senders."""
 
     sender_id: str = Field(...)
-    room_key: str | None = Field(default=None)
-    room_label: str | None = Field(default=None)
+    room_id: str | None = Field(default=None)

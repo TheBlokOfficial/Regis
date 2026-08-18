@@ -69,6 +69,13 @@
   color: var(--text-primary);
 }
 
+.ha-section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .ha-empty-hint {
   color: var(--text-muted-aa);
   font-size: 0.86rem;
@@ -281,6 +288,13 @@
   font-family: var(--font-mono);
   font-size: 0.74rem;
   color: var(--text-muted-aa);
+}
+
+.ha-declared-room {
+  flex-shrink: 0;
+  width: 150px;
+  font-size: 0.78rem;
+  padding: 5px 8px;
 }
 
 .ha-declared-remove {

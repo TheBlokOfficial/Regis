@@ -9,6 +9,7 @@ from server.agent.prompts import PromptStore
 from server.config import load_settings
 from server.network.gateway import create_gateway_app
 from server.voice.gateway import create_voice_router
+from server.voice.routes import create_voice_status_router
 from server.voice.stt import MockSTTProvider
 from server.voice.tts import MockTTSProvider
 from server.voice.wakeword import ThresholdEnergyWakeWordDetector
@@ -56,11 +57,18 @@ async def main() -> None:
     #    dostawca chmurowy jeszcze niewybrany (patrz docs/manifest.md, sekcja "server/voice/").
     #    ThresholdEnergyWakeWordDetector to świadomy placeholder do czasu podłączenia
     #    realnego modelu .onnx.
+    voice_stt_provider = MockSTTProvider()
+    voice_tts_provider = MockTTSProvider()
     voice_router = create_voice_router(
         agent_engine=agent_engine,
         wakeword_detector_factory=ThresholdEnergyWakeWordDetector,
-        stt_provider=MockSTTProvider(),
-        tts_provider=MockTTSProvider(),
+        stt_provider=voice_stt_provider,
+        tts_provider=voice_tts_provider,
+    )
+    voice_status_router = create_voice_status_router(
+        stt_provider=voice_stt_provider,
+        tts_provider=voice_tts_provider,
+        wakeword_detector_class_name=ThresholdEnergyWakeWordDetector.__name__,
     )
 
     # 7. Inicjalizacja bramki sieciowej z rejestrem backendów, magazynem promptów i tą samą
@@ -72,6 +80,7 @@ async def main() -> None:
         prompt_store=prompt_store,
         world_engine=world_engine,
         voice_router=voice_router,
+        voice_status_router=voice_status_router,
     )
 
     # 8. Start serwera uvicorn

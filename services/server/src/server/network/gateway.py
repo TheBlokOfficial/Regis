@@ -15,6 +15,7 @@ def create_gateway_app(
     prompt_store: PromptStore,
     world_engine: WorldEngine | None = None,
     voice_router: APIRouter | None = None,
+    voice_status_router: APIRouter | None = None,
 ) -> FastAPI:
     """Tworzy i konfiguruje bramkę sieciową FastAPI z wbudowaną konsolą WWW i punktami końcowymi."""
     app = FastAPI(
@@ -43,10 +44,24 @@ def create_gateway_app(
     # prefiksem, bez pośredniego protokołu ani wiedzy o World.
     if voice_router is not None:
         app.include_router(voice_router, prefix="/ws")
+    if voice_status_router is not None:
+        app.include_router(voice_status_router, prefix="/api/v1/voice")
 
     # Wbudowana obsługa interfejsu Web Console (server/web)
     web_dir = (Path(__file__).parent.parent / "web").resolve()
     if web_dir.exists():
         app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
+
+    @app.middleware("http")
+    async def _no_cache_static_assets(request, call_next):
+        """SPA bez wersjonowanych nazw plików (`app.js`, nie `app.abc123.js`) — bez tego
+        nagłówka przeglądarki potrafią heurystycznie cache'ować JS/CSS na długo (brak
+        `Cache-Control` w domyślnym `StaticFiles`), więc zmiana kodu po wdrożeniu może nie
+        być widoczna bez twardego odświeżenia. `no-cache` wymusza tanią rewalidację
+        (warunkowe GET po ETag/Last-Modified) przy każdym żądaniu, nigdy cichą stałość."""
+        response = await call_next(request)
+        if request.url.path.startswith(("/js/", "/css/")):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     return app

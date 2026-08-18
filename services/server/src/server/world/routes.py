@@ -13,17 +13,20 @@ from server.world.dto import (
     AddDeclaredDeviceRequest,
     CatalogEntryDTO,
     CreateHAGroupRequest,
+    CreateRoomRequest,
     DeclaredDeviceDTO,
     HAGroupDTO,
     HomeAssistantConfigDTO,
     RegisterSenderRequest,
+    RoomDTO,
     SenderProfileDTO,
     UpdateDeclaredDeviceRequest,
     UpdateHAGroupRequest,
     UpdateHomeAssistantConfigRequest,
+    UpdateRoomRequest,
 )
 from server.world.engine import WorldEngine
-from server.world.models import DeclaredDeviceEntry, Device, HomeAssistantConfig, SenderProfile
+from server.world.models import DeclaredDeviceEntry, Device, HomeAssistantConfig, RoomInstanceConfig, SenderProfile
 
 
 def _mask_token(token: str) -> str:
@@ -38,18 +41,28 @@ def _to_config_dto(cfg: HomeAssistantConfig) -> HomeAssistantConfigDTO:
     return HomeAssistantConfigDTO(base_url=cfg.base_url, access_token=_mask_token(cfg.access_token))
 
 
-def _to_declared_dto(entity_id: str, entry: DeclaredDeviceEntry, resolved: Device | None) -> DeclaredDeviceDTO:
+def _to_room_dto(cfg: RoomInstanceConfig) -> RoomDTO:
+    return RoomDTO(id=cfg.id, name=cfg.name)
+
+
+def _to_declared_dto(
+    entity_id: str, entry: DeclaredDeviceEntry, resolved: Device | None, rooms_by_id: dict[str, RoomInstanceConfig]
+) -> DeclaredDeviceDTO:
+    room = rooms_by_id.get(entry.room_id) if entry.room_id else None
     return DeclaredDeviceDTO(
         entity_id=entity_id,
         display_name=entry.display_name,
         effective_name=resolved.name if resolved is not None else (entry.display_name or entity_id),
         kind=resolved.kind if resolved is not None else "",
         capabilities=sorted(resolved.capabilities.keys()) if resolved is not None else [],
+        room_id=entry.room_id,
+        room_name=room.name if room is not None else None,
     )
 
 
-def _to_sender_dto(sender_id: str, profile: SenderProfile) -> SenderProfileDTO:
-    return SenderProfileDTO(sender_id=sender_id, room_key=profile.room_key, room_label=profile.room_label)
+def _to_sender_dto(sender_id: str, profile: SenderProfile, rooms_by_id: dict[str, RoomInstanceConfig]) -> SenderProfileDTO:
+    room = rooms_by_id.get(profile.room_id) if profile.room_id else None
+    return SenderProfileDTO(sender_id=sender_id, room_id=profile.room_id, room_name=room.name if room is not None else None)
 
 
 def create_world_router(engine: WorldEngine) -> APIRouter:
@@ -76,11 +89,45 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
     @router.get("/catalog", response_model=list[CatalogEntryDTO], tags=["World"])
     async def get_catalog() -> list[CatalogEntryDTO]:
         devices = await engine.get_catalog()
-        return [CatalogEntryDTO(entity_id=d.id, friendly_name=d.name, kind=d.kind) for d in devices]
+        return [CatalogEntryDTO(entity_id=d.id, friendly_name=d.name, kind=d.kind, ha_area=d.area) for d in devices]
 
     @router.get("/areas", response_model=list[str], tags=["World"])
     async def get_areas() -> list[str]:
         return await engine.list_areas()
+
+    # --------------------------------------------------------------------------
+    # Pokoje — pełnoprawny byt World, niezależny od Home Assistant Areas
+    # --------------------------------------------------------------------------
+
+    @router.get("/rooms", response_model=list[RoomDTO], tags=["World"])
+    async def get_rooms() -> list[RoomDTO]:
+        instances = await engine.list_rooms()
+        return [_to_room_dto(cfg) for cfg in instances.values()]
+
+    @router.post("/rooms", response_model=RoomDTO, status_code=status.HTTP_201_CREATED, tags=["World"])
+    async def create_room(req: CreateRoomRequest) -> RoomDTO:
+        created = await engine.create_room(name=req.name, custom_id=req.custom_id)
+        return _to_room_dto(created)
+
+    @router.put("/rooms/{room_id}", response_model=RoomDTO, tags=["World"])
+    async def update_room(room_id: str, req: UpdateRoomRequest) -> RoomDTO:
+        try:
+            updated = await engine.update_room(room_id=room_id, name=req.name)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+        return _to_room_dto(updated)
+
+    @router.delete("/rooms/{room_id}", tags=["World"])
+    async def delete_room(room_id: str):
+        deleted = await engine.delete_room(room_id)
+        if not deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Pokój o ID '{room_id}' nie istnieje.")
+        return {"success": True, "deleted_id": room_id}
+
+    @router.post("/rooms/import-from-ha", response_model=list[RoomDTO], tags=["World"])
+    async def import_rooms_from_ha() -> list[RoomDTO]:
+        created = await engine.import_rooms_from_ha()
+        return [_to_room_dto(cfg) for cfg in created]
 
     # --------------------------------------------------------------------------
     # Zadeklarowane urządzenia — jedyne źródło prawdy o tym, co widzi agent
@@ -90,22 +137,33 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
     async def get_declared() -> list[DeclaredDeviceDTO]:
         declared = await engine.get_declared_devices()
         resolved_by_id = {d.id: d for d in await engine.resolve_devices()}
-        return [_to_declared_dto(entity_id, entry, resolved_by_id.get(entity_id)) for entity_id, entry in declared.entries.items()]
+        rooms_by_id = await engine.list_rooms()
+        return [
+            _to_declared_dto(entity_id, entry, resolved_by_id.get(entity_id), rooms_by_id)
+            for entity_id, entry in declared.entries.items()
+        ]
 
     @router.post("/declared", response_model=DeclaredDeviceDTO, status_code=status.HTTP_201_CREATED, tags=["World"])
     async def add_declared(req: AddDeclaredDeviceRequest) -> DeclaredDeviceDTO:
-        await engine.add_declared_device(entity_id=req.entity_id, display_name=req.display_name)
+        await engine.add_declared_device(entity_id=req.entity_id, display_name=req.display_name, room_id=req.room_id)
         resolved_by_id = {d.id: d for d in await engine.resolve_devices()}
-        return _to_declared_dto(req.entity_id, DeclaredDeviceEntry(display_name=req.display_name), resolved_by_id.get(req.entity_id))
+        rooms_by_id = await engine.list_rooms()
+        return _to_declared_dto(
+            req.entity_id,
+            DeclaredDeviceEntry(display_name=req.display_name, room_id=req.room_id),
+            resolved_by_id.get(req.entity_id),
+            rooms_by_id,
+        )
 
     @router.put("/declared/{entity_id}", response_model=DeclaredDeviceDTO, tags=["World"])
     async def update_declared(entity_id: str, req: UpdateDeclaredDeviceRequest) -> DeclaredDeviceDTO:
         try:
-            entry = await engine.update_declared_device(entity_id=entity_id, display_name=req.display_name)
+            entry = await engine.update_declared_device(entity_id=entity_id, display_name=req.display_name, room_id=req.room_id)
         except ValueError as err:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
         resolved_by_id = {d.id: d for d in await engine.resolve_devices()}
-        return _to_declared_dto(entity_id, entry, resolved_by_id.get(entity_id))
+        rooms_by_id = await engine.list_rooms()
+        return _to_declared_dto(entity_id, entry, resolved_by_id.get(entity_id), rooms_by_id)
 
     @router.delete("/declared/{entity_id}", tags=["World"])
     async def delete_declared(entity_id: str):
@@ -153,13 +211,15 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
     @router.get("/senders", response_model=list[SenderProfileDTO], tags=["World"])
     async def get_senders() -> list[SenderProfileDTO]:
         senders = await engine.get_senders()
-        return [_to_sender_dto(sender_id, profile) for sender_id, profile in senders.entries.items()]
+        rooms_by_id = await engine.list_rooms()
+        return [_to_sender_dto(sender_id, profile, rooms_by_id) for sender_id, profile in senders.entries.items()]
 
     @router.post("/senders", response_model=SenderProfileDTO, status_code=status.HTTP_201_CREATED, tags=["World"])
     async def register_sender(req: RegisterSenderRequest) -> SenderProfileDTO:
-        profile = SenderProfile(room_key=req.room_key, room_label=req.room_label)
+        profile = SenderProfile(room_id=req.room_id)
         await engine.register_sender(req.sender_id, profile)
-        return _to_sender_dto(req.sender_id, profile)
+        rooms_by_id = await engine.list_rooms()
+        return _to_sender_dto(req.sender_id, profile, rooms_by_id)
 
     @router.delete("/senders/{sender_id}", tags=["World"])
     async def delete_sender(sender_id: str):

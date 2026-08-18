@@ -114,7 +114,12 @@ def test_decode_light_infers_brightness_and_color_from_color_modes():
 # --------------------------------------------------------------------------
 
 
-async def _engine_with_ha(tmp_dir: str, devices: list[Device], declared: dict[str, str | None] | None = None):
+async def _engine_with_ha(
+    tmp_dir: str,
+    devices: list[Device],
+    declared: dict[str, str | None] | None = None,
+    room_ids: dict[str, str] | None = None,
+):
     created: list[FakeHomeAssistantClient] = []
 
     def factory(config: HomeAssistantConfig) -> FakeHomeAssistantClient:
@@ -125,8 +130,9 @@ async def _engine_with_ha(tmp_dir: str, devices: list[Device], declared: dict[st
     engine = WorldEngine(data_dir=Path(tmp_dir) / "world", client_factory=factory)
     await engine.save_config(base_url="http://fake", access_token="secret")
     to_declare = declared if declared is not None else {d.id: None for d in devices}
+    room_ids = room_ids or {}
     for entity_id, display_name in to_declare.items():
-        await engine.add_declared_device(entity_id=entity_id, display_name=display_name)
+        await engine.add_declared_device(entity_id=entity_id, display_name=display_name, room_id=room_ids.get(entity_id))
     return engine, created
 
 
@@ -146,7 +152,8 @@ async def test_build_without_config_still_returns_time_tool_and_no_error():
 async def test_build_voice_mode_and_room_framing_survives_missing_ha_config():
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
-        await engine.register_sender("sat_1", SenderProfile(room_key="salon", room_label="Salon"))
+        room = await engine.create_room(name="Salon")
+        await engine.register_sender("sat_1", SenderProfile(room_id=room.id))
 
         context_build = await engine.build(sender_id="sat_1", voice_mode=True)
 
@@ -185,15 +192,34 @@ async def test_build_segregates_devices_by_room_and_marks_current_room():
             Device(id="light.salon", name="Lampa", kind="light", capabilities=dict(_CORE_CAPS), area="salon"),
             Device(id="light.kuchnia", name="Lampa2", kind="light", capabilities=dict(_CORE_CAPS), area="kuchnia"),
         ]
-        engine, _ = await _engine_with_ha(tmp_dir, devices)
-        await engine.register_sender("sat_1", SenderProfile(room_key="salon", room_label="Salon"))
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+        room_salon = await engine.create_room(name="Salon")
+        room_kuchnia = await engine.create_room(name="Kuchnia")
+        engine, _ = await _engine_with_ha(
+            tmp_dir, devices, room_ids={"light.salon": room_salon.id, "light.kuchnia": room_kuchnia.id}
+        )
+        await engine.register_sender("sat_1", SenderProfile(room_id=room_salon.id))
 
         context_build = await engine.build(sender_id="sat_1")
 
         assert "### Salon (Twoja lokalizacja)" in context_build.dynamic_context
-        assert "### kuchnia" in context_build.dynamic_context
+        assert "### Kuchnia" in context_build.dynamic_context
         assert "light.salon" in context_build.dynamic_context
         assert "light.kuchnia" in context_build.dynamic_context  # nadal w pełni widoczne, tylko posegregowane
+
+
+@pytest.mark.anyio
+async def test_build_segregates_unassigned_devices_when_room_missing():
+    """Urządzenie bez `room_id` (albo wskazujące na usunięty pokój) trafia do
+    sekcji "bez przypisanego pokoju" — bez cascade delete, bez błędu."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        devices = [Device(id="light.salon", name="Lampa", kind="light", capabilities=dict(_CORE_CAPS))]
+        engine, _ = await _engine_with_ha(tmp_dir, devices)
+
+        context_build = await engine.build()
+
+        assert "### (bez przypisanego pokoju)" in context_build.dynamic_context
+        assert "light.salon" in context_build.dynamic_context
 
 
 @pytest.mark.anyio
@@ -203,8 +229,13 @@ async def test_build_dispatch_can_act_on_device_outside_current_room():
             Device(id="light.salon", name="Lampa", kind="light", capabilities=dict(_CORE_CAPS), area="salon"),
             Device(id="light.kuchnia", name="Lampa2", kind="light", capabilities=dict(_CORE_CAPS), area="kuchnia"),
         ]
-        engine, created = await _engine_with_ha(tmp_dir, devices)
-        await engine.register_sender("sat_1", SenderProfile(room_key="salon", room_label="Salon"))
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+        room_salon = await engine.create_room(name="Salon")
+        room_kuchnia = await engine.create_room(name="Kuchnia")
+        engine, created = await _engine_with_ha(
+            tmp_dir, devices, room_ids={"light.salon": room_salon.id, "light.kuchnia": room_kuchnia.id}
+        )
+        await engine.register_sender("sat_1", SenderProfile(room_id=room_salon.id))
 
         context_build = await engine.build(sender_id="sat_1")
         result = await context_build.dispatch("turn_on", {"entity_id": "light.kuchnia"})
@@ -222,7 +253,8 @@ async def test_build_dispatch_can_act_on_device_outside_current_room():
 async def test_speak_in_room_resolves_room_to_sender_id():
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
-        await engine.register_sender("snd_kuchnia", SenderProfile(room_key="kuchnia", room_label="Kuchnia"))
+        room = await engine.create_room(name="Kuchnia")
+        await engine.register_sender("snd_kuchnia", SenderProfile(room_id=room.id))
 
         context_build = await engine.build()
         result = await context_build.dispatch("speak_in_room", {"room": "Kuchnia"})
@@ -247,14 +279,64 @@ async def test_speak_in_room_unknown_room_is_error_without_redirect():
 async def test_speak_in_room_ambiguous_room_is_error():
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
-        await engine.register_sender("snd_a", SenderProfile(room_key="salon", room_label="Salon"))
-        await engine.register_sender("snd_b", SenderProfile(room_key="salon", room_label="Salon"))
+        room = await engine.create_room(name="Salon")
+        await engine.register_sender("snd_a", SenderProfile(room_id=room.id))
+        await engine.register_sender("snd_b", SenderProfile(room_id=room.id))
 
         context_build = await engine.build()
         result = await context_build.dispatch("speak_in_room", {"room": "salon"})
 
         assert result.is_error is True
         assert result.redirect_sender_id is None
+
+
+# --------------------------------------------------------------------------
+# Room — CRUD i import z HA Areas (jednorazowy, nie live-sync)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_room_crud_roundtrip():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+
+        created = await engine.create_room(name="Salon")
+        assert (await engine.list_rooms())[created.id].name == "Salon"
+
+        updated = await engine.update_room(room_id=created.id, name="Duży Salon")
+        assert updated.name == "Duży Salon"
+
+        assert await engine.delete_room(created.id) is True
+        assert created.id not in await engine.list_rooms()
+
+
+@pytest.mark.anyio
+async def test_import_rooms_from_ha_creates_room_per_unique_area():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        devices = [
+            Device(id="light.a", name="A", kind="light", capabilities=dict(_CORE_CAPS), area="salon"),
+            Device(id="light.b", name="B", kind="light", capabilities=dict(_CORE_CAPS), area="salon"),
+            Device(id="light.c", name="C", kind="light", capabilities=dict(_CORE_CAPS), area="kuchnia"),
+            Device(id="light.d", name="D", kind="light", capabilities=dict(_CORE_CAPS), area=None),
+        ]
+        engine, _ = await _engine_with_ha(tmp_dir, devices)
+
+        created = await engine.import_rooms_from_ha()
+
+        assert sorted(r.name for r in created) == ["kuchnia", "salon"]
+
+
+@pytest.mark.anyio
+async def test_import_rooms_from_ha_skips_existing_room_by_name_case_insensitive():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        devices = [Device(id="light.a", name="A", kind="light", capabilities=dict(_CORE_CAPS), area="Salon")]
+        engine, _ = await _engine_with_ha(tmp_dir, devices)
+        await engine.create_room(name="salon")  # już istnieje, inna wielkość liter
+
+        created = await engine.import_rooms_from_ha()
+
+        assert created == []
+        assert len(await engine.list_rooms()) == 1
 
 
 # --------------------------------------------------------------------------

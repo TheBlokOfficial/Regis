@@ -70,6 +70,12 @@ function mountIcons() {
   const iconExtensions = document.getElementById('icon-nav-extensions');
   if (iconExtensions) iconExtensions.innerHTML = Icons.Puzzle();
 
+  const iconVoiceConfig = document.getElementById('icon-nav-voice-config');
+  if (iconVoiceConfig) iconVoiceConfig.innerHTML = Icons.Radio();
+
+  const iconKernelConfig = document.getElementById('icon-nav-kernel-config');
+  if (iconKernelConfig) iconKernelConfig.innerHTML = Icons.Activity();
+
   const iconServices = document.getElementById('icon-nav-services');
   if (iconServices) iconServices.innerHTML = Icons.Server();
 

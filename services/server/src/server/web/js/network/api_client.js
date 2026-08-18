@@ -555,6 +555,106 @@ export class ApiClient {
     }
   }
 
+  // ==========================================================================
+  // METODY SILNIKA ŚWIATA — POKOJE (pełnoprawny byt World, niezależny od HA Areas)
+  // ==========================================================================
+
+  async getRooms() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/rooms`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania listy pokoi:', error);
+      return null;
+    }
+  }
+
+  async createRoom(data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/rooms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd tworzenia pokoju:', error);
+      throw error;
+    }
+  }
+
+  async updateRoom(roomId, data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/rooms/${encodeURIComponent(roomId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd aktualizacji pokoju '${roomId}':`, error);
+      throw error;
+    }
+  }
+
+  async deleteRoom(roomId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/rooms/${encodeURIComponent(roomId)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd usuwania pokoju '${roomId}':`, error);
+      throw error;
+    }
+  }
+
+  async importRoomsFromHA() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/rooms/import-from-ha`, { method: 'POST' });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd importu pokoi z Home Assistant:', error);
+      throw error;
+    }
+  }
+
+  // ==========================================================================
+  // METODY server.voice — status pipeline'u głosowego (read-only)
+  // ==========================================================================
+
+  async getVoiceStatus() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/voice/status`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania statusu pipeline\'u głosowego:', error);
+      return null;
+    }
+  }
+
   async getWorldAreas() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/world/areas`);

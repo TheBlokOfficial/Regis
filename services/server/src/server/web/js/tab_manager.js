@@ -3,6 +3,8 @@ import { SettingsView } from './views/settings.js';
 import { ChatView } from './views/chat.js';
 import { AgentsView } from './views/agents.js';
 import { ExtensionsView } from './views/extensions.js';
+import { KernelConfigView } from './views/kernel_config.js';
+import { VoiceConfigView } from './views/voice_config.js';
 import { confirmModal } from './modal_confirm.js';
 
 /**
@@ -22,6 +24,8 @@ export class TabManager {
       settings: new SettingsView(),
       agents: new AgentsView(),
       extensions: new ExtensionsView(),
+      kernel_config: new KernelConfigView(),
+      voice_config: new VoiceConfigView(),
     };
 
     this.latestHealthData = null;
@@ -78,13 +82,15 @@ export class TabManager {
         settings: 'Ustawienia',
         agents: 'Prompty',
         extensions: 'Świat',
+        kernel_config: 'Kernel',
+        voice_config: 'Głos',
       };
       this.breadcrumb.textContent = titles[tabId] || tabId;
     }
 
     // Renderowanie widoku w kontenerze roboczym
     if (this.container) {
-      if (tabId === 'agents' || tabId === 'extensions') {
+      if (tabId === 'agents' || tabId === 'extensions' || tabId === 'kernel_config') {
         this.container.classList.add('workspace-content--full');
       } else {
         this.container.classList.remove('workspace-content--full');
@@ -94,25 +100,20 @@ export class TabManager {
 
       // Inicjalizacja dynamiczna wyrenderowanego widoku
       if (tabId === 'dashboard') {
+        this.views.dashboard.init();
         this.views.dashboard.updateStatus(this.latestHealthData);
-        await this.loadDashboardData();
       } else if (tabId === 'chat') {
         await this.views.chat.init(this.apiClient);
       } else if (tabId === 'agents') {
         await this.views.agents.init(this.apiClient);
       } else if (tabId === 'extensions') {
         await this.views.extensions.init(this.apiClient);
+      } else if (tabId === 'kernel_config') {
+        await this.views.kernel_config.init(this.apiClient);
+      } else if (tabId === 'voice_config') {
+        await this.views.voice_config.init(this.apiClient);
       }
     }
-  }
-
-  async loadDashboardData() {
-    if (!this.apiClient) return;
-    const dashboardView = this.views.dashboard;
-    
-    // Pobranie dostawców LLM i wyrenderowanie karty w Dashboardzie
-    const data = await this.apiClient.getLLMProviders();
-    dashboardView.renderProvidersList(data, this.apiClient, () => this.loadDashboardData());
   }
 
   setHealthData(healthData) {

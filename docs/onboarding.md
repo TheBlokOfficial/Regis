@@ -39,7 +39,7 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 ### Parametry `WorldEngine` (`services/server/data/world/config.json`, zarządzane przez `WorldEngine`):
 - **`base_url`** / **`access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token) — pola jawne, nie schema-driven (Home Assistant jest jedynym, znanym z góry backendem silnika). Home Assistant jest traktowany jako **jeden, globalny zasób (singleton)** — jeden `base_url`/`access_token`, bez wielości nazwanych połączeń. Puste pola oznaczają brak konfiguracji — `WorldEngine` degraduje się łagodnie (encje/narzędzia HA po prostu nie są dostarczane w danej turze), bez osobnego przełącznika `enabled`.
 
-Grupy urządzeń przechowywane są w `services/server/data/world/groups/*.json`. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Przypisania nadawców do pokoi (`sender_id -> pokój`, **bez** kanału komunikacji ani tożsamości urządzenia — to wiedza `server/voice/`, nie World) — w `senders.json`.
+Grupy urządzeń przechowywane są w `services/server/data/world/groups/*.json`. **Pokoje** (`Room` — pełnoprawny byt World, niezależny od Home Assistant Areas, patrz `docs/manifest.md` sekcja 5) — w `rooms/*.json`, ten sam wzorzec pliku-na-instancję co grupy. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name`/`room_id` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Przypisania nadawców do pokoi (`sender_id -> room_id`, **bez** kanału komunikacji ani tożsamości urządzenia — to wiedza `server/voice/`, nie World) — w `senders.json`.
 
 ### `server/voice/` — pipeline głosowy satelit
 
@@ -57,7 +57,7 @@ tego dokumentu).
 - Treść instrukcji systemowej faktycznie wysyłanej do LLM. Aktywny prompt wskazuje `services/server/data/active_prompt.json`.
 - **Uwaga**: `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` jest wyłącznie **fallbackiem i szablonem pierwszego uruchomienia**. `PromptStore.ensure_defaults()` tworzy plik tylko wtedy, gdy katalog `data/prompts/` jest pusty — późniejsza zmiana stałej w kodzie **nie zmienia** promptu, którego używa działający agent. Po rozszerzeniu możliwości agenta (np. włączeniu tool callingu) zaktualizuj aktywny prompt w zakładce **Prompty** w Web UI, inaczej model dalej będzie działał wg starych instrukcji.
 
-Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), a Home Assistant/satelit — zakładka **Rozszerzenia** (REST API `/api/v1/world/*`), a nie ręczna edycja plików JSON.
+Najwygodniejszy sposób edycji ustawień LLM to zakładka **Kernel** w Web UI (REST API `/api/v1/llm/providers`), promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), Home Assistant/pokoi/nadawców — zakładka **Świat** (REST API `/api/v1/world/*`), a stanu pipeline'u głosowego — zakładka **Głos** (REST API `/api/v1/voice/status`), a nie ręczna edycja plików JSON. Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami — nie zawiera już konfiguracji (wydzielonej do Kernel/Świat/Głos).
 
 ---
 
@@ -132,14 +132,18 @@ python -m uv run --package server python -m server.main
 | | `PUT /api/v1/agent/prompts/{id}/activate` | Ustawienie promptu jako aktywnego systemowego |
 | **World (Home Assistant)** | `GET/PUT /api/v1/world/config` | Odczyt (token maskowany) i zapis konfiguracji singletona (`base_url`/`access_token`) |
 | | `GET /api/v1/world/catalog` | Surowy katalog wszystkich encji HA — do wyszukiwarki w UI, nie to, co widzi agent |
-| | `GET /api/v1/world/areas` | Unikalne `area_id` wśród zadeklarowanych urządzeń — wygoda formularza rejestracji satelity |
-| | `GET/POST /api/v1/world/declared` | Zadeklarowana lista (to, co widzi agent) i dodanie encji po `entity_id` |
-| | `PUT/DELETE /api/v1/world/declared/{entity_id}` | Zmiana nazwy i usunięcie z zadeklarowanej listy |
+| | `GET /api/v1/world/areas` | Unikalne `area_id` HA wśród zadeklarowanych urządzeń — surowa podpowiedź, nigdy prawda o pokoju |
+| | `GET/POST /api/v1/world/declared` | Zadeklarowana lista (to, co widzi agent) i dodanie encji po `entity_id` (opcjonalnie `room_id`) |
+| | `PUT/DELETE /api/v1/world/declared/{entity_id}` | Zmiana nazwy/pokoju i usunięcie z zadeklarowanej listy |
 | | `GET/POST /api/v1/world/groups` | Lista i tworzenie grup urządzeń |
 | | `PUT/DELETE /api/v1/world/groups/{id}` | Edycja i usunięcie grupy |
-| **World (nadawcy)** | `GET/POST /api/v1/world/senders` | Lista i rejestracja przypisania nadawcy do pokoju (`sender_id -> pokój`) |
+| **World (pokoje)** | `GET/POST /api/v1/world/rooms` | Lista i tworzenie pokoi — pełnoprawny byt World, niezależny od HA Areas |
+| | `PUT/DELETE /api/v1/world/rooms/{id}` | Zmiana nazwy i usunięcie pokoju (bez cascade delete przypisań) |
+| | `POST /api/v1/world/rooms/import-from-ha` | Jednorazowy import pokoju per unikalna HA Area — nie ciągła synchronizacja |
+| **World (nadawcy)** | `GET/POST /api/v1/world/senders` | Lista i rejestracja przypisania nadawcy do pokoju (`sender_id -> room_id`) |
 | | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `server/voice/protocol.py` |
+| | `GET /api/v1/voice/status` | Status pipeline'u głosowego (nazwy klas aktywnych providerów STT/TTS/wake-word), tylko do odczytu |
 
 > **Świadome założenie**: `WS /ws/voice/{sender_id}` nie ma żadnego uwierzytelniania
 > — spójne z resztą systemu (opaque `sender_id` bez auth, model zaufanej sieci
