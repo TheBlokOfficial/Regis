@@ -1,14 +1,11 @@
-"""Narzędzia LLM rozszerzenia Home Assistant, adresowane wyłącznie przez
-`entity_id` (opaque ID, tłumaczony przez Gateway na wewnętrzny ref zanim
-wywołanie w ogóle trafi do tego rozszerzenia).
-"""
+"""Narzędzia LLM Home Assistant, adresowane wprost przez natywny `entity_id`."""
 
 from typing import Any
 
 from server.agent.backend import ToolDefinition, ToolResult
-from server.extensions.home_assistant.client import HomeAssistantClient
-from server.extensions.home_assistant.models import Device, DeviceGroup
-from server.extensions.home_assistant.registry import DeviceRegistry
+from server.world.client import HomeAssistantClient
+from server.world.models import Device, DeviceGroup
+from server.world.registry import DeviceRegistry
 
 TOOL_NAMES = ("get_state", "turn_on", "turn_off")
 
@@ -19,7 +16,7 @@ _ENTITY_ID_PARAMETERS = {
     "properties": {
         "entity_id": {
             "type": "string",
-            "description": "Opaque identyfikator encji (urządzenia lub grupy) z listy dostępnych encji.",
+            "description": "entity_id urządzenia lub grupy z listy dostępnych encji.",
         }
     },
     "required": ["entity_id"],
@@ -27,7 +24,7 @@ _ENTITY_ID_PARAMETERS = {
 
 
 def build_tool_definitions() -> list[ToolDefinition]:
-    """Buduje definicje narzędzi rdzenia rozszerzenia dla jednej interakcji agenta."""
+    """Buduje definicje narzędzi Home Assistant dla jednej interakcji agenta."""
     return [
         ToolDefinition(
             name="get_state",
@@ -46,7 +43,7 @@ def build_tool_definitions() -> list[ToolDefinition]:
                 "properties": {
                     "entity_id": {
                         "type": "string",
-                        "description": "Opaque identyfikator encji (urządzenia lub grupy) z listy dostępnych encji.",
+                        "description": "entity_id urządzenia lub grupy z listy dostępnych encji.",
                     },
                     "brightness_pct": {
                         "type": "integer",
@@ -88,7 +85,7 @@ def build_tool_definitions() -> list[ToolDefinition]:
 
 
 class HomeAssistantToolExecutor:
-    """Wykonuje narzędzia rdzenia na urządzeniu lub grupie znalezionej w rejestrze tej tury."""
+    """Wykonuje narzędzia na urządzeniu lub grupie znalezionej w rejestrze tej tury."""
 
     def __init__(self, device_registry: DeviceRegistry, client: HomeAssistantClient) -> None:
         self._device_registry = device_registry
@@ -149,8 +146,6 @@ class HomeAssistantToolExecutor:
         for device_id in group.device_ids:
             device = self._device_registry.get_device(device_id)
             if device is None:
-                # Nigdy nie ujawniamy surowego, wewnętrznego device_id (namespaced ref
-                # połączenia) w treści zwracanej do LLM — nawet ścieżką błędu.
                 failures.append("nieznane urządzenie")
                 continue
             if capability not in device.capabilities:

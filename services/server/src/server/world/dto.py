@@ -1,9 +1,6 @@
-"""DTO prywatne dla REST API rozszerzenia Home Assistant.
+"""DTO prywatne dla REST API konfiguracji silnika świata."""
 
-Prywatne słownictwo tego rozszerzenia — nie żyje w `packages/shared`, w
-przeciwieństwie do `ProviderOptionSpec`/`ProviderTypeSpecDTO` (nadal
-schema-driven dla dostawców LLM, gdzie realna wymienność backendu istnieje).
-"""
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -73,4 +70,24 @@ class AddDeclaredDeviceRequest(BaseModel):
 class UpdateDeclaredDeviceRequest(BaseModel):
     """Żądanie dla PUT /declared/{entity_id}."""
 
+    display_name: str | None = Field(default=None)
+
+
+class SatelliteDTO(BaseModel):
+    """Rejestracja satelity dla API."""
+
+    sender_id: str = Field(..., description="Opaque identyfikator nadawcy")
+    room_key: str | None = Field(default=None)
+    room_label: str | None = Field(default=None)
+    channel: Literal["voice", "text"] = Field(default="text")
+    display_name: str | None = Field(default=None)
+
+
+class RegisterSatelliteRequest(BaseModel):
+    """Żądanie dla POST /satellites."""
+
+    sender_id: str = Field(...)
+    room_key: str | None = Field(default=None)
+    room_label: str | None = Field(default=None)
+    channel: Literal["voice", "text"] = Field(default="text")
     display_name: str | None = Field(default=None)

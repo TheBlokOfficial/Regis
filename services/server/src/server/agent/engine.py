@@ -4,7 +4,7 @@ from typing import AsyncIterator, Any, Literal, TypedDict
 from shared import ChatResponseDTO, Event, EventBus, get_logger
 from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse, OllamaProvider, ToolCallRequest
 from server.agent.context import ContextBuilder
-from server.agent.gateway import Gateway
+from server.agent.context_provider import NullWorldInterface, WorldInterface
 from server.agent.memory import MemoryManager
 from server.agent.prompts import PromptStore
 from server.events import ServerEventType
@@ -54,7 +54,7 @@ class AgentEngine:
         context_builder: ContextBuilder | None = None,
         event_bus: EventBus | None = None,
         prompt_store: PromptStore | None = None,
-        gateway: Gateway | None = None,
+        world: WorldInterface | None = None,
         max_tool_iterations: int = 8,
     ) -> None:
         self.llm_provider: BaseLLMProvider = llm_provider or OllamaProvider()
@@ -62,9 +62,10 @@ class AgentEngine:
         self.context_builder: ContextBuilder = context_builder or ContextBuilder()
         self.event_bus: EventBus = event_bus or EventBus()
         self.prompt_store: PromptStore = prompt_store or PromptStore()
-        # Kernel nie zna żadnego konkretnego pluginu — pusty Gateway to bezpieczny domyślny
-        # stan (agent działa jak zwykły chat, bez narzędzi). Kompozycja pluginów należy do main.py.
-        self.gateway: Gateway = gateway or Gateway()
+        # Kernel nie zna żadnej konkretnej implementacji — pusty NullWorldInterface to
+        # bezpieczny domyślny stan (agent działa jak zwykły chat, bez narzędzi).
+        # Kompozycja konkretnego silnika świata (server.world) należy do main.py.
+        self.world: WorldInterface = world or NullWorldInterface()
         self.max_tool_iterations: int = max_tool_iterations
         self._active_tasks: dict[str, asyncio.Task[Any]] = {}
         self._generation_buffers: dict[str, str] = {}
@@ -120,6 +121,7 @@ class AgentEngine:
         self,
         session_id: str,
         prompt: str,
+        sender_id: str | None = None,
     ) -> None:
         """Wykonywane w tle zadanie generowania odpowiedzi LLM dla sesji.
 
@@ -145,11 +147,11 @@ class AgentEngine:
         steps: list[ToolStepPayload] = []
 
         try:
-            # 3. Budowa kontekstu tej tury od zera: narzędzia + encje + fakty (Gateway,
-            #    wizja sekcja 2 i 3) — nigdy cache'owane między turami.
-            gateway_build = await self.gateway.build()
-            tool_defs = gateway_build.tool_definitions
-            dispatch_tool = gateway_build.dispatch
+            # 3. Budowa kontekstu tej tury od zera przez silnik świata (WorldInterface)
+            #    — nigdy cache'owana między turami.
+            context_build = await self.world.build(sender_id=sender_id)
+            tool_defs = context_build.tool_definitions
+            dispatch_tool = context_build.dispatch
 
             # 4. Pobranie aktualnej historii i zbudowanie kontekstu LLM
             history = self.memory_manager.get_history(session_id=session_id)
@@ -157,8 +159,7 @@ class AgentEngine:
                 session_history=history,
                 system_prompt_override=active_system_prompt,
                 tools_available=bool(tool_defs),
-                entities=gateway_build.entities,
-                facts=gateway_build.facts,
+                dynamic_context=context_build.dynamic_context,
             )
 
             for iteration in range(self.max_tool_iterations):
@@ -283,6 +284,7 @@ class AgentEngine:
         self,
         session_id: str = "session_default",
         prompt: str = "",
+        sender_id: str | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Główna strumieniowa pętla konwersacyjna. Utrwala zapytanie i odpowiedź w pamięci sesji.
 
@@ -292,6 +294,8 @@ class AgentEngine:
 
         :param session_id: Identyfikator sesji backendowej.
         :param prompt: Nowa treść wiadomości użytkownika.
+        :param sender_id: Opaque identyfikator nadawcy (np. satelity) — nieinterpretowany
+            przez kernel, przekazywany dalej do `WorldInterface.build()`.
         :yields: Kolejne `StreamEvent` (fragmenty tekstu oraz kroki tool-callingu).
         """
         if self.is_session_busy(session_id):
@@ -345,6 +349,7 @@ class AgentEngine:
             self._generate_in_background(
                 session_id=session_id,
                 prompt=prompt,
+                sender_id=sender_id,
             )
         )
         self._active_tasks[session_id] = bg_task
@@ -372,14 +377,16 @@ class AgentEngine:
         self,
         session_id: str = "session_default",
         prompt: str = "",
+        sender_id: str | None = None,
     ) -> ChatResponseDTO:
         """Ścisła, niestrumieniowa konwersacja bazująca bezpośrednio na strumieniowej pętli (DRY wrapper).
 
         :param session_id: Identyfikator sesji backendowej.
         :param prompt: Nowa treść wiadomości użytkownika.
+        :param sender_id: Opaque identyfikator nadawcy (np. satelity) — nieinterpretowany przez kernel.
         :return: Struktura ChatResponseDTO z wygenerowaną odpowiedzią i nazwą modelu.
         """
-        _ = [chunk async for chunk in self.interact_stream(session_id=session_id, prompt=prompt)]
+        _ = [chunk async for chunk in self.interact_stream(session_id=session_id, prompt=prompt, sender_id=sender_id)]
 
         session = self.memory_manager.get_or_create_session(session_id)
         last_message = session.messages[-1]

@@ -1,12 +1,6 @@
-"""Magazyn urządzeń i grup na czas jednej interakcji agenta — czysto wewnętrzna
-sprawa rozszerzenia (Gateway nigdy go nie widzi).
+"""Magazyn urządzeń i grup na czas jednej interakcji agenta."""
 
-Agent adresuje encje po opaque ID nadanym przez Gateway, które rozszerzenie
-tłumaczy z powrotem na wewnętrzny ref (klucz tego rejestru) zanim w ogóle tu
-trafi.
-"""
-
-from server.extensions.home_assistant.models import Device, DeviceGroup
+from server.world.models import Device, DeviceGroup
 
 
 class DeviceRegistry:
@@ -27,9 +21,9 @@ class DeviceRegistry:
         return list(self._groups)
 
     def get_device(self, device_id: str) -> Device | None:
-        """Zwraca urządzenie po jego (namespaced) wewnętrznym ref lub None."""
+        """Zwraca urządzenie po jego entity_id lub None."""
         return self._devices_by_id.get(device_id)
 
     def get_group(self, group_id: str) -> DeviceGroup | None:
-        """Zwraca grupę po jej wewnętrznym ref lub None."""
+        """Zwraca grupę po jej id lub None."""
         return self._groups_by_id.get(group_id)

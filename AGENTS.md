@@ -18,36 +18,28 @@ nowa; wróć do źródeł tylko przy realnej niejasności.
   bezrefleksyjnie.
 
 ## Architektura: kierunek zależności (najłatwiejsza do złamania reguła)
-Serwer ma dwie warstwy i **żadna nie zna z góry implementacji warstwy poniżej**
-— rozszerzenia rejestrują się same, jawnie, w kompozycji aplikacji (`main.py`):
-
-| Warstwa | Katalog | Wie o warstwie niżej tylko tyle |
-| :--- | :--- | :--- |
-| 0 — Kernel | `server/agent/` | protokół `PluginProvider` (`agent/plugin_contract.py`) |
-| 1 — Rozszerzenia | `server/extensions/` | nic — rozszerzenie samo orkiestruje swój backend wewnętrznie (dziś: `HomeAssistantClient`) |
-
-Analogiczna zasada obowiązuje na granicy sieci: `network/gateway.py` zna
-wyłącznie protokół `NetworkExtension` (`network/extension_contract.py`) —
-`extension_id`/`label`/`is_enabled()`/`set_enabled()`/`build_router()` —
-nigdy konkretnego rozszerzenia po nazwie.
-
-Konkretnie: `server/agent/` i `server/network/` nie importują żadnego
-rozszerzenia po nazwie (`home_assistant`, `basic_tools`) — jedyne miejsce,
-które je zna z imienia, to kompozycja aplikacji w `main.py`. Nowe
-rozszerzenie **nigdy** nie wymaga zmiany kernela ani sieci. Weryfikacja
-(poprawny wynik: brak trafień w obu):
+Kernel (`server/agent/`) **nie zna z góry konkretnej implementacji** silnika
+świata — zna wyłącznie minimalny protokół `WorldInterface`
+(`agent/context_provider.py`), dokładnie tak jak zna `BaseLLMProvider` zamiast
+konkretnego dostawcy LLM. Jedyny konkretny silnik, `server/world/`
+(`WorldEngine`), wstrzykiwany jest jawnie w kompozycji aplikacji (`main.py`).
 
 ```bash
-grep -rn "from server.extensions" services/server/src/server/agent/
-grep -rn "from server.extensions" services/server/src/server/network/
+grep -rn "from server.world" services/server/src/server/agent/
 ```
+(poprawny wynik: brak trafień — to jedyna granica, która musi zostać nienaruszona)
 
-Dawny podział na trzy warstwy (Kernel/Pluginy/Integracje z osobnym
-kontraktem `DeviceIntegration` i protokołem `ContextProvider`) został
-scalony — Integracja to dziś prywatny szczegół wewnętrzny Rozszerzenia,
-nigdy widoczny dla Gateway ani sieci. Nie odtwarzaj tego podziału bez
-konkretnego przypadku użycia w ręku (patrz `docs/manifest.md`, sekcja
-"Świadome decyzje projektowe").
+**Świadomie porzucona generyczność**: wcześniejszy model "N niezależnych,
+wzajemnie nieświadomych rozszerzeń" (`PluginProvider`/`Gateway`/
+`NetworkExtension`, warstwa `server/extensions/`) został zniesiony — bronił
+się przed scenariuszem (podmiana/wielość rozszerzeń), który w tym prywatnym,
+jednoosobowym projekcie nigdy się nie wydarzy. `WorldEngine` woła swoje
+wewnętrzne backendy (`HomeAssistantClient`, rejestr satelit) wprost, zwykłymi
+wywołaniami metod — zero protokołu między nimi. Nie ma już koncepcji
+"wyłączenia rozszerzenia" — backend albo działa, albo zwraca błąd w locie
+(np. zły token), nigdy osobny boolean `enabled`. Nie odtwarzaj generycznej
+wielorozszerzeniowości bez konkretnego, realnego drugiego silnika w ręku
+(patrz `docs/manifest.md`, sekcja "Świadome decyzje projektowe").
 
 Uzasadnienie i konsekwencje: `docs/manifest.md`, sekcje 3 i 5.
 

@@ -377,47 +377,12 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // METODY ROZSZERZENIA (REJESTR GENERYCZNY)
-  // ==========================================================================
-
-  async getExtensions() {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions`);
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('[ApiClient] Błąd pobierania listy rozszerzeń:', error);
-      return null;
-    }
-  }
-
-  async setExtensionEnabled(extensionId, enabled) {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/${extensionId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error(`[ApiClient] Błąd przełączania rozszerzenia '${extensionId}':`, error);
-      throw error;
-    }
-  }
-
-  // ==========================================================================
-  // METODY ROZSZERZENIA HOME ASSISTANT
+  // METODY SILNIKA ŚWIATA — HOME ASSISTANT
   // ==========================================================================
 
   async getHAConfig() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/config`);
+      const response = await fetch(`${this.baseUrl}/api/v1/world/config`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -430,7 +395,7 @@ export class ApiClient {
 
   async updateHAConfig(data) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/config`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -448,7 +413,7 @@ export class ApiClient {
 
   async getHACatalog() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/catalog`);
+      const response = await fetch(`${this.baseUrl}/api/v1/world/catalog`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -461,7 +426,7 @@ export class ApiClient {
 
   async getHADeclaredDevices() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/declared`);
+      const response = await fetch(`${this.baseUrl}/api/v1/world/declared`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -474,7 +439,7 @@ export class ApiClient {
 
   async addHADeclaredDevice(data) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/declared`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/declared`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -492,7 +457,7 @@ export class ApiClient {
 
   async updateHADeclaredDevice(entityId, data) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/declared/${encodeURIComponent(entityId)}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/declared/${encodeURIComponent(entityId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -510,7 +475,7 @@ export class ApiClient {
 
   async deleteHADeclaredDevice(entityId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/declared/${encodeURIComponent(entityId)}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/declared/${encodeURIComponent(entityId)}`, {
         method: 'DELETE',
       });
       if (!response.ok) {
@@ -526,7 +491,7 @@ export class ApiClient {
 
   async getHAGroups() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/groups`);
+      const response = await fetch(`${this.baseUrl}/api/v1/world/groups`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
@@ -539,7 +504,7 @@ export class ApiClient {
 
   async createHAGroup(data) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/groups`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/groups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -557,7 +522,7 @@ export class ApiClient {
 
   async updateHAGroup(groupId, data) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/groups/${groupId}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/groups/${groupId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -575,7 +540,7 @@ export class ApiClient {
 
   async deleteHAGroup(groupId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/extensions/home_assistant/groups/${groupId}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/groups/${groupId}`, {
         method: 'DELETE',
       });
       if (!response.ok) {

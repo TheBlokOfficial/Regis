@@ -4,16 +4,16 @@ from fastapi.staticfiles import StaticFiles
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
 from server.agent.prompts import PromptStore
-from server.network.extension_contract import NetworkExtension
 from server.network.routes import create_api_router
-from server.network.routes.extensions import create_extensions_registry_router
+from server.world import WorldEngine
+from server.world.routes import create_world_router
 
 
 def create_gateway_app(
     agent_engine: AgentEngine,
     backend_registry: BackendRegistry,
     prompt_store: PromptStore,
-    extensions: list[NetworkExtension] | None = None,
+    world_engine: WorldEngine | None = None,
 ) -> FastAPI:
     """Tworzy i konfiguruje bramkę sieciową FastAPI z wbudowaną konsolą WWW i punktami końcowymi."""
     app = FastAPI(
@@ -21,7 +21,6 @@ def create_gateway_app(
         description="Bramka sieciowa FastAPI z wbudowanym interfejsem Web Console",
         version="0.1.0",
     )
-    extensions = extensions or []
 
     # Rejestracja centralnego routera używanych punktów końcowych API
     api_router = create_api_router(
@@ -31,12 +30,12 @@ def create_gateway_app(
     )
     app.include_router(api_router)
 
-    # Generyczny rejestr rozszerzeń (lista + przełącznik enabled), plus router
-    # własny każdego rozszerzenia zamontowany pod jego prefiksem — sieć zna
-    # wyłącznie kształt `NetworkExtension`, nigdy konkretnej implementacji.
-    app.include_router(create_extensions_registry_router(extensions))
-    for ext in extensions:
-        app.include_router(ext.build_router(), prefix=f"/api/v1/extensions/{ext.extension_id}")
+    # WorldEngine jest jedynym, konkretnym silnikiem świata — sieć montuje jego
+    # router wprost, pod stałym prefiksem, bez generycznej pętli po rozszerzeniach.
+    # Opcjonalny — testy chat API, którym konfiguracja świata jest obojętna, mogą
+    # pominąć wstrzyknięcie i dostać czysty kernel bez zamontowanego routera.
+    if world_engine is not None:
+        app.include_router(create_world_router(world_engine), prefix="/api/v1/world")
 
     # Wbudowana obsługa interfejsu Web Console (server/web)
     web_dir = (Path(__file__).parent.parent / "web").resolve()

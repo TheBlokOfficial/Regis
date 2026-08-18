@@ -36,16 +36,16 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
 - **`options.base_url`**: Adres serwera Ollama (domyślnie: `http://localhost:11434`).
 
-### Parametry rozszerzenia Home Assistant (`services/server/data/extensions/home_assistant/config.json`, zarządzane przez `HomeAssistantExtension`):
-- **`base_url`** / **`access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token) — pola jawne, nie schema-driven (Home Assistant jest jedynym, znanym z góry backendem tego rozszerzenia). Home Assistant jest traktowany jako **jeden, globalny zasób (singleton)** — jeden `base_url`/`access_token`, bez wielości nazwanych połączeń. Puste pola oznaczają rozszerzenie nieskonfigurowane.
+### Parametry `WorldEngine` (`services/server/data/world/config.json`, zarządzane przez `WorldEngine`):
+- **`base_url`** / **`access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token) — pola jawne, nie schema-driven (Home Assistant jest jedynym, znanym z góry backendem silnika). Home Assistant jest traktowany jako **jeden, globalny zasób (singleton)** — jeden `base_url`/`access_token`, bez wielości nazwanych połączeń. Puste pola oznaczają brak konfiguracji — `WorldEngine` degraduje się łagodnie (encje/narzędzia HA po prostu nie są dostarczane w danej turze), bez osobnego przełącznika `enabled`.
 
-Grupy urządzeń (prywatna, rozszerzenie-wide konfiguracja) przechowywane są w `services/server/data/extensions/home_assistant/groups/*.json`. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Przełącznik `enabled` całego rozszerzenia (wspólny dla wszystkich Rozszerzeń, ten sam mechanizm co `basic_tools`) — w `state.json`.
+Grupy urządzeń przechowywane są w `services/server/data/world/groups/*.json`. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Rejestr satelit (`sender_id -> pokój/kanał komunikacji`) — w `satellites.json`.
 
 ### Prompty systemowe (`services/server/data/prompts/*.json`, zarządzane przez `PromptStore`):
 - Treść instrukcji systemowej faktycznie wysyłanej do LLM. Aktywny prompt wskazuje `services/server/data/active_prompt.json`.
 - **Uwaga**: `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` jest wyłącznie **fallbackiem i szablonem pierwszego uruchomienia**. `PromptStore.ensure_defaults()` tworzy plik tylko wtedy, gdy katalog `data/prompts/` jest pusty — późniejsza zmiana stałej w kodzie **nie zmienia** promptu, którego używa działający agent. Po rozszerzeniu możliwości agenta (np. włączeniu tool callingu) zaktualizuj aktywny prompt w zakładce **Prompty** w Web UI, inaczej model dalej będzie działał wg starych instrukcji.
 
-Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), a Home Assistant/innych rozszerzeń — zakładka **Rozszerzenia** (REST API `/api/v1/extensions/home_assistant/config` i `/api/v1/extensions`), a nie ręczna edycja plików JSON.
+Najwygodniejszy sposób edycji ustawień LLM to zakładka **Ustawienia** w Web UI (REST API `/api/v1/llm/providers`), promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), a Home Assistant/satelit — zakładka **Rozszerzenia** (REST API `/api/v1/world/*`), a nie ręczna edycja plików JSON.
 
 ---
 
@@ -55,20 +55,21 @@ Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](mani
 - **Paczka `packages/shared`**: Dostarcza niezależne abstrakcje infrastrukturalne (logowanie `logging.py`, magistralę zdarzeń `event_bus.py`, persystencję `config.py` oraz struktury danych DTO `contracts.py`).
 - **Usługa `services/server`**: Główny serwer integrujący komponenty z `shared`, udostępniający REST API v1, strumieniowanie SSE dla konsoli Web UI oraz docelową bramkę WebSockets dla architektury rozproszonej.
 
-### Trzy warstwy wewnątrz `services/server` (kluczowe dla rozbudowy):
+### Kernel i WorldEngine wewnątrz `services/server` (kluczowe dla rozbudowy):
 
 | Warstwa | Katalog | Odpowiedzialność | Co wie o warstwie niżej |
 | :--- | :--- | :--- | :--- |
-| **0 — Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct, `Gateway` (agregator 3 kanałów) | Tylko protokół `PluginProvider` |
-| **1 — Rozszerzenia** | `server/extensions/` | Domena możliwości (dziś: Home Assistant, data/godzina), deklaracja narzędzi, encji i opcjonalnie faktów; opcjonalnie własna obecność sieciowa (`NetworkExtension`) | Nic — rozszerzenie samo orkiestruje swój backend wewnętrznie (dziś: `HomeAssistantClient`) |
+| **Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct | Tylko protokół `WorldInterface` (`agent/context_provider.py`) |
+| **WorldEngine** | `server/world/` | Jedyny, konkretny silnik świata (dziś: Home Assistant, satelity, `get_time`) | Nic — sam orkiestruje swoje backendy wewnętrznie (dziś: `HomeAssistantClient`) |
 
-Fakty nie mają osobnej kategorii — są opcjonalnym wkładem zwykłego rozszerzenia, na równi z narzędziami i encjami. Gateway buduje rozszerzenia sekwencyjnie, w kolejności rejestracji, i przekazuje każdemu kolejnemu Fakty zebrane od rozszerzeń zbudowanych wcześniej w tej samej turze (dowód: `BasicToolsExtension`, jedno narzędzie `get_time` + bliźniaczy Fakt).
-
-**Zasada nadrzędna**: żadna warstwa nie zna z góry implementacji warstwy poniżej — te rejestrują się same, jawnie, w `main.py`. Dodanie nowego rozszerzenia **nie wymaga zmiany kernela ani sieci**.
+**Zasada nadrzędna**: kernel nie zna z góry implementacji `WorldEngine` — ten
+jest wstrzykiwany jawnie w `main.py` (`AgentEngine(world=world_engine)`),
+dokładnie jak konkretny dostawca LLM. Domyślnie (bez wstrzyknięcia) kernel
+używa `NullWorldInterface` — zwykły chat bez narzędzi.
 
 Praktycznie:
-- **Nowe rozszerzenie**: pakiet w `server/extensions/` z klasą, która strukturalnie spełnia `PluginProvider` — pole `plugin_id: str` i metoda `async def build(facts: list[Fact]) -> PluginContribution` — dopisana do `Gateway(plugins=[...])` w `main.py`. Jeśli rozszerzenie proaktywnie dostarcza kontekst, dopisuje `facts` do zwracanego `PluginContribution` — pod warunkiem, że ta sama treść jest też dostępna przez narzędzie (zasada symetrii Fakt↔narzędzie, `docs/manifest.md`, sekcja 5). Opcjonalnie implementuje też `NetworkExtension` (`server/network/extension_contract.py`) dla własnej konfiguracji przez REST — patrz `docs/manifest.md`, sekcja 5.
-- Agent adresuje encje (urządzenia, grupy) wyłącznie przez opaque `entity_id` nadany przez Gateway — nigdy po przyjaznej nazwie ani natywnym ID połączenia.
+- **Rozszerzanie możliwości agenta**: dziś to zwykła zmiana wewnątrz `server/world/` (nowa metoda, nowe narzędzie w `WorldEngine.build()`) — nie osobny pakiet z protokołem. Generyczna wielorozszerzeniowość została świadomie porzucona (`docs/manifest.md`, sekcja 5, "Świadome decyzje projektowe") — nie odtwarzaj jej bez konkretnego, realnego drugiego silnika świata w ręku.
+- Agent adresuje urządzenia wprost przez natywny `entity_id` Home Assistant — nie ma już warstwy opaque ID (uzasadnienie: `docs/manifest.md`, sekcja 5).
 
 ---
 
@@ -110,15 +111,15 @@ python -m uv run --package server python -m server.main
 | | `GET /api/v1/agent/prompts/{id}` | Pobranie pojedynczego promptu |
 | | `PUT/DELETE /api/v1/agent/prompts/{id}` | Edycja i usunięcie promptu (usunięcie aktywnego jest zablokowane) |
 | | `PUT /api/v1/agent/prompts/{id}/activate` | Ustawienie promptu jako aktywnego systemowego |
-| **Extensions (rejestr)** | `GET /api/v1/extensions` | Lista zarejestrowanych rozszerzeń i ich stan enabled |
-| | `PUT /api/v1/extensions/{id}` | Włączenie/wyłączenie rozszerzenia (generyczne, dla wszystkich) |
-| **Home Assistant** | `GET/PUT /api/v1/extensions/home_assistant/config` | Odczyt (token maskowany) i zapis konfiguracji singletona (`base_url`/`access_token`) |
-| | `GET /api/v1/extensions/home_assistant/catalog` | Surowy katalog wszystkich encji HA — do wyszukiwarki w UI, nie to, co widzi agent |
-| | `GET/POST /api/v1/extensions/home_assistant/declared` | Zadeklarowana lista (to, co widzi agent) i dodanie encji po `entity_id` |
-| | `PUT/DELETE /api/v1/extensions/home_assistant/declared/{entity_id}` | Zmiana nazwy i usunięcie z zadeklarowanej listy |
-| | `GET/POST /api/v1/extensions/home_assistant/groups` | Lista i tworzenie grup urządzeń |
-| | `PUT/DELETE /api/v1/extensions/home_assistant/groups/{id}` | Edycja i usunięcie grupy |
-| **Basic Tools** | — | Brak własnych endpointów — enable/disable przez rejestr generyczny powyżej |
+| **World (Home Assistant)** | `GET/PUT /api/v1/world/config` | Odczyt (token maskowany) i zapis konfiguracji singletona (`base_url`/`access_token`) |
+| | `GET /api/v1/world/catalog` | Surowy katalog wszystkich encji HA — do wyszukiwarki w UI, nie to, co widzi agent |
+| | `GET /api/v1/world/areas` | Unikalne `area_id` wśród zadeklarowanych urządzeń — wygoda formularza rejestracji satelity |
+| | `GET/POST /api/v1/world/declared` | Zadeklarowana lista (to, co widzi agent) i dodanie encji po `entity_id` |
+| | `PUT/DELETE /api/v1/world/declared/{entity_id}` | Zmiana nazwy i usunięcie z zadeklarowanej listy |
+| | `GET/POST /api/v1/world/groups` | Lista i tworzenie grup urządzeń |
+| | `PUT/DELETE /api/v1/world/groups/{id}` | Edycja i usunięcie grupy |
+| **World (satelity)** | `GET/POST /api/v1/world/satellites` | Lista i rejestracja satelity (`sender_id -> pokój/kanał`) |
+| | `DELETE /api/v1/world/satellites/{sender_id}` | Usunięcie rejestracji satelity |
 
 > **Planowane, jeszcze nieistniejące**: bramka WebSocket (`ws://127.0.0.1:8000/ws`)
 > dla komunikacji rozproszonej. W kodzie nie ma dziś żadnego endpointu WS —
@@ -159,9 +160,9 @@ Podczas prac nad projektem należy bezwzględnie stosować ustandaryzowany cykl 
    - Przed modyfikacją kodu sprawdź rzeczywisty stan plików, sygnatury i mechanizmy — nie zgaduj (zasada z [`AGENTS.md`](../AGENTS.md)). Dotyczy to również dokumentacji: każde zdanie w `docs/` traktuj jako hipotezę do potwierdzenia w kodzie.
 2. **Implementacja i Spójność Kontraktów**:
    - Zmiany w strukturach komunikacyjnych dodawaj w `packages/shared/src/shared/contracts.py`.
-   - **Respektuj kierunek zależności warstw** (sekcja 3): kernel nie może importować z `extensions/` po nazwie, a sieć (`network/gateway.py`) nie może importować żadnej konkretnej klasy rozszerzenia — obie strony znają wyłącznie protokół (`PluginProvider`/`NetworkExtension`). Weryfikacja (komenda zostaje nazwana po starych katalogach celowo — zero trafień potwierdza również, że nic ich nie odtworzyło):
+   - **Respektuj kierunek zależności** (sekcja 3): kernel nie może importować z `server/world/` po nazwie — zna wyłącznie protokół `WorldInterface`. Weryfikacja:
      ```bash
-     grep -rn "from server.plugins\|from server.integrations" services/server/src/server/agent/
+     grep -rn "from server.world" services/server/src/server/agent/
      ```
      (poprawny wynik: brak trafień)
 3. **Automatyczna Weryfikacja**:

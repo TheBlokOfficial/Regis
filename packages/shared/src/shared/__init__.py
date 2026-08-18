@@ -10,8 +10,6 @@ from shared.contracts import (
     ChatSessionSummaryDTO,
     CreateLLMProviderRequest,
     CreatePromptRequest,
-    ExtensionListResponse,
-    ExtensionSummaryDTO,
     HealthResponse,
     LLMProviderDTO,
     LLMProviderListResponse,
@@ -22,7 +20,6 @@ from shared.contracts import (
     ProviderTypeSpecDTO,
     SelectLLMProviderRequest,
     SendChatMessageRequest,
-    SetExtensionEnabledRequest,
     UpdatePromptRequest,
 )
 from shared.event_bus import Event, EventBus, EventHandler
@@ -42,8 +39,6 @@ __all__ = [
     "Event",
     "EventBus",
     "EventHandler",
-    "ExtensionListResponse",
-    "ExtensionSummaryDTO",
     "HealthResponse",
     "LLMProviderDTO",
     "LLMProviderListResponse",
@@ -54,7 +49,6 @@ __all__ = [
     "ProviderTypeSpecDTO",
     "SelectLLMProviderRequest",
     "SendChatMessageRequest",
-    "SetExtensionEnabledRequest",
     "UpdatePromptRequest",
     "get_logger",
     "get_service_root",

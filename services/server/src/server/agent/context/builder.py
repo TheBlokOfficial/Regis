@@ -1,56 +1,23 @@
 from shared import ChatMessageDTO, get_logger
 from server.agent.backend import LLMMessage
-from server.agent.plugin_contract import EntitySpec, Fact
 
 logger = get_logger("regis.agent.context")
 
 DEFAULT_SYSTEM_PROMPT = (
     "Jesteś inteligentnym asystentem i centralnym jądrem Regis OS Kernel.\n"
-    "Odpowiadaj zwięźle, konkretnie i pomocnie w języku polskim."
+    "Odpowiadaj zwięźle, konkretnie i pomocnie w języku polskim.\n\n"
+    "Poniższy dynamiczny kontekst (jeśli obecny) pochodzi z niezależnego, "
+    "konkretnego silnika świata — nie zakładaj między jego fragmentami "
+    "ukrytych zależności poza tym, co jawnie napisano."
 )
 
-# Neutralne, addon-agnostyczne zdanie doklejane warunkowo, gdy agent ma w danej
+# Neutralne, domenowo-agnostyczne zdanie doklejane warunkowo, gdy agent ma w danej
 # interakcji dostęp do jakichkolwiek narzędzi — nigdy nie wymienia ich nazw
-# ani pochodzenia (żaden addon/integracja nie jest znany na poziomie promptu).
+# ani pochodzenia (żaden konkretny silnik nie jest znany na poziomie promptu).
 _TOOLS_AVAILABLE_HINT = (
     "\n\nMasz dostęp do zestawu narzędzi zewnętrznych — korzystaj z nich, gdy pomogą "
     "w realizacji zadania lub odpowiedzi na pytanie."
 )
-
-
-def _format_capability(tool_name: str, features: frozenset[str]) -> str:
-    """Formatuje pojedynczą etykietę możliwości — dopisuje cechy w obrębie
-    narzędzia, gdy istnieją (wizja, sekcja 4.1: granularność cech), pomija
-    nawiasy, gdy narzędzie jest wspierane w pełni (pusty zbiór cech)."""
-    if not features:
-        return tool_name
-    return f"{tool_name}[{', '.join(sorted(features))}]"
-
-
-def _format_entities_section(entities: list[EntitySpec] | None) -> str:
-    """Formatuje kanał Encji generycznie — kernel zna wyłącznie kształt z Kontraktu,
-    nigdy pochodzenia (domeny) encji (wizja, sekcja 1 i 3)."""
-    if not entities:
-        return ""
-    lines = ["\n\nDostępne encje (adresuj je wyłącznie po podanym id):"]
-    for entity in entities:
-        features_by_tool: dict[str, set[str]] = {}
-        for capability in entity.capabilities:
-            features_by_tool.setdefault(capability.tool_name, set()).update(capability.features)
-        capability_labels = sorted(
-            _format_capability(tool_name, frozenset(features)) for tool_name, features in features_by_tool.items()
-        )
-        lines.append(f"- [{entity.id}] {entity.name} (możliwości: {', '.join(capability_labels) or 'brak'})")
-    return "\n".join(lines)
-
-
-def _format_facts_section(facts: list[Fact] | None) -> str:
-    """Formatuje kanał Faktów generycznie (wizja, sekcja 3)."""
-    if not facts:
-        return ""
-    lines = ["\n\nZnane fakty:"]
-    lines.extend(f"- {fact.key}: {fact.value}" for fact in facts)
-    return "\n".join(lines)
 
 
 class ContextBuilder:
@@ -70,8 +37,7 @@ class ContextBuilder:
         new_prompt: str | None = None,
         system_prompt_override: str | None = None,
         tools_available: bool = False,
-        entities: list[EntitySpec] | None = None,
-        facts: list[Fact] | None = None,
+        dynamic_context: str | None = None,
     ) -> list[LLMMessage]:
         """Składa listę wiadomości LLMMessage na podstawie historii sesji oraz nowego zapytania.
 
@@ -82,21 +48,20 @@ class ContextBuilder:
         :param new_prompt: Opcjonalny nowy prompt od użytkownika (jeśli nie został jeszcze dodany do historii).
         :param system_prompt_override: Opcjonalny własny system prompt nadpisujący domyślny.
         :param tools_available: Czy w tej interakcji agent ma dostęp do jakichkolwiek narzędzi
-            (agregacja z Gateway) — jeśli tak, dokleja jedno neutralne zdanie
+            (z `ContextBuild.tool_definitions`) — jeśli tak, dokleja jedno neutralne zdanie
             zachęcające do ich użycia, bez wymieniania czegokolwiek konkretnego.
-        :param entities: Kanał Encji zbudowany przez Gateway na tę turę (opaque ID, nazwa,
-            możliwości) — formatowany generycznie, kernel nie zna żadnej domeny.
-        :param facts: Kanał Faktów zebrany przez Gateway od Dostawców kontekstu na tę turę.
+        :param dynamic_context: Gotowy blok prozy zbudowany przez implementację `WorldInterface`
+            na tę turę — kernel go nie interpretuje ani nie formatuje, tylko wkleja.
         :return: Lista zwalidowanych obiektów LLMMessage gotowych do wysłania do dostawcy LLM.
         """
         messages: list[LLMMessage] = []
 
-        # 1. Dodanie wytycznych systemowych (System Prompt) + kanały Encje/Fakty (Gateway)
+        # 1. Dodanie wytycznych systemowych (System Prompt) + dynamiczny kontekst silnika świata
         system_content = system_prompt_override or self.default_system_prompt
         if tools_available:
             system_content += _TOOLS_AVAILABLE_HINT
-        system_content += _format_entities_section(entities)
-        system_content += _format_facts_section(facts)
+        if dynamic_context:
+            system_content += "\n\n" + dynamic_context
         messages.append(LLMMessage(role="system", content=system_content))
 
         # 2. Przycięcie historii do najnowszych N wiadomości i zmapowanie do formatu dostawcy LLM

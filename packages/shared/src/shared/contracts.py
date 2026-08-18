@@ -96,6 +96,9 @@ class SendChatMessageRequest(BaseModel):
 
     session_id: str = Field(default="session_default", description="Identyfikator sesji rozmowy w backendzie")
     message: str = Field(..., description="Treść nowej wiadomości od użytkownika/satelity")
+    sender_id: str | None = Field(
+        default=None, description="Opaque identyfikator nadawcy (np. satelity) — nieinterpretowany przez kernel"
+    )
 
 
 class ChatResponseDTO(BaseModel):
@@ -190,21 +193,3 @@ class UpdatePromptRequest(BaseModel):
 # pakietach (`server/extensions/home_assistant/dto.py`), nie tutaj.
 
 
-class ExtensionSummaryDTO(BaseModel):
-    """Jeden wpis w liście rozszerzeń dla API."""
-
-    id: str = Field(..., description="Stabilny identyfikator rozszerzenia (np. home_assistant)")
-    label: str = Field(..., description="Wyświetlana nazwa rozszerzenia")
-    enabled: bool = Field(..., description="Czy rozszerzenie aktywnie dostarcza wkład agentowi")
-
-
-class ExtensionListResponse(BaseModel):
-    """Odpowiedź dla GET /api/v1/extensions."""
-
-    extensions: list[ExtensionSummaryDTO] = Field(default_factory=list, description="Lista zarejestrowanych rozszerzeń")
-
-
-class SetExtensionEnabledRequest(BaseModel):
-    """Żądanie dla PUT /api/v1/extensions/{id}."""
-
-    enabled: bool = Field(..., description="Nowy stan włączenia rozszerzenia")

@@ -1,8 +1,8 @@
 """Klient REST API Home Assistant.
 
 Cała wiedza o formacie danych Home Assistant (entity_id, domain.service,
-atrybuty encji) jest zamknięta w tej klasie — narzędzia LLM rozszerzenia
-(`tools.py`) operują wyłącznie na generycznym modelu `Device`+capability.
+atrybuty encji) jest zamknięta w tej klasie — narzędzia LLM (`tools.py`)
+operują wyłącznie na generycznym modelu `Device`+capability.
 """
 
 from typing import Any, Callable
@@ -11,9 +11,9 @@ import httpx
 from shared import get_logger
 
 from server.agent.backend import ToolResult
-from server.extensions.home_assistant.models import Device
+from server.world.models import Device
 
-logger = get_logger("regis.extensions.home_assistant")
+logger = get_logger("regis.world")
 
 # Domeny encji HA obsługujące włączanie/wyłączanie — wszystkie pozostałe domeny
 # udostępniają wyłącznie odczyt stanu ('get_state'). Fallback dla domen bez
