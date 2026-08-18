@@ -71,6 +71,27 @@ export const Icons = {
     <line x1="12" y1="16" x2="12.01" y2="16"></line>
   `),
 
+  // Kółko z trzema kropkami — "w toku analizowania", spójne stylistycznie z CheckCircle2/AlertCircle
+  CircleEllipsis: () => createSvg(`
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="8" y1="12" x2="8.01" y2="12"></line>
+    <line x1="12" y1="12" x2="12.01" y2="12"></line>
+    <line x1="16" y1="12" x2="16.01" y2="12"></line>
+  `),
+
+  // Kółko ze spinnerem — status "w toku" narzędzia, obracane w CSS (.rail-icon-spin)
+  CircleLoader: () => createSvg(`
+    <circle cx="12" cy="12" r="10" opacity="0.3"></circle>
+    <path d="M12 2a10 10 0 0 1 10 10"></path>
+  `),
+
+  // Kółko z poziomą kreską (konwencja "stanu pośredniego", jak indeterminate checkbox) —
+  // klaster wywołań narzędzi z mieszanymi wynikami (część sukces, część fail)
+  CircleMinus: () => createSvg(`
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="8" y1="12" x2="16" y2="12"></line>
+  `),
+
   RefreshCw: () => createSvg(`
     <polyline points="23 4 23 10 17 10"></polyline>
     <polyline points="1 20 1 14 7 14"></polyline>

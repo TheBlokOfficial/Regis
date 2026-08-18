@@ -22,6 +22,7 @@
   --accent-glow: rgba(255, 255, 255, 0.04);
   --accent-success: #22c55e;    /* Dyskretna zielona dioda */
   --accent-danger: #f87171;     /* Dyskretny czerwony */
+  --accent-warning: #f59e0b;    /* Bursztynowy — stan mieszany (część sukces, część fail) */
 
   /* Typografia i Promienie (Precyzyjna Geometria IDE) */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
