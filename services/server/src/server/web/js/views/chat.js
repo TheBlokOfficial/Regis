@@ -1,4 +1,5 @@
 import { Icons } from '../icons.js';
+import { getSenderId } from '../sender_id.js';
 
 /**
  * Moduł widoku "Czat z Agentem" - interfejs kontrolno-debugujący w Web Console Regis OS.
@@ -560,7 +561,8 @@ export class ChatView {
           this.finishStreaming(streamSessionId);
         },
       },
-      this.abortController.signal
+      this.abortController.signal,
+      getSenderId()
     );
   }
 

@@ -1,175 +1,10 @@
 /* ==========================================================================
-   WIDOK ROZSZERZENIA — Split Layout (lista kart + panel szczegółów),
-   wzorowany na `agents.css`. `.workspace-content--full` jest już zdefiniowane
-   tam — ten plik dokłada wyłącznie to, czego naprawdę brakuje.
+   WIDOK ŚWIAT — dziś jeden, konkretny widok konfiguracji (WorldEngine),
+   montowany wprost bez pośredniej listy/przełącznika rozszerzeń.
    ========================================================================== */
 
-.extensions-layout {
-  display: flex;
-  height: 100%;
-}
-
 /* --------------------------------------------------------------------------
-   Panel lewy: lista kart rozszerzeń
-   -------------------------------------------------------------------------- */
-.extensions-panel-list {
-  width: 320px;
-  min-width: 260px;
-  flex-shrink: 1;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--border-subtle);
-  background-color: var(--bg-sidebar);
-  overflow: hidden;
-}
-
-.extensions-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 18px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
-}
-
-.extensions-panel-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.extensions-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.extensions-list-loading,
-.extensions-list-empty,
-.extensions-list-error {
-  padding: 20px 12px;
-  text-align: center;
-  color: var(--text-muted-aa);
-  font-size: 0.86rem;
-}
-
-.extensions-panel-footer {
-  flex-shrink: 0;
-  height: var(--footer-height);
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 18px;
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-muted-aa);
-  font-size: 0.78rem;
-  text-align: center;
-}
-
-.extensions-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  background-color: var(--bg-base);
-}
-
-.extensions-card:hover {
-  background-color: var(--bg-surface-hover);
-}
-
-.extensions-card:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
-
-.extensions-card.selected {
-  border-color: var(--border-medium);
-  border-left: 3px solid var(--text-primary);
-  padding-left: 11px;
-}
-
-.extensions-card-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.extensions-card-name {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.extensions-card-hint {
-  font-size: 0.76rem;
-  color: var(--text-muted-aa);
-}
-
-/* Przełącznik enabled — checkbox ukryty, wizualny suwak w ::after */
-.extensions-toggle {
-  position: relative;
-  display: inline-block;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.extensions-toggle-input {
-  position: absolute;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  cursor: pointer;
-}
-
-.extensions-toggle-track {
-  position: absolute;
-  inset: 0;
-  background-color: var(--bg-surface-hover);
-  border: 1px solid var(--border-medium);
-  border-radius: 999px;
-  transition: background-color var(--transition-fast);
-}
-
-.extensions-toggle-track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background-color: var(--text-muted);
-  transition: transform var(--transition-fast), background-color var(--transition-fast);
-}
-
-.extensions-toggle-input:checked + .extensions-toggle-track {
-  background-color: rgba(34, 197, 94, 0.18);
-  border-color: var(--accent-success);
-}
-
-.extensions-toggle-input:checked + .extensions-toggle-track::after {
-  transform: translateX(16px);
-  background-color: var(--accent-success);
-}
-
-/* --------------------------------------------------------------------------
-   Panel prawy: szczegóły rozszerzenia
+   Panel szczegółów
    -------------------------------------------------------------------------- */
 .extensions-panel-detail {
   flex: 1;
@@ -474,4 +309,54 @@
   font-size: 0.86rem;
   color: var(--text-primary);
   cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+   Satelity — sender_id -> pokój/kanał, wzorem `.ha-group-row`
+   -------------------------------------------------------------------------- */
+.ha-satellite-self-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.ha-satellite-id {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted-aa);
+}
+
+.ha-satellite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+
+.ha-satellite-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ha-satellite-name {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.ha-satellite-meta {
+  font-size: 0.76rem;
+  color: var(--text-muted-aa);
+}
+
+.ha-satellite-meta .ha-satellite-id {
+  font-size: inherit;
 }

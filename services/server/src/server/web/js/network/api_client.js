@@ -181,12 +181,12 @@ export class ApiClient {
     }
   }
 
-  async sendChatMessage(sessionId = 'session_default', message = '') {
+  async sendChatMessage(sessionId = 'session_default', message = '', senderId = null) {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message }),
+        body: JSON.stringify({ session_id: sessionId, message, sender_id: senderId }),
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
@@ -203,13 +203,14 @@ export class ApiClient {
     sessionId = 'session_default',
     message = '',
     { onChunk = null, onToolStart = null, onToolResult = null, onError = null, onCancelled = null, onComplete = null } = {},
-    signal = null
+    signal = null,
+    senderId = null
   ) {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message }),
+        body: JSON.stringify({ session_id: sessionId, message, sender_id: senderId }),
         signal,
       });
 
@@ -550,6 +551,70 @@ export class ApiClient {
       return await response.json();
     } catch (error) {
       console.error(`[ApiClient] Błąd usuwania grupy '${groupId}':`, error);
+      throw error;
+    }
+  }
+
+  async getWorldAreas() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/areas`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania listy pokoi:', error);
+      return [];
+    }
+  }
+
+  // ==========================================================================
+  // METODY SILNIKA ŚWIATA — SATELITY
+  // ==========================================================================
+
+  async getSatellites() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/satellites`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania listy satelit:', error);
+      return null;
+    }
+  }
+
+  async registerSatellite(data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/satellites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd rejestracji satelity:', error);
+      throw error;
+    }
+  }
+
+  async deleteSatellite(senderId) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/satellites/${encodeURIComponent(senderId)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`[ApiClient] Błąd usuwania satelity '${senderId}':`, error);
       throw error;
     }
   }

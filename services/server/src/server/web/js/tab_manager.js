@@ -77,7 +77,7 @@ export class TabManager {
         chat: 'Czat',
         settings: 'Ustawienia',
         agents: 'Prompty',
-        extensions: 'Rozszerzenia',
+        extensions: 'Świat',
       };
       this.breadcrumb.textContent = titles[tabId] || tabId;
     }

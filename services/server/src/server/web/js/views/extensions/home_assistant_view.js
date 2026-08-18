@@ -1,10 +1,15 @@
+import { getSenderId } from '../../sender_id.js';
+
 /**
- * Widok szczegółowy rozszerzenia Home Assistant — w pełni domenowy (nie
+ * Widok konfiguracji silnika świata (WorldEngine) — w pełni domenowy (nie
  * generyczny/schema-driven, w przeciwieństwie do formularzy dostawców LLM).
- * Trzy sekcje: Konfiguracja (singleton — jeden `base_url`/`access_token`),
- * Urządzenia (wyszukiwarka nad surowym katalogiem HA + opt-in zadeklarowana
- * lista, jedyne źródło prawdy o tym, co widzi agent), Grupy (multi-select
- * nad zadeklarowaną listą).
+ * Cztery sekcje: Konfiguracja (singleton Home Assistant — jeden
+ * `base_url`/`access_token`), Urządzenia (wyszukiwarka nad surowym katalogiem
+ * HA + opt-in zadeklarowana lista, jedyne źródło prawdy o tym, co widzi
+ * agent), Grupy (multi-select nad zadeklarowaną listą), Satelity (rejestr
+ * `sender_id -> pokój/kanał komunikacji` — to konsola Web UI jest pierwszym,
+ * zawsze dostępnym "satelitą", więc sekcja od razu proponuje jej własny,
+ * trwały `sender_id` do rejestracji).
  */
 export class HomeAssistantExtensionView {
   constructor() {
@@ -17,8 +22,11 @@ export class HomeAssistantExtensionView {
     this.groups = [];
     this.catalog = [];
     this.searchQuery = '';
+    this.satellites = [];
+    this.areas = [];
 
     this.isCreatingGroup = false;
+    this.isRegisteringSatellite = false;
   }
 
   async mount(container, apiClient, showToast) {
@@ -29,16 +37,20 @@ export class HomeAssistantExtensionView {
   }
 
   async _loadAndRender() {
-    const [config, declared, groups, catalog] = await Promise.all([
+    const [config, declared, groups, catalog, satellites, areas] = await Promise.all([
       this.apiClient.getHAConfig(),
       this.apiClient.getHADeclaredDevices(),
       this.apiClient.getHAGroups(),
       this.apiClient.getHACatalog(),
+      this.apiClient.getSatellites(),
+      this.apiClient.getWorldAreas(),
     ]);
     this.config = config || { base_url: '', access_token: '' };
     this.declaredDevices = declared || [];
     this.groups = groups || [];
     this.catalog = catalog || [];
+    this.satellites = satellites || [];
+    this.areas = areas || [];
     this._render();
   }
 
@@ -69,11 +81,22 @@ export class HomeAssistantExtensionView {
           <div class="ha-groups-list">${this._renderGroupsList()}</div>
           <div id="ha-group-form"></div>
         </section>
+
+        <section class="ha-section">
+          <div class="ha-section-header">
+            <span class="ha-section-title">Satelity</span>
+            <button class="btn btn-sm btn-primary" id="ha-btn-new-satellite">+ Nowa rejestracja</button>
+          </div>
+          ${this._renderThisBrowserHint()}
+          <div class="ha-satellites-list">${this._renderSatellitesList()}</div>
+          <div id="ha-satellite-form"></div>
+        </section>
       </div>
     `;
     this._bindEvents();
     this._renderSearchResults();
     if (this.isCreatingGroup) this._renderGroupForm();
+    if (this.isRegisteringSatellite) this._renderSatelliteForm();
   }
 
   // --------------------------------------------------------------------------
@@ -248,6 +271,130 @@ export class HomeAssistantExtensionView {
   }
 
   // --------------------------------------------------------------------------
+  // Satelity — sender_id -> pokój/kanał komunikacji
+  // --------------------------------------------------------------------------
+
+  _renderThisBrowserHint() {
+    const thisId = getSenderId();
+    const alreadyRegistered = this.satellites.some((s) => s.sender_id === thisId);
+    return `
+      <p class="ha-empty-hint ha-satellite-self-hint">
+        ID tej przeglądarki: <span class="ha-satellite-id">${escapeHtml(thisId)}</span>
+        ${alreadyRegistered ? '<span class="badge-chip">zarejestrowana</span>' : '<button type="button" class="btn btn-sm btn-ghost" id="ha-btn-use-this-browser">Zarejestruj tę przeglądarkę</button>'}
+      </p>
+    `;
+  }
+
+  _renderSatellitesList() {
+    if (this.satellites.length === 0) {
+      return `<p class="ha-empty-hint">Brak zarejestrowanych satelit.</p>`;
+    }
+    return this.satellites
+      .map(
+        (s) => `
+        <div class="ha-satellite-row">
+          <div class="ha-satellite-info">
+            <span class="ha-satellite-name">${escapeHtml(s.display_name || s.sender_id)}</span>
+            <span class="ha-satellite-meta">
+              <span class="ha-satellite-id">${escapeHtml(s.sender_id)}</span>
+              ${s.room_label ? ` · ${escapeHtml(s.room_label)}` : ''}
+              · <span class="badge-chip">${s.channel === 'voice' ? 'głos' : 'tekst'}</span>
+            </span>
+          </div>
+          <button class="btn btn-sm btn-ghost-danger" data-delete-satellite="${escapeAttr(s.sender_id)}">Usuń</button>
+        </div>
+      `
+      )
+      .join('');
+  }
+
+  _renderSatelliteForm(prefillSenderId = '') {
+    const formContainer = document.getElementById('ha-satellite-form');
+    if (!formContainer) return;
+
+    const areaOptions = this.areas.map((area) => `<option value="${escapeAttr(area)}">${escapeHtml(area)}</option>`).join('');
+
+    formContainer.innerHTML = `
+      <div class="form-card">
+        <div class="form-card-title">Nowa rejestracja satelity</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="ha-sat-sender-id">sender_id</label>
+            <input type="text" id="ha-sat-sender-id" class="form-control" placeholder="opaque identyfikator nadawcy" value="${escapeAttr(prefillSenderId)}" />
+          </div>
+          <div class="form-group">
+            <label for="ha-sat-display-name">Nazwa (opcjonalnie)</label>
+            <input type="text" id="ha-sat-display-name" class="form-control" placeholder="np. Kuchenny ekran" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="ha-sat-room">Pokój (opcjonalnie)</label>
+            <select id="ha-sat-room" class="form-control">
+              <option value="">— brak —</option>
+              ${areaOptions}
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="ha-sat-channel">Kanał komunikacji</label>
+            <select id="ha-sat-channel" class="form-control">
+              <option value="text">Tekst</option>
+              <option value="voice">Głos</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="ha-btn-save-satellite">Zarejestruj</button>
+          <button class="btn btn-ghost" id="ha-btn-cancel-satellite">Anuluj</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('ha-btn-save-satellite')?.addEventListener('click', () => this._handleRegisterSatellite());
+    document.getElementById('ha-btn-cancel-satellite')?.addEventListener('click', () => {
+      this.isRegisteringSatellite = false;
+      formContainer.innerHTML = '';
+    });
+  }
+
+  async _handleRegisterSatellite() {
+    const senderId = document.getElementById('ha-sat-sender-id')?.value.trim() || '';
+    const displayName = document.getElementById('ha-sat-display-name')?.value.trim() || null;
+    const roomKey = document.getElementById('ha-sat-room')?.value || null;
+    const channel = document.getElementById('ha-sat-channel')?.value || 'text';
+
+    if (!senderId) {
+      this.showToast('sender_id jest wymagany.', 'error');
+      return;
+    }
+
+    try {
+      await this.apiClient.registerSatellite({
+        sender_id: senderId,
+        room_key: roomKey || null,
+        room_label: roomKey || null,
+        channel,
+        display_name: displayName,
+      });
+      this.showToast('Zarejestrowano satelitę.', 'success');
+      this.isRegisteringSatellite = false;
+      await this._loadAndRender();
+    } catch (error) {
+      this.showToast(error.message || 'Błąd rejestracji satelity.', 'error');
+    }
+  }
+
+  async _handleDeleteSatellite(senderId) {
+    try {
+      await this.apiClient.deleteSatellite(senderId);
+      this.showToast('Usunięto rejestrację satelity.', 'success');
+      await this._loadAndRender();
+    } catch (error) {
+      this.showToast(error.message || 'Błąd usuwania satelity.', 'error');
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // Zdarzenia
   // --------------------------------------------------------------------------
 
@@ -273,6 +420,18 @@ export class HomeAssistantExtensionView {
     });
     this.container.querySelectorAll('[data-delete-group]')?.forEach((btn) => {
       btn.addEventListener('click', () => this._handleDeleteGroup(btn.getAttribute('data-delete-group')));
+    });
+
+    document.getElementById('ha-btn-new-satellite')?.addEventListener('click', () => {
+      this.isRegisteringSatellite = true;
+      this._renderSatelliteForm();
+    });
+    document.getElementById('ha-btn-use-this-browser')?.addEventListener('click', () => {
+      this.isRegisteringSatellite = true;
+      this._renderSatelliteForm(getSenderId());
+    });
+    this.container.querySelectorAll('[data-delete-satellite]')?.forEach((btn) => {
+      btn.addEventListener('click', () => this._handleDeleteSatellite(btn.getAttribute('data-delete-satellite')));
     });
   }
 
