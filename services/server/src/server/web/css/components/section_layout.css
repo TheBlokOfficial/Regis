@@ -1,0 +1,36 @@
+/* ==========================================================================
+   SZKIELET WIDOKU SEKCJI — wspólny dla Agent/Świat/Głos: wyśrodkowana
+   kolumna treści, nagłówek sekcji, duży margines zamiast kreski między
+   sekcjami (ustalone w Agent, patrz docs sesji projektowej UX).
+   ========================================================================== */
+.view-shell {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-heading {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+/* Duży odstęp — używany między sekcjami z niewielką ich liczbą (Agent: 2). */
+.section-heading--spaced {
+  margin-top: 64px;
+}
+
+/* Odstęp średni — strony z większą liczbą sekcji (Świat), gdzie pełne 64px
+   rozciągnęłoby stronę nadmiernie. */
+.section-heading--spaced-sm {
+  margin-top: 40px;
+}
+
+.section-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted-aa);
+  margin-top: -10px;
+  margin-bottom: 16px;
+}

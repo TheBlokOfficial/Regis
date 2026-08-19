@@ -1,11 +1,9 @@
-"""Podsystem zarządzania promptami systemowymi Agenta Regis OS."""
+"""Podsystem fallbackowego promptu systemowego kernela Agenta Regis OS."""
 
-from server.agent.prompts.store import PromptStore
-from server.agent.prompts.models import PromptInstanceConfig, PromptFileContent, ActivePromptConfig
+from server.agent.prompts.store import AgentDefaultPromptStore
+from server.agent.prompts.models import AgentDefaultPromptConfig
 
 __all__ = [
-    "PromptStore",
-    "PromptInstanceConfig",
-    "PromptFileContent",
-    "ActivePromptConfig",
+    "AgentDefaultPromptStore",
+    "AgentDefaultPromptConfig",
 ]

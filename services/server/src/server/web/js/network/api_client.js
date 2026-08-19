@@ -280,38 +280,38 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // METODY AGENT PROMPTS
+  // METODY WORLD PROMPTS (profile tożsamości Świata, do 3 przełączalnych)
   // ==========================================================================
 
-  async getPrompts() {
+  async getWorldPrompts() {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts`);
+      const response = await fetch(`${this.baseUrl}/api/v1/world/prompts`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
       return await response.json();
     } catch (error) {
-      console.error('[ApiClient] Błąd pobierania listy promptów:', error);
+      console.error('[ApiClient] Błąd pobierania listy profili promptu Świata:', error);
       return null;
     }
   }
 
-  async getPrompt(promptId) {
+  async getWorldPrompt(promptId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts/${promptId}`);
+      const response = await fetch(`${this.baseUrl}/api/v1/world/prompts/${promptId}`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
       return await response.json();
     } catch (error) {
-      console.error(`[ApiClient] Błąd pobierania promptu '${promptId}':`, error);
+      console.error(`[ApiClient] Błąd pobierania profilu promptu '${promptId}':`, error);
       return null;
     }
   }
 
-  async createPrompt(promptData) {
+  async createWorldPrompt(promptData) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/prompts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(promptData),
@@ -322,14 +322,14 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.error('[ApiClient] Błąd tworzenia promptu:', error);
+      console.error('[ApiClient] Błąd tworzenia profilu promptu:', error);
       throw error;
     }
   }
 
-  async updatePrompt(promptId, promptData) {
+  async updateWorldPrompt(promptId, promptData) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts/${promptId}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/prompts/${promptId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(promptData),
@@ -340,14 +340,14 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.error(`[ApiClient] Błąd aktualizacji promptu '${promptId}':`, error);
+      console.error(`[ApiClient] Błąd aktualizacji profilu promptu '${promptId}':`, error);
       throw error;
     }
   }
 
-  async deletePrompt(promptId) {
+  async deleteWorldPrompt(promptId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts/${promptId}`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/prompts/${promptId}`, {
         method: 'DELETE',
       });
       if (!response.ok) {
@@ -356,14 +356,14 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.error(`[ApiClient] Błąd usuwania promptu '${promptId}':`, error);
+      console.error(`[ApiClient] Błąd usuwania profilu promptu '${promptId}':`, error);
       throw error;
     }
   }
 
-  async activatePrompt(promptId) {
+  async activateWorldPrompt(promptId) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompts/${promptId}/activate`, {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/prompts/${promptId}/activate`, {
         method: 'PUT',
       });
       if (!response.ok) {
@@ -372,7 +372,42 @@ export class ApiClient {
       }
       return await response.json();
     } catch (error) {
-      console.error(`[ApiClient] Błąd aktywacji promptu '${promptId}':`, error);
+      console.error(`[ApiClient] Błąd aktywacji profilu promptu '${promptId}':`, error);
+      throw error;
+    }
+  }
+
+  // ==========================================================================
+  // METODY AGENT DEFAULT PROMPT (fallback, jedna wartość, bez CRUD)
+  // ==========================================================================
+
+  async getAgentDefaultPrompt() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompt`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania promptu domyślnego agenta:', error);
+      return null;
+    }
+  }
+
+  async setAgentDefaultPrompt(content) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/agent/prompt`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd zapisu promptu domyślnego agenta:', error);
       throw error;
     }
   }

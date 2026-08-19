@@ -36,6 +36,7 @@ from server.world.models import (
     SenderProfile,
     SenderProfilesFileContent,
 )
+from server.world.prompts import PromptInstanceConfig, WorldPromptStore
 from server.world.registry import DeviceRegistry
 from server.world.tools import HomeAssistantToolExecutor, TOOL_NAMES, build_tool_definitions
 
@@ -62,6 +63,9 @@ class WorldEngine:
         self._lock = asyncio.Lock()
         self._defaults_ensured = False
         self._client_factory = client_factory
+        # World jest jedynym autorem promptu tej tury, gdy podłączony — własny magazyn
+        # profili tożsamości (do 3, przełączalne), zarządzany wewnętrznie (patrz `build()`).
+        self._prompt_store = WorldPromptStore(self.base_data_dir)
 
     async def _ensure_defaults(self) -> None:
         """Tworzy katalogi grup/pokoi jeśli nie istnieją. Silnik startuje bez konfiguracji i grup."""
@@ -406,11 +410,54 @@ class WorldEngine:
         return None, matches
 
     # --------------------------------------------------------------------------
+    # Profile promptu — tożsamość Świata, do 3 przełączalnych profili
+    # --------------------------------------------------------------------------
+
+    async def list_prompts(self) -> list[PromptInstanceConfig]:
+        return await self._prompt_store.list_all()
+
+    async def get_prompt(self, prompt_id: str) -> PromptInstanceConfig | None:
+        return await self._prompt_store.get(prompt_id)
+
+    async def create_prompt(
+        self,
+        name: str,
+        content: str,
+        description: str | None = None,
+        custom_id: str | None = None,
+        set_active: bool = False,
+    ) -> PromptInstanceConfig:
+        return await self._prompt_store.create(
+            name=name, content=content, description=description, custom_id=custom_id, set_active=set_active
+        )
+
+    async def update_prompt(
+        self, prompt_id: str, name: str | None = None, content: str | None = None, description: str | None = None
+    ) -> PromptInstanceConfig:
+        return await self._prompt_store.update(prompt_id, name=name, content=content, description=description)
+
+    async def delete_prompt(self, prompt_id: str) -> bool:
+        return await self._prompt_store.delete(prompt_id)
+
+    async def get_active_prompt_id(self) -> str:
+        return await self._prompt_store.get_active_id()
+
+    async def set_active_prompt(self, prompt_id: str) -> None:
+        await self._prompt_store.set_active(prompt_id)
+
+    # --------------------------------------------------------------------------
     # WorldInterface — budowanie wkładu na czas jednej interakcji agenta
     # --------------------------------------------------------------------------
 
     async def build(self, sender_id: str | None = None, voice_mode: bool = False) -> ContextBuild:
+        # World jest jedynym autorem promptu tej tury: profil tożsamości (jeśli
+        # niepusty) jest doklejany PRZED faktami, całość jednym, spójnym autorem —
+        # nigdy sklejane z osobno wybranym promptem kernela.
         context_parts: list[str] = []
+        active_profile_content = await self._prompt_store.get_active_content()
+        if active_profile_content:
+            context_parts.append(active_profile_content)
+
         now_value = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         context_parts.append(f"Aktualna data i godzina: {now_value}.")
 
@@ -508,7 +555,7 @@ class WorldEngine:
 
         return ContextBuild(
             tool_definitions=tool_definitions,
-            dynamic_context="\n\n".join(context_parts),
+            system_prompt="\n\n".join(context_parts),
             dispatch=dispatch,
         )
 

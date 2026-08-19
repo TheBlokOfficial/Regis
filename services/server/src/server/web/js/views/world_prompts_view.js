@@ -1,11 +1,15 @@
 import { Icons } from '../icons.js';
 import { confirmModal } from '../modal_confirm.js';
 
+const MAX_PROFILES = 3;
+
 /**
- * Widok zarządzania promptami systemowymi Agenta — lista promptów (lewa kolumna)
- * i edytor inline (prawa kolumna).
+ * Widok zarządzania profilami promptu Świata — lista profili (lewa kolumna)
+ * i edytor inline (prawa kolumna). World jest jedynym autorem promptu tury,
+ * gdy podłączony — ten CRUD (do 3 przełączalnych profili tożsamości) żył
+ * wcześniej w agent/ ("Prompty"), dziś należy do world/ (patrz docs/manifest.md).
  */
-export class AgentsView {
+export class WorldPromptsView {
   constructor() {
     /** @type {import('../network/api_client.js').ApiClient|null} */
     this.apiClient = null;
@@ -18,7 +22,7 @@ export class AgentsView {
     this.isDirty = false;
   }
 
-  /** Wywoływane przez TabManager przed opuszczeniem zakładki — chroni przed utratą edycji. */
+  /** Wywoływane przez SettingsView/ExtensionsView przed opuszczeniem zakładki — chroni przed utratą edycji. */
   hasUnsavedChanges() {
     return this.isDirty;
   }
@@ -57,7 +61,7 @@ export class AgentsView {
   // --------------------------------------------------------------------------
 
   async _loadAndRender(selectId = null) {
-    const data = await this.apiClient.getPrompts();
+    const data = await this.apiClient.getWorldPrompts();
     if (!data) {
       this._renderListError();
       return;
@@ -83,7 +87,7 @@ export class AgentsView {
 
   _renderListError() {
     const list = document.getElementById('agents-list');
-    if (list) list.innerHTML = `<div class="agents-list-error">Błąd ładowania listy promptów.</div>`;
+    if (list) list.innerHTML = `<div class="agents-list-error">Błąd ładowania listy profili promptu.</div>`;
     const footer = document.getElementById('agents-panel-footer');
     if (footer) footer.innerHTML = '';
   }
@@ -91,13 +95,20 @@ export class AgentsView {
   _renderList() {
     const list = document.getElementById('agents-list');
     const footer = document.getElementById('agents-panel-footer');
+    const newBtn = document.getElementById('agents-btn-new');
     if (!list) return;
+
+    const atLimit = this.prompts.length >= MAX_PROFILES;
+    if (newBtn) {
+      newBtn.disabled = atLimit;
+      newBtn.title = atLimit ? `Osiągnięto limit ${MAX_PROFILES} profili` : '';
+    }
 
     if (this.prompts.length === 0) {
       list.innerHTML = `
         <div class="agents-list-empty">
-          <p>Brak zapisanych promptów.</p>
-          <button class="btn btn-sm btn-subtle" id="agents-btn-empty-new">+ Utwórz pierwszy prompt</button>
+          <p>Brak zapisanych profili promptu.</p>
+          <button class="btn btn-sm btn-subtle" id="agents-btn-empty-new">+ Utwórz pierwszy profil</button>
         </div>
       `;
       document.getElementById('agents-btn-empty-new')?.addEventListener('click', () => this._enterNewMode());
@@ -133,8 +144,7 @@ export class AgentsView {
     });
 
     if (footer) {
-      const count = this.prompts.length;
-      footer.textContent = count === 1 ? '1 zapisany prompt' : `${count} zapisanych promptów`;
+      footer.textContent = `${this.prompts.length} / ${MAX_PROFILES} profili`;
     }
   }
 
@@ -160,6 +170,10 @@ export class AgentsView {
 
   async _enterNewMode() {
     if (this.isNewMode) return;
+    if (this.prompts.length >= MAX_PROFILES) {
+      this._showToast(`Osiągnięto limit ${MAX_PROFILES} profili promptu.`, 'error');
+      return;
+    }
     if (!(await this._confirmDiscard())) return;
     this.isNewMode = true;
     this.selectedId = null;
@@ -192,13 +206,13 @@ export class AgentsView {
       <div class="agents-editor">
         <div class="agents-editor-header">
           <div class="agents-editor-header-left">
-            <span class="badge-muted" title="Wewnętrzny identyfikator promptu">ID: ${escapeHtml(prompt.id)}</span>
-            <button class="agents-btn-copy-id" id="agents-btn-copy-id" title="Skopiuj ID promptu" aria-label="Skopiuj ID promptu">${Icons.Copy()}</button>
+            <span class="badge-muted" title="Wewnętrzny identyfikator profilu">ID: ${escapeHtml(prompt.id)}</span>
+            <button class="agents-btn-copy-id" id="agents-btn-copy-id" title="Skopiuj ID profilu" aria-label="Skopiuj ID profilu">${Icons.Copy()}</button>
             <span class="agents-dirty-badge hidden" id="agents-dirty-badge">● Niezapisane zmiany</span>
           </div>
           ${
             !isActive
-              ? `<button class="btn btn-sm btn-subtle" id="agents-btn-activate" title="Ustaw jako aktywny prompt systemowy">Ustaw jako aktywny</button>`
+              ? `<button class="btn btn-sm btn-subtle" id="agents-btn-activate" title="Ustaw jako aktywny profil promptu">Ustaw jako aktywny</button>`
               : ''
           }
         </div>
@@ -229,8 +243,8 @@ export class AgentsView {
           <div class="agents-editor-actions-right" id="agents-delete-zone">
             ${
               isActive
-                ? `<span class="agents-delete-hint">Aby usunąć, najpierw ustaw inny prompt jako aktywny</span>
-                   <button class="btn agents-btn-delete" id="agents-btn-delete" disabled title="Nie można usunąć aktywnego promptu">Usuń</button>`
+                ? `<span class="agents-delete-hint">Aby usunąć, najpierw ustaw inny profil jako aktywny</span>
+                   <button class="btn agents-btn-delete" id="agents-btn-delete" disabled title="Nie można usunąć aktywnego profilu">Usuń</button>`
                 : `<button class="btn agents-btn-delete" id="agents-btn-delete">Usuń</button>`
             }
           </div>
@@ -257,24 +271,24 @@ export class AgentsView {
       <div class="agents-editor">
         <div class="agents-editor-header">
           <div class="agents-editor-header-left">
-            <span class="badge-muted">Nowy prompt</span>
+            <span class="badge-muted">Nowy profil</span>
             <span class="agents-dirty-badge hidden" id="agents-dirty-badge">● Niezapisane zmiany</span>
           </div>
         </div>
         <div class="agents-editor-fields">
           <div class="form-group agents-field-compact">
             <label for="agents-input-name">Nazwa</label>
-            <input type="text" id="agents-input-name" class="form-control" placeholder="np. Prompt Asystenta Kodu" />
+            <input type="text" id="agents-input-name" class="form-control" placeholder="np. Dom" />
           </div>
           <div class="form-group agents-field-compact">
             <label for="agents-input-desc">Opis (opcjonalny)</label>
-            <input type="text" id="agents-input-desc" class="form-control" placeholder="Krótki opis przeznaczenia promptu" />
+            <input type="text" id="agents-input-desc" class="form-control" placeholder="Krótki opis przeznaczenia profilu" />
           </div>
           <div class="form-group agents-editor-content-group">
             <label for="agents-input-content">Treść</label>
             <div class="agents-editor-content-wrap">
               <div class="agents-line-gutter" id="agents-line-gutter">1</div>
-              <textarea id="agents-input-content" class="form-control agents-editor-textarea" placeholder="Treść instrukcji systemowej..."></textarea>
+              <textarea id="agents-input-content" class="form-control agents-editor-textarea" placeholder="Treść instrukcji systemowej... (może być pusta)"></textarea>
             </div>
             <div class="agents-content-meta">
               <span class="agents-char-count" id="agents-char-count">0 znaków</span>
@@ -311,7 +325,7 @@ export class AgentsView {
   /**
    * Oznacza edytor jako "brudny" (niezapisane zmiany) przy pierwszym wpisie w dowolne pole.
    * `lockSaveUntilDirty` odblokowuje przycisk Zapisz dopiero po realnej zmianie — dotyczy
-   * tylko edycji istniejącego promptu, nie tworzenia nowego (tam Zapisz jest potrzebny od razu).
+   * tylko edycji istniejącego profilu, nie tworzenia nowego (tam Zapisz jest potrzebny od razu).
    */
   _bindDirtyTracking(lockSaveUntilDirty = false) {
     const saveBtn = document.getElementById('agents-btn-save');
@@ -360,18 +374,12 @@ export class AgentsView {
     return { name, description, content };
   }
 
-  /** Oznacza puste wymagane pola na czerwono i przenosi focus na pierwsze z nich. Zwraca true jeśli formularz jest poprawny. */
-  _validateForm(name, content) {
+  /** Oznacza puste wymagane pola (Nazwa) na czerwono i przenosi focus. Treść może być pusta (brak persony). Zwraca true jeśli formularz jest poprawny. */
+  _validateForm(name) {
     const nameEl = document.getElementById('agents-input-name');
-    const contentEl = document.getElementById('agents-input-content');
     nameEl?.classList.toggle('is-invalid', !name);
-    contentEl?.classList.toggle('is-invalid', !content);
     if (!name) {
       nameEl?.focus();
-      return false;
-    }
-    if (!content) {
-      contentEl?.focus();
       return false;
     }
     return true;
@@ -379,49 +387,49 @@ export class AgentsView {
 
   async _handleSave(promptId) {
     const { name, description, content } = this._readForm();
-    if (!this._validateForm(name, content)) {
-      this._showToast('Nazwa i treść promptu są wymagane.', 'error');
+    if (!this._validateForm(name)) {
+      this._showToast('Nazwa profilu jest wymagana.', 'error');
       return;
     }
     try {
-      await this.apiClient.updatePrompt(promptId, { name, description: description || null, content });
-      this._showToast('Zapisano zmiany w promptcie.', 'success');
+      await this.apiClient.updateWorldPrompt(promptId, { name, description: description || null, content });
+      this._showToast('Zapisano zmiany w profilu.', 'success');
       await this._loadAndRender(promptId);
     } catch (error) {
-      this._showToast(error.message || 'Błąd zapisu promptu.', 'error');
+      this._showToast(error.message || 'Błąd zapisu profilu.', 'error');
     }
   }
 
   async _handleCreate() {
     const { name, description, content } = this._readForm();
-    if (!this._validateForm(name, content)) {
-      this._showToast('Nazwa i treść promptu są wymagane.', 'error');
+    if (!this._validateForm(name)) {
+      this._showToast('Nazwa profilu jest wymagana.', 'error');
       return;
     }
     try {
-      const created = await this.apiClient.createPrompt({ name, description: description || null, content });
-      this._showToast('Utworzono nowy prompt.', 'success');
+      const created = await this.apiClient.createWorldPrompt({ name, description: description || null, content });
+      this._showToast('Utworzono nowy profil.', 'success');
       await this._loadAndRender(created.id);
     } catch (error) {
-      this._showToast(error.message || 'Błąd tworzenia promptu.', 'error');
+      this._showToast(error.message || 'Błąd tworzenia profilu.', 'error');
     }
   }
 
   async _handleActivate(promptId) {
     if (!(await this._confirmDiscard())) return;
     try {
-      await this.apiClient.activatePrompt(promptId);
-      this._showToast('Aktywowano prompt systemowy.', 'success');
+      await this.apiClient.activateWorldPrompt(promptId);
+      this._showToast('Aktywowano profil promptu.', 'success');
       await this._loadAndRender(promptId);
     } catch (error) {
-      this._showToast(error.message || 'Błąd aktywacji promptu.', 'error');
+      this._showToast(error.message || 'Błąd aktywacji profilu.', 'error');
     }
   }
 
   async _handleCopyId(promptId) {
     try {
       await navigator.clipboard.writeText(promptId);
-      this._showToast('Skopiowano ID promptu.', 'success');
+      this._showToast('Skopiowano ID profilu.', 'success');
     } catch (error) {
       this._showToast('Nie udało się skopiować ID.', 'error');
     }
@@ -432,7 +440,7 @@ export class AgentsView {
     if (!zone) return;
     zone.innerHTML = `
       <div class="delete-confirm-inline">
-        <span class="delete-confirm-text">Usunąć prompt?</span>
+        <span class="delete-confirm-text">Usunąć profil?</span>
         <button class="btn-confirm-yes" id="agents-btn-delete-yes">Tak</button>
         <button class="btn-confirm-no" id="agents-btn-delete-no">Anuluj</button>
       </div>
@@ -448,12 +456,12 @@ export class AgentsView {
 
   async _handleDeleteConfirm(promptId) {
     try {
-      await this.apiClient.deletePrompt(promptId);
-      this._showToast('Usunięto prompt.', 'success');
+      await this.apiClient.deleteWorldPrompt(promptId);
+      this._showToast('Usunięto profil.', 'success');
       this.selectedId = null;
       await this._loadAndRender();
     } catch (error) {
-      this._showToast(error.message || 'Błąd usuwania promptu.', 'error');
+      this._showToast(error.message || 'Błąd usuwania profilu.', 'error');
     }
   }
 

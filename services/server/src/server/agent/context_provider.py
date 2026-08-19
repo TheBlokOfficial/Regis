@@ -2,9 +2,15 @@
 
 Kernel zna wyłącznie ten protokół — nigdy `server.world` po nazwie. `tool_definitions`
 i `dispatch` są ustrukturyzowane, bo kernel ich mechanicznie potrzebuje (schemat
-API dostawcy LLM, wywołanie funkcji) — cała reszta dynamicznej treści promptu to
-jeden opaque blok prozy (`dynamic_context`), którego kształt/formatowanie jest
-wyłączną odpowiedzialnością implementacji `WorldInterface`, nigdy kernela.
+API dostawcy LLM, wywołanie funkcji) — `system_prompt` to pojedynczy, już gotowy
+opaque string: jeśli implementacja `WorldInterface` go dostarcza, to jest to
+KOMPLETNY prompt tej tury (World jest jedynym autorem — sam dokleja swoją
+tożsamość do dynamicznych faktów, kernel niczego nie skleja). `None` oznacza,
+że World nie ma nic do powiedzenia (albo nie jest podłączony) — kernel wtedy
+używa własnego, prostego fallbacku (`agent/prompts/`). Ten podział celowo
+unika sytuacji, w której dwóch niepowiązanych autorów (kernel + World) musi
+nieformalnie respektować wspólną hierarchię formatowania (Markdown, nagłówki)
+przy sklejaniu dwóch fragmentów.
 """
 
 from dataclasses import dataclass
@@ -20,7 +26,7 @@ class ContextBuild:
     """Pełny wkład silnika świata na czas jednej interakcji agenta."""
 
     tool_definitions: list[ToolDefinition]
-    dynamic_context: str
+    system_prompt: str | None
     dispatch: ToolDispatch
 
 
@@ -55,4 +61,4 @@ class NullWorldInterface:
             del arguments
             return ToolResult(is_error=True, content=f"Brak dostępnych narzędzi — narzędzie '{name}' niedostępne.")
 
-        return ContextBuild(tool_definitions=[], dynamic_context="", dispatch=_dispatch)
+        return ContextBuild(tool_definitions=[], system_prompt=None, dispatch=_dispatch)

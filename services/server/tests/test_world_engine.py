@@ -157,8 +157,8 @@ async def test_build_voice_mode_and_room_framing_survives_missing_ha_config():
 
         context_build = await engine.build(sender_id="sat_1", voice_mode=True)
 
-        assert "głos" in context_build.dynamic_context
-        assert "Salon" in context_build.dynamic_context
+        assert "głos" in context_build.system_prompt
+        assert "Salon" in context_build.system_prompt
         # Brak konfiguracji HA nie dodaje narzędzi domowych, ale nie psuje frazowania.
         assert [t.name for t in context_build.tool_definitions] == ["get_time", "speak_in_room"]
 
@@ -170,7 +170,7 @@ async def test_build_unregistered_sender_id_has_no_room_framing():
 
         context_build = await engine.build(sender_id="unknown_sender")
 
-        assert "Nadawca" not in context_build.dynamic_context
+        assert "Nadawca" not in context_build.system_prompt
 
 
 @pytest.mark.anyio
@@ -182,7 +182,7 @@ async def test_build_voice_mode_is_independent_of_room_registration():
 
         context_build = await engine.build(sender_id="unknown_sender", voice_mode=True)
 
-        assert "głos" in context_build.dynamic_context
+        assert "głos" in context_build.system_prompt
 
 
 @pytest.mark.anyio
@@ -202,10 +202,10 @@ async def test_build_segregates_devices_by_room_and_marks_current_room():
 
         context_build = await engine.build(sender_id="sat_1")
 
-        assert "### Salon (Twoja lokalizacja)" in context_build.dynamic_context
-        assert "### Kuchnia" in context_build.dynamic_context
-        assert "light.salon" in context_build.dynamic_context
-        assert "light.kuchnia" in context_build.dynamic_context  # nadal w pełni widoczne, tylko posegregowane
+        assert "### Salon (Twoja lokalizacja)" in context_build.system_prompt
+        assert "### Kuchnia" in context_build.system_prompt
+        assert "light.salon" in context_build.system_prompt
+        assert "light.kuchnia" in context_build.system_prompt  # nadal w pełni widoczne, tylko posegregowane
 
 
 @pytest.mark.anyio
@@ -218,8 +218,8 @@ async def test_build_segregates_unassigned_devices_when_room_missing():
 
         context_build = await engine.build()
 
-        assert "### (bez przypisanego pokoju)" in context_build.dynamic_context
-        assert "light.salon" in context_build.dynamic_context
+        assert "### (bez przypisanego pokoju)" in context_build.system_prompt
+        assert "light.salon" in context_build.system_prompt
 
 
 @pytest.mark.anyio

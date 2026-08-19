@@ -1,45 +1,22 @@
 /* ==========================================================================
    WIDOK ŚWIAT — dziś jeden, konkretny widok konfiguracji (WorldEngine),
-   montowany wprost bez pośredniej listy/przełącznika rozszerzeń.
+   montowany wprost bez pośredniej listy/przełącznika rozszerzeń. Wizualnie
+   ten sam system co Agent (`css/views/agent.css`) — duże zaokrąglenia,
+   pełne (nie kreskowane) subtelne obramowania, spójna skala promieni:
+   --radius-lg (gęste listy) / --radius-xl (karty, formularze) / --radius-2xl
+   (pływające composery, tu bez zastosowania — Świat nie ma stałego composera).
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   Panel szczegółów
+   Panel promptów Świata — widget o stałej, ograniczonej wysokości (edytor
+   list+treść potrzebuje własnej przestrzeni), osadzony w normalnym,
+   przewijanym toku strony razem z Konfiguracją (patrz `extensions.js`).
    -------------------------------------------------------------------------- */
-.extensions-panel-detail {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: auto;
-}
-
-.extensions-detail-empty {
-  margin: auto;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  color: var(--text-muted);
-  padding: 32px;
-}
-
-.extensions-detail-empty-icon {
-  font-size: 2rem;
-  color: var(--text-secondary);
-}
-
-.extensions-detail-empty-hint {
-  font-size: 0.82rem;
-  color: var(--text-muted-aa);
-}
-
-.extensions-detail-loading {
-  margin: auto;
-  color: var(--text-muted-aa);
-  font-size: 0.86rem;
+.world-prompts-panel {
+  height: 560px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
 }
 
 /* --------------------------------------------------------------------------
@@ -82,15 +59,36 @@
   overflow-wrap: anywhere;
 }
 
-.ha-group-row {
+/* --------------------------------------------------------------------------
+   Listy płaskie (Pokoje/Grupy/Nadawcy) — jeden border na cały kontener,
+   wiersze rozdzielone hairline, bez ramki na każdym elemencie z osobna.
+   Ten sam wzorzec co `.ha-declared-list` niżej, ujednolicony pod jedną
+   generyczną parę klas (dawne osobne `.ha-group-row`/`.ha-satellite-row`
+   z ramką na każdym wierszu — usunięte).
+   -------------------------------------------------------------------------- */
+.ha-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ha-list-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  margin-bottom: 8px;
+  padding: 12px 16px;
+  transition: background-color var(--transition-fast);
+}
+
+.ha-list-row + .ha-list-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ha-list-row:hover {
+  background-color: var(--bg-surface-hover);
 }
 
 .ha-group-info {
@@ -98,6 +96,7 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
 .ha-group-name {
@@ -112,6 +111,10 @@
   font-family: var(--font-mono);
 }
 
+/* "+ Nowy X" — formularz odsłaniany na żądanie (nie zawsze widoczny jak w
+   Agencie: pięć sekcji naraz na tej samej stronie sprawiłoby, że stałe
+   composery zajmowałyby więcej miejsca niż realna treść). Promień na skali
+   "duża karta", zgodnie z resztą systemu. */
 .ha-config-form-card {
   margin-top: 4px;
 }
@@ -132,7 +135,7 @@
   right: 1px;
   bottom: 1px;
   height: 28px;
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   background: linear-gradient(to bottom, transparent, var(--bg-base));
   pointer-events: none;
 }
@@ -145,7 +148,7 @@
   max-height: 280px;
   overflow-y: auto;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   padding: 6px;
 }
 
@@ -199,7 +202,7 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -231,7 +234,7 @@
 }
 
 /* Pole nazwy — bez ramki/tła w spoczynku, wygląda jak zwykły tekst.
-   Ramkę fokusu (kolor + box-shadow) dziedziczy z `.form-control:focus`
+   Ramkę fokusu (kolor, bez box-shadow) dziedziczy z `.form-control:focus`
    w forms.css — tu dokładamy tylko stan spoczynku/hover i tło na fokus. */
 .ha-declared-label {
   flex: 1 1 160px;
@@ -290,21 +293,11 @@
   color: var(--text-muted-aa);
 }
 
-.ha-declared-room {
+/* Picker pokoju per urządzenie — custom select (`components/select.js`),
+   wariant kompaktowy osadzony w gęstym wierszu. */
+.ha-declared-room-select {
   flex-shrink: 0;
   width: 150px;
-  font-size: 0.78rem;
-  padding: 5px 8px;
-}
-
-.ha-declared-remove {
-  flex-shrink: 0;
-  opacity: 0.6;
-  transition: opacity var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
-}
-
-.ha-declared-card:hover .ha-declared-remove {
-  opacity: 1;
 }
 
 .ha-group-device-options {
@@ -326,7 +319,7 @@
 }
 
 /* --------------------------------------------------------------------------
-   Satelity — sender_id -> pokój/kanał, wzorem `.ha-group-row`
+   Satelity — sender_id -> pokój/kanał, wzorem `.ha-list-row`
    -------------------------------------------------------------------------- */
 .ha-satellite-self-hint {
   display: flex;
@@ -340,17 +333,6 @@
   font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--text-muted-aa);
-}
-
-.ha-satellite-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  margin-bottom: 8px;
 }
 
 .ha-satellite-info {

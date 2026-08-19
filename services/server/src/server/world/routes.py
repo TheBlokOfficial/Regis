@@ -8,6 +8,7 @@ kolekcja rozszerzeń), więc nie potrzeba już protokołu `NetworkExtension`.
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
+from shared import CreatePromptRequest, PromptDTO, PromptListResponse, UpdatePromptRequest
 
 from server.world.dto import (
     AddDeclaredDeviceRequest,
@@ -227,5 +228,67 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         if not deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Nadawca '{sender_id}' nie jest zarejestrowany.")
         return {"success": True, "deleted_id": sender_id}
+
+    # --------------------------------------------------------------------------
+    # Profile promptu — tożsamość Świata, do 3 przełączalnych profili
+    # --------------------------------------------------------------------------
+
+    @router.get("/prompts", response_model=PromptListResponse, tags=["World"])
+    async def list_prompts() -> PromptListResponse:
+        instances = await engine.list_prompts()
+        active_id = await engine.get_active_prompt_id()
+        prompts = [PromptDTO(is_active=(inst.id == active_id), **inst.model_dump()) for inst in instances]
+        return PromptListResponse(prompts=prompts, active_id=active_id)
+
+    @router.post("/prompts", response_model=PromptDTO, status_code=status.HTTP_201_CREATED, tags=["World"])
+    async def create_prompt(req: CreatePromptRequest) -> PromptDTO:
+        try:
+            instance = await engine.create_prompt(
+                name=req.name, content=req.content, description=req.description,
+                custom_id=req.custom_id, set_active=req.set_active,
+            )
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+        active_id = await engine.get_active_prompt_id()
+        return PromptDTO(is_active=(instance.id == active_id), **instance.model_dump())
+
+    @router.get("/prompts/{prompt_id}", response_model=PromptDTO, tags=["World"])
+    async def get_prompt(prompt_id: str) -> PromptDTO:
+        try:
+            instance = await engine.get_prompt(prompt_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+        if not instance:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Profil promptu '{prompt_id}' nie istnieje.")
+        active_id = await engine.get_active_prompt_id()
+        return PromptDTO(is_active=(instance.id == active_id), **instance.model_dump())
+
+    @router.put("/prompts/{prompt_id}", response_model=PromptDTO, tags=["World"])
+    async def update_prompt(prompt_id: str, req: UpdatePromptRequest) -> PromptDTO:
+        try:
+            instance = await engine.update_prompt(prompt_id, name=req.name, content=req.content, description=req.description)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+        active_id = await engine.get_active_prompt_id()
+        return PromptDTO(is_active=(instance.id == active_id), **instance.model_dump())
+
+    @router.delete("/prompts/{prompt_id}", tags=["World"])
+    async def delete_prompt(prompt_id: str):
+        try:
+            deleted = await engine.delete_prompt(prompt_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+        if not deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Profil promptu '{prompt_id}' nie istnieje.")
+        return {"success": True, "prompt_id": prompt_id}
+
+    @router.put("/prompts/{prompt_id}/activate", response_model=PromptDTO, tags=["World"])
+    async def activate_prompt(prompt_id: str) -> PromptDTO:
+        try:
+            await engine.set_active_prompt(prompt_id)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+        instance = await engine.get_prompt(prompt_id)
+        return PromptDTO(is_active=True, **instance.model_dump())  # type: ignore[union-attr]
 
     return router

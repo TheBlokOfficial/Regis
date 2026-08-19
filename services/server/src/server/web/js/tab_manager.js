@@ -1,14 +1,12 @@
 import { DashboardView } from './views/dashboard.js';
 import { SettingsView } from './views/settings.js';
 import { ChatView } from './views/chat.js';
-import { AgentsView } from './views/agents.js';
-import { ExtensionsView } from './views/extensions.js';
-import { KernelConfigView } from './views/kernel_config.js';
-import { VoiceConfigView } from './views/voice_config.js';
 import { confirmModal } from './modal_confirm.js';
 
 /**
- * Zarządza przełączaniem zakładek i renderowaniem widoków w obszarze roboczym.
+ * Zarządza przełączaniem zakładek top-level (Dashboard/Chat/Ustawienia) i renderowaniem
+ * widoków w obszarze roboczym. Cała konfiguracja (dawne Kernel/Świat/Głos/Prompty) żyje
+ * dziś wewnątrz `SettingsView` jako poziome sekcje (pills), nie jako osobne top-level taby.
  */
 export class TabManager {
   constructor(apiClient, containerId = 'workspace-content', breadcrumbId = 'breadcrumb-active-tab') {
@@ -16,16 +14,12 @@ export class TabManager {
     this.container = document.getElementById(containerId);
     this.breadcrumb = document.getElementById(breadcrumbId);
     this.activeTabId = 'dashboard';
-    
+
     // Inicjalizacja instancji widoków
     this.views = {
       dashboard: new DashboardView(),
       chat: new ChatView(),
       settings: new SettingsView(),
-      agents: new AgentsView(),
-      extensions: new ExtensionsView(),
-      kernel_config: new KernelConfigView(),
-      voice_config: new VoiceConfigView(),
     };
 
     this.latestHealthData = null;
@@ -48,16 +42,17 @@ export class TabManager {
     });
   }
 
-  async switchTab(tabId) {
+  async switchTab(tabId, options = {}) {
     if (!this.views[tabId]) {
       console.warn(`[TabManager] Widok '${tabId}' jest w przygotowaniu.`);
       return;
     }
 
-    if (this.activeTabId === 'agents' && tabId !== 'agents' && this.views.agents.hasUnsavedChanges?.()) {
+    const currentView = this.views[this.activeTabId];
+    if (this.activeTabId !== tabId && currentView?.hasUnsavedChanges?.()) {
       const confirmed = await confirmModal({
         title: 'Niezapisane zmiany',
-        message: 'Masz niezapisane zmiany w edytorze promptów. Zmiana zakładki je odrzuci. Kontynuować?',
+        message: 'Masz niezapisane zmiany, które zostaną odrzucone. Zmiana zakładki je odrzuci. Kontynuować?',
         confirmLabel: 'Odrzuć zmiany',
       });
       if (!confirmed) return;
@@ -76,21 +71,13 @@ export class TabManager {
 
     // Aktualizacja Breadcrumbs
     if (this.breadcrumb) {
-      const titles = {
-        dashboard: 'Dashboard',
-        chat: 'Czat',
-        settings: 'Ustawienia',
-        agents: 'Prompty',
-        extensions: 'Świat',
-        kernel_config: 'Kernel',
-        voice_config: 'Głos',
-      };
+      const titles = { dashboard: 'Dashboard', chat: 'Czat', settings: 'Ustawienia' };
       this.breadcrumb.textContent = titles[tabId] || tabId;
     }
 
     // Renderowanie widoku w kontenerze roboczym
     if (this.container) {
-      if (tabId === 'agents' || tabId === 'extensions' || tabId === 'kernel_config') {
+      if (tabId === 'settings') {
         this.container.classList.add('workspace-content--full');
       } else {
         this.container.classList.remove('workspace-content--full');
@@ -100,18 +87,13 @@ export class TabManager {
 
       // Inicjalizacja dynamiczna wyrenderowanego widoku
       if (tabId === 'dashboard') {
-        this.views.dashboard.init();
+        this.views.dashboard.init((navTabId, navOptions) => this.switchTab(navTabId, navOptions));
         this.views.dashboard.updateStatus(this.latestHealthData);
       } else if (tabId === 'chat') {
         await this.views.chat.init(this.apiClient);
-      } else if (tabId === 'agents') {
-        await this.views.agents.init(this.apiClient);
-      } else if (tabId === 'extensions') {
-        await this.views.extensions.init(this.apiClient);
-      } else if (tabId === 'kernel_config') {
-        await this.views.kernel_config.init(this.apiClient);
-      } else if (tabId === 'voice_config') {
-        await this.views.voice_config.init(this.apiClient);
+      } else if (tabId === 'settings') {
+        await this.views.settings.init(this.apiClient);
+        await this.views.settings.activateSection(options.section);
       }
     }
   }

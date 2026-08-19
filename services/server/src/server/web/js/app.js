@@ -64,24 +64,6 @@ function mountIcons() {
   const iconChat = document.getElementById('icon-nav-chat');
   if (iconChat) iconChat.innerHTML = Icons.MessageSquare();
 
-  const iconAgents = document.getElementById('icon-nav-agents');
-  if (iconAgents) iconAgents.innerHTML = Icons.Cpu();
-
-  const iconExtensions = document.getElementById('icon-nav-extensions');
-  if (iconExtensions) iconExtensions.innerHTML = Icons.Puzzle();
-
-  const iconVoiceConfig = document.getElementById('icon-nav-voice-config');
-  if (iconVoiceConfig) iconVoiceConfig.innerHTML = Icons.Radio();
-
-  const iconKernelConfig = document.getElementById('icon-nav-kernel-config');
-  if (iconKernelConfig) iconKernelConfig.innerHTML = Icons.Activity();
-
-  const iconServices = document.getElementById('icon-nav-services');
-  if (iconServices) iconServices.innerHTML = Icons.Server();
-
-  const iconLogs = document.getElementById('icon-nav-logs');
-  if (iconLogs) iconLogs.innerHTML = Icons.FileText();
-
   const iconSettings = document.getElementById('icon-nav-settings');
   if (iconSettings) iconSettings.innerHTML = Icons.Sliders();
 

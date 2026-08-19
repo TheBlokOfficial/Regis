@@ -2,6 +2,7 @@
 
 from shared.config import ConfigStore, get_service_root, sanitize_identifier
 from shared.contracts import (
+    AgentDefaultPromptDTO,
     CancelChatApiRequest,
     ChatMessageDTO,
     ChatResponseDTO,
@@ -27,6 +28,7 @@ from shared.logging import get_logger, setup_logging
 
 __version__ = "0.1.0"
 __all__ = [
+    "AgentDefaultPromptDTO",
     "CancelChatApiRequest",
     "ChatMessageDTO",
     "ChatResponseDTO",

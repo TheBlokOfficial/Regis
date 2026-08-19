@@ -6,7 +6,7 @@ from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse, Ollam
 from server.agent.context import ContextBuilder
 from server.agent.context_provider import NullWorldInterface, WorldInterface
 from server.agent.memory import MemoryManager
-from server.agent.prompts import PromptStore
+from server.agent.prompts import AgentDefaultPromptStore
 from server.events import ServerEventType
 
 logger = get_logger("regis.agent")
@@ -53,7 +53,7 @@ class AgentEngine:
         memory_manager: MemoryManager | None = None,
         context_builder: ContextBuilder | None = None,
         event_bus: EventBus | None = None,
-        prompt_store: PromptStore | None = None,
+        prompt_store: AgentDefaultPromptStore | None = None,
         world: WorldInterface | None = None,
         max_tool_iterations: int = 8,
     ) -> None:
@@ -61,7 +61,7 @@ class AgentEngine:
         self.memory_manager: MemoryManager = memory_manager or MemoryManager()
         self.context_builder: ContextBuilder = context_builder or ContextBuilder()
         self.event_bus: EventBus = event_bus or EventBus()
-        self.prompt_store: PromptStore = prompt_store or PromptStore()
+        self.prompt_store: AgentDefaultPromptStore = prompt_store or AgentDefaultPromptStore()
         # Kernel nie zna żadnej konkretnej implementacji — pusty NullWorldInterface to
         # bezpieczny domyślny stan (agent działa jak zwykły chat, bez narzędzi).
         # Kompozycja konkretnego silnika świata (server.world) należy do main.py.
@@ -161,27 +161,28 @@ class AgentEngine:
         # 1. Rejestracja pytania użytkownika w pamięci sesji (I/O na dysku poza event loopem)
         await asyncio.to_thread(self.memory_manager.add_message, session_id=session_id, role="user", content=prompt)
 
-        # 2. Pobranie aktywnego promptu systemowego ze store'u (fallback do DEFAULT_SYSTEM_PROMPT w builderze)
-        active_system_prompt = await self.prompt_store.get_active_content()
-
         self._generation_buffers[session_id] = ""
 
         steps: list[ToolStepPayload] = []
 
         try:
-            # 3. Budowa kontekstu tej tury od zera przez silnik świata (WorldInterface)
-            #    — nigdy cache'owana między turami.
+            # 2. Budowa kontekstu tej tury od zera przez silnik świata (WorldInterface)
+            #    — nigdy cache'owana między turami. Jeśli World dostarcza `system_prompt`,
+            #    jest to KOMPLETNY prompt (World jest jedynym autorem) — fallback kernela
+            #    (`prompt_store`) czytany jest tylko gdy World milczy (np. NullWorldInterface).
             context_build = await self.world.build(sender_id=sender_id, voice_mode=voice_mode)
             tool_defs = context_build.tool_definitions
             dispatch_tool = context_build.dispatch
+            system_prompt = context_build.system_prompt
+            if system_prompt is None:
+                system_prompt = await self.prompt_store.get_content()
 
-            # 4. Pobranie aktualnej historii i zbudowanie kontekstu LLM
+            # 3. Pobranie aktualnej historii i zbudowanie kontekstu LLM
             history = self.memory_manager.get_history(session_id=session_id)
             working_messages = self.context_builder.build_messages(
                 session_history=history,
-                system_prompt_override=active_system_prompt,
+                system_prompt=system_prompt,
                 tools_available=bool(tool_defs),
-                dynamic_context=context_build.dynamic_context,
             )
 
             for iteration in range(self.max_tool_iterations):

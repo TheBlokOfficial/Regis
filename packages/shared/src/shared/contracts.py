@@ -176,11 +176,18 @@ class CreatePromptRequest(BaseModel):
 
 
 class UpdatePromptRequest(BaseModel):
-    """Żądanie dla PUT /api/v1/agent/prompts/{id}."""
+    """Żądanie dla PUT /api/v1/world/prompts/{id}."""
 
     name: str | None = Field(default=None, description="Nowa wyświetlana nazwa")
     content: str | None = Field(default=None, description="Nowa treść instrukcji")
     description: str | None = Field(default=None, description="Nowy opis")
+
+
+class AgentDefaultPromptDTO(BaseModel):
+    """Fallbackowy prompt systemowy kernela — GET/PUT /api/v1/agent/prompt.
+    Używany wyłącznie gdy żaden silnik świata nie dostarcza własnego promptu."""
+
+    content: str = Field(..., description="Treść fallbackowej instrukcji systemowej agenta")
 
 
 # ==========================================================================

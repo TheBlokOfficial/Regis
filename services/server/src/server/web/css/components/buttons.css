@@ -28,16 +28,19 @@
   pointer-events: none;
 }
 
+/* Primary — jedyny wypełniony przycisk w systemie (matowa jasna biel, bez
+   koloru) — daje głównej akcji strony wyraźną przewagę wizualną nad
+   przyciskami drugorzędnymi (.btn-subtle/.btn-ghost), które zostają płaskie. */
 .btn-primary {
-  background-color: var(--bg-surface-hover);
-  color: var(--text-primary);
-  border: 1px solid var(--border-medium);
+  background-color: var(--accent-primary);
+  color: var(--bg-base);
+  border: 1px solid var(--accent-primary);
 }
 
 .btn-primary:hover {
-  background-color: var(--bg-active);
-  border-color: var(--border-focus);
-  color: #ffffff;
+  background-color: #ffffff;
+  border-color: #ffffff;
+  color: var(--bg-base);
 }
 
 .btn-subtle {
@@ -64,19 +67,38 @@
   border-color: var(--border-focus);
 }
 
+/* Czytelnie destrukcyjny już w spoczynku (subtelny czerwony obrys/tekst),
+   nie tylko po najechaniu — hierarchia ważności widoczna bez interakcji
+   (ten sam wzorzec co `.agents-btn-delete` w edytorze promptów Świata). */
 .btn-ghost-danger {
   background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-muted);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--accent-danger);
 }
 
 .btn-ghost-danger:hover {
   color: var(--accent-danger);
-  background-color: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.3);
+  background-color: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
 }
 
 .btn-sm {
   padding: 6px 14px;
   font-size: 0.84rem;
+}
+
+/* Modyfikator: kwadratowy przycisk tylko-ikona (32×32) — łączony z klasą
+   koloru akcji (np. `.btn-ghost-danger`) zamiast osobnego, zduplikowanego
+   wariantu na każdą listę w aplikacji (Agent: karty dostawców, Świat: pokoje/
+   grupy/nadawcy/urządzenia). */
+.btn-icon-square {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.btn-icon-square svg.icon-svg {
+  width: 15px;
+  height: 15px;
 }

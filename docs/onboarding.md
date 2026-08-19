@@ -53,11 +53,11 @@ Podłączenie realnego modelu wake-word i dostawcy STT/TTS w chmurze to kolejny,
 świadomie odłożony krok (brak wybranego dostawcy/pliku modelu na dzień pisania
 tego dokumentu).
 
-### Prompty systemowe (`services/server/data/prompts/*.json`, zarządzane przez `PromptStore`):
-- Treść instrukcji systemowej faktycznie wysyłanej do LLM. Aktywny prompt wskazuje `services/server/data/active_prompt.json`.
-- **Uwaga**: `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` jest wyłącznie **fallbackiem i szablonem pierwszego uruchomienia**. `PromptStore.ensure_defaults()` tworzy plik tylko wtedy, gdy katalog `data/prompts/` jest pusty — późniejsza zmiana stałej w kodzie **nie zmienia** promptu, którego używa działający agent. Po rozszerzeniu możliwości agenta (np. włączeniu tool callingu) zaktualizuj aktywny prompt w zakładce **Prompty** w Web UI, inaczej model dalej będzie działał wg starych instrukcji.
+### Prompty systemowe — World jest jedynym autorem, gdy podłączony
+- **Profile promptu Świata** (`services/server/data/world/prompts/*.json`, `WorldPromptStore`): do 3 przełączalnych profili tożsamości, aktywny wskazuje `data/world/active_prompt.json`. `WorldEngine.build()` doklejają aktywny profil (może być pusty — domyślnie "Profil 1") do dynamicznych faktów (czas/pokój/urządzenia) i zwraca **kompletny, gotowy prompt** tej tury — kernel niczego nie skleja.
+- **Fallback promptu kernela** (`services/server/data/agent_default_prompt.json`, `AgentDefaultPromptStore`): jedna wartość, bez CRUD — używana **wyłącznie** gdy żaden World nie jest podłączony (`NullWorldInterface`, testy headless). `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` to fallback tego fallbacku (seed przy pierwszym uruchomieniu). W normalnej pracy (World zawsze wstrzyknięty w `main.py`) to pole rzadko się uruchamia.
 
-Najwygodniejszy sposób edycji ustawień LLM to zakładka **Kernel** w Web UI (REST API `/api/v1/llm/providers`), promptów — zakładka **Prompty** (REST API `/api/v1/agent/prompts`), Home Assistant/pokoi/nadawców — zakładka **Świat** (REST API `/api/v1/world/*`), a stanu pipeline'u głosowego — zakładka **Głos** (REST API `/api/v1/voice/status`), a nie ręczna edycja plików JSON. Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami — nie zawiera już konfiguracji (wydzielonej do Kernel/Świat/Głos).
+Najwygodniejszy sposób edycji: zakładka **Ustawienia** w Web UI, wewnątrz poziome sekcje (pills) **Agent** (dostawcy LLM, REST `/api/v1/llm/providers`, + fallbackowy prompt kernela, REST `/api/v1/agent/prompt`), **Świat** (Konfiguracja HA/pokoi/nadawców, REST `/api/v1/world/*`, + pod-zakładka **Prompty** — profile tożsamości Świata, REST `/api/v1/world/prompts/*`), **Głos** (status pipeline'u, REST `/api/v1/voice/status`) i **System** (info o instancji). Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami do sekcji Ustawień.
 
 ---
 
@@ -101,7 +101,7 @@ python -m uv run --package server python -m server.main
 
 > **Znane ograniczenie**: `server.main` nie eksportuje modułowego obiektu ASGI —
 > aplikacja FastAPI powstaje wewnątrz asynchronicznej funkcji `main()`, po
-> wcześniejszej inicjalizacji rejestru backendów, `PromptStore` i rozszerzeń.
+> wcześniejszej inicjalizacji rejestru backendów, fallbackowego `AgentDefaultPromptStore` i rozszerzeń.
 > Dlatego `uvicorn server.main:app --reload` kończy się błędem
 > *"Attribute 'app' not found in module 'server.main'"*, a tryb hot-reload nie
 > jest dostępny. Odblokowanie go wymaga zmiany w kodzie (fabryka aplikacji

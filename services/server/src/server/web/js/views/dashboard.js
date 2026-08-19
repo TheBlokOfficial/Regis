@@ -1,6 +1,6 @@
 /**
  * Moduł widoku głównego Dashboard — czysty panel powitalny/statusowy.
- * Zarządzanie dostawcami LLM przeniesione do zakładki Kernel (`kernel_config.js`).
+ * Zarządzanie konfiguracją przeniesione do zakładki Ustawienia (sekcje Agent/Świat/Głos).
  */
 export class DashboardView {
   render() {
@@ -33,10 +33,10 @@ export class DashboardView {
           <div class="modal-provider-item">
             <div class="modal-provider-main-row">
               <div class="modal-provider-title-group">
-                <span class="modal-provider-name">Kernel</span>
+                <span class="modal-provider-name">Agent</span>
               </div>
               <div class="modal-provider-actions">
-                <a href="#" class="btn btn-subtle btn-sm" data-nav-tab="kernel_config">Zarządzaj dostawcami LLM →</a>
+                <a href="#" class="btn btn-subtle btn-sm" data-nav-section="agent">Zarządzaj dostawcami LLM →</a>
               </div>
             </div>
           </div>
@@ -46,7 +46,7 @@ export class DashboardView {
                 <span class="modal-provider-name">Świat</span>
               </div>
               <div class="modal-provider-actions">
-                <a href="#" class="btn btn-subtle btn-sm" data-nav-tab="extensions">Pokoje, urządzenia, nadawcy →</a>
+                <a href="#" class="btn btn-subtle btn-sm" data-nav-section="world">Pokoje, urządzenia, nadawcy, prompty →</a>
               </div>
             </div>
           </div>
@@ -56,7 +56,7 @@ export class DashboardView {
                 <span class="modal-provider-name">Głos</span>
               </div>
               <div class="modal-provider-actions">
-                <a href="#" class="btn btn-subtle btn-sm" data-nav-tab="voice_config">Status pipeline'u głosowego →</a>
+                <a href="#" class="btn btn-subtle btn-sm" data-nav-section="voice">Status pipeline'u głosowego →</a>
               </div>
             </div>
           </div>
@@ -65,12 +65,12 @@ export class DashboardView {
     `;
   }
 
-  init() {
+  init(navigateTo) {
     this.container = document.getElementById('workspace-content');
-    this.container?.querySelectorAll('[data-nav-tab]').forEach((link) => {
+    this.container?.querySelectorAll('[data-nav-section]').forEach((link) => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        document.getElementById(`nav-${link.getAttribute('data-nav-tab').replace(/_/g, '-')}`)?.click();
+        navigateTo?.('settings', { section: link.getAttribute('data-nav-section') });
       });
     });
   }

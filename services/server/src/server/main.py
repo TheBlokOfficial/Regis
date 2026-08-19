@@ -5,7 +5,7 @@ from shared import EventBus, get_logger, setup_logging
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
 from server.agent.context import ContextBuilder
-from server.agent.prompts import PromptStore
+from server.agent.prompts import AgentDefaultPromptStore
 from server.config import load_settings
 from server.network.gateway import create_gateway_app
 from server.voice.gateway import create_voice_router
@@ -31,16 +31,18 @@ async def main() -> None:
     backend_registry = BackendRegistry()
     active_llm_provider = await backend_registry.get_active_provider()
 
-    # 3. Inicjalizacja magazynu promptów systemowych i upewnienie się, że domyślny prompt istnieje
-    prompt_store = PromptStore()
+    # 3. Inicjalizacja fallbackowego promptu kernela (używanego tylko gdy World milczy)
+    prompt_store = AgentDefaultPromptStore()
     await prompt_store.ensure_defaults()
 
     # 4. Inicjalizacja jedynego, konkretnego silnika świata — kernel go nie zna z góry,
     #    zna wyłącznie kształt `WorldInterface` (agent/context_provider.py). Wstrzykiwany
-    #    tutaj, w kompozycji aplikacji, dokładnie jak dostawca LLM czy PromptStore.
+    #    tutaj, w kompozycji aplikacji, dokładnie jak dostawca LLM. WorldEngine zarządza
+    #    własnym magazynem profili promptu (`world/prompts.py`) wewnętrznie — jest jedynym
+    #    autorem tożsamości agenta, gdy podłączony.
     world_engine = WorldEngine()
 
-    # 5. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus, skonfigurowanym limitem historii, PromptStore i WorldEngine
+    # 5. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus, skonfigurowanym limitem historii, fallbackowym promptem i WorldEngine
     context_builder = ContextBuilder(max_history_messages=settings.max_history_messages)
     agent_engine = AgentEngine(
         llm_provider=active_llm_provider,

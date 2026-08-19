@@ -1,0 +1,111 @@
+/* ==========================================================================
+   CUSTOM SELECT — generyczny dropdown (trigger + floating menu), reużywany
+   w Agent (typ dostawcy) i Świat (picker pokoju, wiele instancji). Ten sam
+   wzorzec co pływający popover sesji w Chat (`.chat-session-trigger`/
+   `.chat-session-popover`, chat.css) — sterowany JS, patrz `components/select.js`.
+   ========================================================================== */
+.select {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 150px;
+  background-color: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.select-trigger:hover,
+.select-trigger.active {
+  border-color: var(--border-medium);
+}
+
+.select-trigger:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
+
+.select-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.select-chevron svg.icon-svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 90°, nie 180° — strzałka wskazuje w prawo (zwinięty) i obraca się w dół
+   (rozwinięty), ten sam wzorzec co `.thinking-chevron` w Chat (chat.css). */
+.select-trigger.active .select-chevron {
+  transform: rotate(90deg);
+}
+
+.select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  background-color: #1a1a1e;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 6px;
+  z-index: 100;
+  animation: selectFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes selectFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.select-option {
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.select-option:hover,
+.select-option:focus-visible {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.select-option.is-selected {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Wariant kompaktowy — pickery pokoju osadzone w gęstych wierszach list
+   (Świat: zadeklarowane urządzenia, formularz nadawcy). */
+.select--compact .select-trigger {
+  min-width: 130px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}

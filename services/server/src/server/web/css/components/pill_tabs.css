@@ -1,0 +1,56 @@
+/* ==========================================================================
+   PILL TABS — komponent poziomych zakładek, reużywany przez SettingsView
+   (duże pills, sekcje Agent/Świat/Głos/System) i ExtensionsView (małe
+   pills, pod-zakładki Konfiguracja/Prompty wewnątrz Świata).
+   ========================================================================== */
+.pill-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pill-tab svg.icon-svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.pill-tab:hover {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+.pill-tab.active {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+/* Wariant mniejszy — pod-zakładki wewnątrz sekcji (np. Świat: Konfiguracja/Prompty) */
+.pill-tabs--sm .pill-tab {
+  padding: 6px 13px;
+  font-size: 0.82rem;
+}
+
+.pill-tabs--sm .pill-tab svg.icon-svg {
+  width: 13px;
+  height: 13px;
+}

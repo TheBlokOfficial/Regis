@@ -31,6 +31,10 @@
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  /* Duże zaokrąglenia dla "pływających", premium kontenerów (karty, floating
+     boxy) — wprowadzone dla zakładki Agent, wzorem `.chat-floating-box`. */
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
 
   /* Wspólna wysokość stopek sidebaru i paneli treści — utrzymuje linie siatki w jednej płaszczyźnie */
   --footer-height: 57px;

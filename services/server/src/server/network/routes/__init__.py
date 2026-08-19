@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
-from server.agent.prompts import PromptStore
+from server.agent.prompts import AgentDefaultPromptStore
 
 from .chat import create_chat_router
 from .health import create_health_router
@@ -13,7 +13,7 @@ from .sessions import create_sessions_router
 def create_api_router(
     agent_engine: AgentEngine,
     backend_registry: BackendRegistry,
-    prompt_store: PromptStore,
+    prompt_store: AgentDefaultPromptStore,
 ) -> APIRouter:
     """Centralny rejestr agregujący zmodularyzowane pod-routery REST i SSE API serwera Regis OS."""
     main_router = APIRouter()

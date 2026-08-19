@@ -1,0 +1,222 @@
+/* ==========================================================================
+   WIDOK AGENT — przebudowa w duchu Chat (pływające karty, duże zaokrąglenia,
+   odstęp zamiast kresek między sekcjami). Referencja stylu: `.chat-floating-box`
+   w chat.css. Szkielet strony (`.view-shell`/`.section-heading*`) i dropdown
+   (`.select*`) to generyczne komponenty (patrz `css/components/`), reużywane
+   też przez Świat — tutaj zostają tylko klasy specyficzne dla tej zakładki.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Composer dodawania dostawcy — zawsze widoczny. Obrys pełny, nie kreskowany:
+   przerywana ramka w nowoczesnym UI oznacza "przeciągnij tu plik", nie
+   "panel narzędziowy" — złe skojarzenie. Odróżnia się od kart listy niżej
+   samym brakiem wypełnienia (przezroczyste tło vs. pełne `--bg-surface`).
+   -------------------------------------------------------------------------- */
+.agent-composer {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-2xl);
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.agent-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.agent-composer-fields {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.agent-composer-fields .form-control {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+
+.agent-composer-fields input[type="number"].form-control {
+  flex: 0 1 120px;
+  min-width: 90px;
+}
+
+/* Zwykłe pole tekstowe — bez natywnych strzałek góra/dół przeglądarki */
+.agent-composer-fields input[type="number"].form-control::-webkit-outer-spin-button,
+.agent-composer-fields input[type="number"].form-control::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.agent-composer-fields input[type="number"].form-control {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Biel jest zarezerwowana dla tekstu — okrągły przycisk dodawania zostaje
+   neutralny/szary (obrys + hover-podświetlenie), jak reszta drugorzędnych
+   kontrolek w systemie (`.btn-subtle`/`.btn-ghost`), nie wypełniony biały. */
+.agent-composer-submit {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.agent-composer-submit:hover {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Lista dostawców — karty w pełni klikalne (aktywacja przez kliknięcie
+   dowolnego miejsca karty, nie mały przycisk — większy, wygodniejszy cel).
+   -------------------------------------------------------------------------- */
+.agent-provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agent-provider-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.agent-provider-card:hover {
+  border-color: var(--border-medium);
+  background-color: var(--bg-surface-hover);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.agent-provider-card:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* Jeden, czytelny sygnał *koloru* (akcent lewej krawędzi) — ale sama karta
+   musi też wyglądać na "zablokowaną": przygaszone tło (--bg-sidebar, pośrednie
+   między --bg-base i --bg-surface — wystarczająco ciemne żeby odróżnić od
+   klikalnych kart, ale nie "znikające" w tle) i lekko wyciszony tekst nazwy —
+   standardowy język "zaznaczone = niedostępne do interakcji". */
+.agent-provider-card.is-active {
+  cursor: default;
+  background-color: var(--bg-sidebar);
+  border-left-color: var(--accent-success);
+}
+
+.agent-provider-card.is-active .agent-provider-card-name {
+  color: var(--text-secondary);
+}
+
+/* Nieaktywna wizualnie na hover — karta nie reaguje, bo nie da się jej kliknąć
+   (już jest aktywna). `border-color` to skrót ustawiający WSZYSTKIE cztery
+   krawędzie naraz — używamy trzech osobnych właściwości, żeby świadomie
+   NIE dotykać `border-left-color` (tam musi zostać zielony akcent). */
+.agent-provider-card.is-active:hover {
+  box-shadow: none;
+  background-color: var(--bg-sidebar);
+  border-top-color: var(--border-subtle);
+  border-right-color: var(--border-subtle);
+  border-bottom-color: var(--border-subtle);
+}
+
+.agent-provider-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agent-provider-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-provider-card-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-provider-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted-aa);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-provider-card-meta-sep {
+  opacity: 0.5;
+}
+
+/* Szary, nie zielony — sygnalizuje "ustawione/zablokowane", nie duplikuje
+   koloru akcentu lewej krawędzi (jedyne miejsce z kolorem stanu aktywnego). */
+.agent-provider-card-check {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-hover);
+  color: var(--text-muted-aa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-provider-card-check svg.icon-svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* Kwadratowy, czerwony kosz — wygląd z generycznych `.btn .btn-ghost-danger
+   .btn-icon-square` (buttons.css); `.agent-provider-card-delete` to tylko
+   hak JS (bez własnego stylu), patrz `agent_config.js`. */
+
+/* --------------------------------------------------------------------------
+   System Prompt — pływający box, ten sam wzorzec co `.chat-floating-box`
+   / `.chat-textarea` w Chat (świadome zapożyczenie, patrz chat.css).
+   -------------------------------------------------------------------------- */
+.agent-prompt-box {
+  padding: 18px 20px;
+}
+
+/* Bez uchwytu resize — "pływająca karta" ma być fundamentalnie stała, nie
+   rozciągana ręcznie (psuje złudzenie stałego, premium elementu UI).
+   Wysokość ustawiona raz, dość duża do wygodnego pisania/czytania promptu. */
+.agent-prompt-textarea {
+  width: 100%;
+  min-height: 320px;
+  max-height: none;
+  resize: none;
+}

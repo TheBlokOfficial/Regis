@@ -214,7 +214,7 @@ class _RedirectWorld:
             tool_definitions=[
                 ToolDefinition(name="redirect_tool", description="d", parameters={"type": "object", "properties": {}})
             ],
-            dynamic_context="",
+            system_prompt="",
             dispatch=dispatch,
         )
 
@@ -286,7 +286,7 @@ async def test_redirect_sender_id_not_used_when_tool_does_not_redirect():
 
             return ContextBuild(
                 tool_definitions=[ToolDefinition(name="redirect_tool", description="d", parameters={"type": "object", "properties": {}})],
-                dynamic_context="",
+                system_prompt="",
                 dispatch=dispatch,
             )
 

@@ -35,9 +35,8 @@ class ContextBuilder:
         self,
         session_history: list[ChatMessageDTO],
         new_prompt: str | None = None,
-        system_prompt_override: str | None = None,
+        system_prompt: str | None = None,
         tools_available: bool = False,
-        dynamic_context: str | None = None,
     ) -> list[LLMMessage]:
         """Składa listę wiadomości LLMMessage na podstawie historii sesji oraz nowego zapytania.
 
@@ -46,22 +45,23 @@ class ContextBuilder:
 
         :param session_history: Dotychczasowa historia wiadomości z sesji backendowej.
         :param new_prompt: Opcjonalny nowy prompt od użytkownika (jeśli nie został jeszcze dodany do historii).
-        :param system_prompt_override: Opcjonalny własny system prompt nadpisujący domyślny.
+        :param system_prompt: Kompletny, gotowy system prompt tej tury (zwykle
+            `ContextBuild.system_prompt` z implementacji `WorldInterface`, jeśli World
+            jest podłączony i ma coś do powiedzenia) — wklejany bez modyfikacji.
+            `None` oznacza brak wkładu World — użyty zostaje `self.default_system_prompt`
+            (prosty fallback kernela, patrz `agent/prompts/`).
         :param tools_available: Czy w tej interakcji agent ma dostęp do jakichkolwiek narzędzi
             (z `ContextBuild.tool_definitions`) — jeśli tak, dokleja jedno neutralne zdanie
             zachęcające do ich użycia, bez wymieniania czegokolwiek konkretnego.
-        :param dynamic_context: Gotowy blok prozy zbudowany przez implementację `WorldInterface`
-            na tę turę — kernel go nie interpretuje ani nie formatuje, tylko wkleja.
         :return: Lista zwalidowanych obiektów LLMMessage gotowych do wysłania do dostawcy LLM.
         """
         messages: list[LLMMessage] = []
 
-        # 1. Dodanie wytycznych systemowych (System Prompt) + dynamiczny kontekst silnika świata
-        system_content = system_prompt_override or self.default_system_prompt
+        # 1. Dodanie wytycznych systemowych (System Prompt) — albo kompletny wkład World,
+        #    albo domyślny fallback kernela. Nigdy sklejanie dwóch niepowiązanych autorów.
+        system_content = system_prompt if system_prompt is not None else self.default_system_prompt
         if tools_available:
             system_content += _TOOLS_AVAILABLE_HINT
-        if dynamic_context:
-            system_content += "\n\n" + dynamic_context
         messages.append(LLMMessage(role="system", content=system_content))
 
         # 2. Przycięcie historii do najnowszych N wiadomości i zmapowanie do formatu dostawcy LLM

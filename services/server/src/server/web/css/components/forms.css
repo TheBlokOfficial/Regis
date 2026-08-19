@@ -4,6 +4,7 @@
   margin-bottom: 20px;
   padding-top: 30px;
   border-color: var(--border-medium);
+  border-radius: var(--radius-xl);
 }
 
 .form-card-title-row {
@@ -73,10 +74,13 @@
   transition: border-color var(--transition-fast);
 }
 
+/* Subtelne przyciemnienie obrysu, bez jaskrawej białej poświaty (box-shadow) —
+   kursor tekstowy w polu już mówi "możesz tu pisać", nie potrzeba drugiego,
+   krzykliwego sygnału. */
 .form-control:focus {
-  border-color: var(--accent-primary);
+  border-color: var(--border-focus);
   outline: none;
-  box-shadow: 0 0 0 2px var(--accent-glow);
+  box-shadow: none;
 }
 
 .form-control.is-invalid {

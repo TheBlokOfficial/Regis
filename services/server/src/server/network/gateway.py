@@ -3,7 +3,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
-from server.agent.prompts import PromptStore
+from server.agent.prompts import AgentDefaultPromptStore
 from server.network.routes import create_api_router
 from server.world import WorldEngine
 from server.world.routes import create_world_router
@@ -12,7 +12,7 @@ from server.world.routes import create_world_router
 def create_gateway_app(
     agent_engine: AgentEngine,
     backend_registry: BackendRegistry,
-    prompt_store: PromptStore,
+    prompt_store: AgentDefaultPromptStore,
     world_engine: WorldEngine | None = None,
     voice_router: APIRouter | None = None,
     voice_status_router: APIRouter | None = None,

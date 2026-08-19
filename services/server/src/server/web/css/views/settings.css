@@ -1,29 +1,23 @@
-/* Sekcja Ustawień — bez ramek, rytm przez whitespace (jak Chat) */
-.settings-section {
+/* ==========================================================================
+   KONTENER USTAWIEŃ — pasek pills (stały, wycentrowany, przyklejony do góry)
+   + treść sekcji (scroll)
+   ========================================================================== */
+.settings-shell {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  height: 100%;
 }
 
-.settings-row-header {
+.settings-shell-header {
+  flex-shrink: 0;
+  padding: 18px 40px;
   display: flex;
-  align-items: center;
-  gap: 14px;
+  justify-content: center;
 }
 
-.settings-row-title {
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.settings-row-desc {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-}
-
-.provider-meta-grid-flush {
-  border-top: none;
-  margin-top: 0;
-  padding-top: 0;
+.settings-shell-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 40px 40px;
 }
