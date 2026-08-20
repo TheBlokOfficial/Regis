@@ -24,7 +24,7 @@ export class VoiceConfigView {
         <h3 class="section-heading section-heading--spaced-sm">Satelity</h3>
         <p class="section-hint">
           Rejestracja pokoju dla nadawców (w tym satelit głosowych) znajduje się w sekcji
-          <a href="#" id="voice-link-to-world">Świat</a>.
+          <a href="#" id="voice-link-to-world" class="text-link">Świat</a>.
         </p>
       </div>
     `;

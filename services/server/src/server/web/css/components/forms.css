@@ -1,19 +1,20 @@
-/* Formularz - Naprawiony przycisk X w prawym górnym rogu */
+/* Karta formularza odsłanianego na żądanie ("+ Nowy X" w Świecie, Konfiguracja
+   HA) — wzorem `.agent-composer` (agent.css): obrys pełny (nie kreskowany),
+   tło transparentne, promień na skali "duża karta" (`--radius-xl`, nie
+   `--radius-2xl` — ten zarezerwowany dla stałych, zawsze widocznych
+   composerów, których te formularze celowo nie są, patrz `extensions.css`). */
 .form-card {
-  margin-top: 10px;
-  margin-bottom: 20px;
-  padding-top: 30px;
-  border-color: var(--border-medium);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
-}
-
-.form-card-title-row {
-  margin-bottom: 16px;
+  padding: 18px 20px;
+  margin-top: 4px;
+  margin-bottom: 20px;
 }
 
 .form-card-title {
   font-size: 1rem;
   font-weight: 600;
+  margin-bottom: 16px;
 }
 
 .form-row-wrap {
@@ -22,25 +23,6 @@
 
 .form-group-min240 {
   min-width: 240px;
-}
-
-.btn-close-corner {
-  position: absolute;
-  top: 18px;
-  right: 20px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1.1rem;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  transition: color var(--transition-fast), background-color var(--transition-fast);
-}
-
-.btn-close-corner:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-surface-hover);
 }
 
 .form-row {

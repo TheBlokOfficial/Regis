@@ -102,3 +102,18 @@
   width: 15px;
   height: 15px;
 }
+
+/* Link śródtekstowy (np. odesłanie do innej sekcji w zdaniu) — zastępuje
+   domyślny, niestylowany <a> (niebieski, podkreślony), jedyny taki przypadek
+   w aplikacji poza tym komponentem. */
+.text-link {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-medium);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.text-link:hover {
+  text-decoration-color: var(--text-primary);
+}

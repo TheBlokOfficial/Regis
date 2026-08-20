@@ -88,7 +88,7 @@ export class HomeAssistantExtensionView {
             <span class="ha-section-title">Pokoje</span>
             <div class="ha-section-header-actions">
               <button class="btn btn-sm btn-ghost" id="ha-btn-import-rooms" title="Jednorazowy import — bez ciągłej synchronizacji">Zaimportuj z HA Areas</button>
-              <button class="btn btn-sm btn-primary" id="ha-btn-new-room">+ Nowy pokój</button>
+              <button class="btn btn-sm btn-subtle" id="ha-btn-new-room">+ Nowy pokój</button>
             </div>
           </div>
           <div class="ha-rooms-list">${renderRoomsList(this)}</div>
@@ -107,7 +107,7 @@ export class HomeAssistantExtensionView {
         <section class="ha-section">
           <div class="ha-section-header">
             <span class="ha-section-title">Grupy</span>
-            <button class="btn btn-sm btn-primary" id="ha-btn-new-group">+ Nowa grupa</button>
+            <button class="btn btn-sm btn-subtle" id="ha-btn-new-group">+ Nowa grupa</button>
           </div>
           <div class="ha-groups-list">${renderGroupsList(this)}</div>
           <div id="ha-group-form"></div>
@@ -116,7 +116,7 @@ export class HomeAssistantExtensionView {
         <section class="ha-section">
           <div class="ha-section-header">
             <span class="ha-section-title">Nadawcy</span>
-            <button class="btn btn-sm btn-primary" id="ha-btn-new-satellite">+ Nowa rejestracja</button>
+            <button class="btn btn-sm btn-subtle" id="ha-btn-new-satellite">+ Nowa rejestracja</button>
           </div>
           ${renderThisBrowserHint(this)}
           <div class="ha-satellites-list">${renderSatellitesList(this)}</div>
