@@ -61,8 +61,11 @@
   margin-bottom: 16px;
 }
 
+/* 40% szerokości panelu, nie pełny wiersz — pole na krótką nazwę pokoju
+   nie musi rozciągać się na całą dostępną szerokość. `flex: 0 0 40%`
+   (nie `width`), żeby nadal respektować `gap` wobec przycisku obok. */
 .ha-rooms-composer .form-control {
-  flex: 1;
+  flex: 0 0 40%;
 }
 
 /* Biel zarezerwowana dla tekstu — przycisk dodawania zostaje neutralny/szary,
