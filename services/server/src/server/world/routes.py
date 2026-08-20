@@ -21,6 +21,7 @@ from server.world.dto import (
     RegisterSenderRequest,
     RoomDTO,
     SenderProfileDTO,
+    TestHAConnectionRequest,
     UpdateDeclaredDeviceRequest,
     UpdateHAGroupRequest,
     UpdateHomeAssistantConfigRequest,
@@ -82,6 +83,11 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
     async def update_config(req: UpdateHomeAssistantConfigRequest) -> HomeAssistantConfigDTO:
         updated = await engine.save_config(base_url=req.base_url, access_token=req.access_token)
         return _to_config_dto(updated)
+
+    @router.post("/config/test", tags=["World"])
+    async def test_config(req: TestHAConnectionRequest) -> dict[str, bool]:
+        ok = await engine.test_connection(base_url=req.base_url, access_token=req.access_token)
+        return {"ok": ok}
 
     # --------------------------------------------------------------------------
     # Surowy katalog HA — do wyszukiwarki w UI, nie to, co widzi agent

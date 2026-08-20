@@ -92,14 +92,39 @@ class WorldEngine:
         await self._ensure_defaults()
         return await asyncio.to_thread(ConfigStore(HomeAssistantConfig, self.config_path).load)
 
-    async def save_config(self, base_url: str, access_token: str) -> HomeAssistantConfig:
-        """Zapisuje adres serwera i token dostępu."""
+    async def save_config(self, base_url: str, access_token: str | None = None) -> HomeAssistantConfig:
+        """Zapisuje adres serwera i (opcjonalnie) token dostępu.
+
+        Backend, nie frontend, jest jedynym bezpiecznym miejscem na regułę
+        "brak tokenu w żądaniu = zachowaj obecny" — GET /config zawsze zwraca
+        token zamaskowany (`_mask_token`), więc frontend nigdy nie zna
+        prawdziwej wartości i nie może jej sam odesłać z powrotem.
+        """
         await self._ensure_defaults()
-        content = HomeAssistantConfig(base_url=base_url, access_token=access_token)
+        token = access_token
+        if not token:
+            current = await asyncio.to_thread(ConfigStore(HomeAssistantConfig, self.config_path).load)
+            token = current.access_token
+        content = HomeAssistantConfig(base_url=base_url, access_token=token)
         async with self._lock:
             await asyncio.to_thread(ConfigStore(HomeAssistantConfig, self.config_path).save, content)
         logger.info("Zaktualizowano konfigurację Home Assistant.")
         return content
+
+    async def test_connection(self, base_url: str, access_token: str | None = None) -> bool:
+        """Testuje połączenie z Home Assistant bez zapisywania konfiguracji.
+
+        Brak tokenu w żądaniu = użyj obecnie zapisanego (test samego adresu
+        bez konieczności ponownego wklejania tokenu).
+        """
+        token = access_token
+        if not token:
+            current = await self.get_config()
+            token = current.access_token
+        if not base_url or not token:
+            return False
+        client = self._build_client(HomeAssistantConfig(base_url=base_url, access_token=token))
+        return await client.check_health()
 
     # --------------------------------------------------------------------------
     # CRUD grup urządzeń

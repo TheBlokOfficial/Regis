@@ -92,6 +92,9 @@ export class ApiClient {
   updateHAConfig(...args) {
     return this._world.updateHAConfig(...args);
   }
+  testHAConnection(...args) {
+    return this._world.testHAConnection(...args);
+  }
   getHACatalog(...args) {
     return this._world.getHACatalog(...args);
   }

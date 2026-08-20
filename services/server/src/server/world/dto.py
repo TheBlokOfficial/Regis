@@ -14,7 +14,18 @@ class UpdateHomeAssistantConfigRequest(BaseModel):
     """Żądanie dla PUT /config."""
 
     base_url: str = Field(..., description="Adres serwera Home Assistant")
-    access_token: str = Field(..., description="Długoterminowy token dostępu")
+    access_token: str | None = Field(
+        default=None, description="Długoterminowy token dostępu — pomiń, aby zachować obecny"
+    )
+
+
+class TestHAConnectionRequest(BaseModel):
+    """Żądanie dla POST /config/test."""
+
+    base_url: str = Field(...)
+    access_token: str | None = Field(
+        default=None, description="Pomiń, aby przetestować z obecnie zapisanym tokenem"
+    )
 
 
 class HAGroupDTO(BaseModel):

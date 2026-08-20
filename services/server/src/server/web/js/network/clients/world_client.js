@@ -124,6 +124,24 @@ export class WorldClient {
     }
   }
 
+  async testHAConnection(data) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/config/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd testu połączenia z Home Assistant:', error);
+      throw error;
+    }
+  }
+
   async getHACatalog() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/world/catalog`);

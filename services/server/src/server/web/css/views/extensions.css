@@ -26,10 +26,6 @@
   display: flex;
   flex-direction: column;
   gap: 28px;
-  padding: 24px 32px;
-  max-width: 900px;
-  margin: 0 auto;
-  width: 100%;
 }
 
 .ha-section-header {
@@ -121,15 +117,29 @@
 
 /* Przycisk zapisu Konfiguracji — kwadratowa ikona w tym samym wierszu co pola,
    nie pełny przycisk z etykietą pod spodem (dawniej `.btn-primary` — biel
-   zarezerwowana dla tekstu, patrz `agent.css`). `align-self: flex-end`
-   zestawia go z dolną krawędzią pól (`.form-group` ma nad polem etykietę,
-   więc bez tego przycisk wyrównałby się do góry, nie do inputów). Wymiar
-   dopasowany do wysokości `.form-control` (nie generyczne 32px z
-   `.btn-icon-square`) — wizualnie jeden spójny wiersz, nie dwa różne rzędy. */
+   zarezerwowana dla tekstu, patrz `agent.css`). Wyrównanie z inputem NIE
+   przez `align-self: flex-end` na samym przycisku (to zestawia go z dolną
+   krawędzią WIERSZA, która przez `margin-bottom` sąsiednich `.form-group`
+   leży kilkanaście px NIŻEJ niż realny dół pola — przycisk wtedy wisi za
+   nisko) — zamiast tego przycisk siedzi w swoim `.form-group--btn` z takim
+   samym "pustym" nagłówkiem-etykietą jak prawdziwe pola, więc pion wynika
+   z identycznego układu pudełek, nie z przeliczania marginesów. */
+.form-group--btn {
+  flex: 0 0 auto;
+}
+
+.form-group-btn-spacer {
+  visibility: hidden;
+}
+
+.ha-config-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .ha-config-submit {
-  align-self: flex-end;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
 }
 
 .ha-device-search {
