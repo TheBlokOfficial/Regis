@@ -10,10 +10,11 @@ from server.agent.prompts import AgentDefaultPromptStore
 from server.config import Settings, load_settings
 from server.discovery import DiscoveryBroadcaster
 from server.network.gateway import create_gateway_app
+from server.voice.config import VoiceProvidersConfig, load_voice_providers_config
 from server.voice.gateway import WakeWordDetectorFactory, create_voice_router
 from server.voice.routes import create_voice_status_router
-from server.voice.stt import MockSTTProvider
-from server.voice.tts import MockTTSProvider
+from server.voice.stt import BaseSTTProvider, GroqSTTProvider, MockSTTProvider
+from server.voice.tts import BaseTTSProvider, ElevenLabsTTSProvider, MockTTSProvider
 from server.voice.wakeword import OnnxWakeWordDetector, ThresholdEnergyWakeWordDetector, WakeWordDetector
 from server.world import WorldEngine
 
@@ -41,6 +42,26 @@ def _build_wakeword_detector_factory(settings: Settings) -> tuple[WakeWordDetect
         return OnnxWakeWordDetector(model_path, threshold)
 
     return factory, OnnxWakeWordDetector.__name__
+
+
+def _build_stt_provider(config: VoiceProvidersConfig) -> BaseSTTProvider:
+    """Pusty `groq_api_key` -> `MockSTTProvider` (łagodna degradacja, ten sam wzorzec
+    co wake-word/Home Assistant)."""
+    if not config.groq_api_key:
+        return MockSTTProvider()
+    return GroqSTTProvider(api_key=config.groq_api_key, model=config.groq_stt_model)
+
+
+def _build_tts_provider(config: VoiceProvidersConfig) -> BaseTTSProvider:
+    """Pusty `elevenlabs_api_key` -> `MockTTSProvider` (łagodna degradacja, ten sam
+    wzorzec co wake-word/Home Assistant)."""
+    if not config.elevenlabs_api_key:
+        return MockTTSProvider()
+    return ElevenLabsTTSProvider(
+        api_key=config.elevenlabs_api_key,
+        voice_id=config.elevenlabs_voice_id,
+        model_id=config.elevenlabs_model_id,
+    )
 
 
 async def main() -> None:
@@ -78,12 +99,14 @@ async def main() -> None:
     await agent_engine.initialize()
 
     # 6. Inicjalizacja gatewaya głosowego (server.voice) — rozłącznego z WorldEngine,
-    #    zna wyłącznie AgentEngine. STT/TTS to na razie dev-providerzy (mock) — konkretny
-    #    dostawca chmurowy jeszcze niewybrany (patrz docs/manifest.md, sekcja "server/voice/").
-    #    Wake-word: realny model .onnx (Settings.wakeword_model_path), z łagodną
-    #    degradacją do placeholdera progu amplitudy gdy nieskonfigurowany/brak pliku.
-    voice_stt_provider = MockSTTProvider()
-    voice_tts_provider = MockTTSProvider()
+    #    zna wyłącznie AgentEngine. STT/TTS: Groq/ElevenLabs gdy skonfigurowane
+    #    (VoiceProvidersConfig, edytowalne w Web UI -> Głos), łagodna degradacja do
+    #    dev-providerów (Mock) gdy klucze puste. Wake-word: realny model .onnx
+    #    (Settings.wakeword_model_path), z łagodną degradacją do placeholdera progu
+    #    amplitudy gdy nieskonfigurowany/brak pliku.
+    voice_providers_config = await load_voice_providers_config()
+    voice_stt_provider = _build_stt_provider(voice_providers_config)
+    voice_tts_provider = _build_tts_provider(voice_providers_config)
     wakeword_detector_factory, wakeword_detector_class_name = _build_wakeword_detector_factory(settings)
     voice_router = create_voice_router(
         agent_engine=agent_engine,

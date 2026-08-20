@@ -46,20 +46,23 @@ Grupy urządzeń przechowywane są w `services/server/data/world/groups/*.json`.
 ### `server/voice/` — pipeline głosowy satelit
 
 Rozłączny z `WorldEngine` (patrz sekcja 3) — zna wyłącznie opaque `sender_id`,
-nigdy configu World. Dziś skonfigurowany w `main.py` z **dev-providerami STT/TTS
-(`MockSTTProvider`/`MockTTSProvider`)** i **placeholderowym detektorem wake-word
-(`ThresholdEnergyWakeWordDetector`)** — żaden z nich nie woła prawdziwej chmury
-ani prawdziwego modelu `.onnx`; wystarczają do przetestowania całego protokołu
-WS end-to-end (patrz `services/server/scripts/voice_satellite_sim.py`).
-Podłączenie realnego modelu wake-word i dostawcy STT/TTS w chmurze to kolejny,
-świadomie odłożony krok (brak wybranego dostawcy/pliku modelu na dzień pisania
-tego dokumentu).
+nigdy configu World. Wake-word to realny model `.onnx` (`OnnxWakeWordDetector`,
+`Settings.wakeword_model_path`/`wakeword_threshold`, `server/config.py`), STT/TTS
+to Groq (`GroqSTTProvider`) i ElevenLabs (`ElevenLabsTTSProvider`) — oba
+konfigurowalne w Web UI (zakładka **Głos**, `GET/PUT /api/v1/voice/providers/config`,
+`services/server/data/voice/config.json`). Puste klucze API/brak pliku modelu =
+łagodna degradacja do dev-providerów (`MockSTTProvider`/`MockTTSProvider`,
+`ThresholdEnergyWakeWordDetector`) — wystarczają do przetestowania całego
+protokołu WS end-to-end bez żadnych kluczy (patrz
+`services/server/scripts/voice_satellite_sim.py`). **Ograniczenie**: zmiana
+klucza/modelu w Web UI wymaga restartu serwera, żeby zacząć obowiązywać —
+providery STT/TTS/wake-word są budowane raz przy starcie (`main.py`).
 
 ### Prompty systemowe — World jest jedynym autorem, gdy podłączony
 - **Profile promptu Świata** (`services/server/data/world/prompts/*.json`, `WorldPromptStore`): do 3 przełączalnych profili tożsamości, aktywny wskazuje `data/world/active_prompt.json`. `WorldEngine.build()` doklejają aktywny profil (może być pusty — domyślnie "Profil 1") do dynamicznych faktów (czas/pokój/urządzenia) i zwraca **kompletny, gotowy prompt** tej tury — kernel niczego nie skleja.
 - **Fallback promptu kernela** (`services/server/data/agent_default_prompt.json`, `AgentDefaultPromptStore`): jedna wartość, bez CRUD — używana **wyłącznie** gdy żaden World nie jest podłączony (`NullWorldInterface`, testy headless). `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` to fallback tego fallbacku (seed przy pierwszym uruchomieniu). W normalnej pracy (World zawsze wstrzyknięty w `main.py`) to pole rzadko się uruchamia.
 
-Najwygodniejszy sposób edycji: zakładka **Ustawienia** w Web UI, wewnątrz poziome sekcje (pills) **Agent** (dostawcy LLM, REST `/api/v1/llm/providers`, + fallbackowy prompt kernela, REST `/api/v1/agent/prompt`), **Świat** (Konfiguracja HA/pokoi/nadawców, REST `/api/v1/world/*`, + pod-zakładka **Prompty** — profile tożsamości Świata, REST `/api/v1/world/prompts/*`), **Głos** (status pipeline'u, REST `/api/v1/voice/status`) i **System** (info o instancji). Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami do sekcji Ustawień.
+Najwygodniejszy sposób edycji: zakładka **Ustawienia** w Web UI, wewnątrz poziome sekcje (pills) **Agent** (dostawcy LLM, REST `/api/v1/llm/providers`, + fallbackowy prompt kernela, REST `/api/v1/agent/prompt`), **Świat** (Konfiguracja HA/pokoi/nadawców, REST `/api/v1/world/*`, + pod-zakładka **Prompty** — profile tożsamości Świata, REST `/api/v1/world/prompts/*`), **Głos** (status pipeline'u + config dostawców STT/TTS, REST `/api/v1/voice/status`, `/api/v1/voice/providers/config`) i **System** (info o instancji). Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami do sekcji Ustawień.
 
 ---
 
@@ -146,6 +149,7 @@ python -m uv run --package server python -m server.main
 | | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py` |
 | | `GET /api/v1/voice/status` | Status pipeline'u głosowego (nazwy klas aktywnych providerów STT/TTS/wake-word), tylko do odczytu |
+| | `GET/PUT /api/v1/voice/providers/config` | Config dostawców STT/TTS (Groq/ElevenLabs) — klucze API zamaskowane na odczyt; zmiana wymaga restartu serwera |
 
 > **Świadome założenie**: `WS /ws/voice/{sender_id}` nie ma żadnego uwierzytelniania
 > — spójne z resztą systemu (opaque `sender_id` bez auth, model zaufanej sieci

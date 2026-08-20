@@ -144,8 +144,14 @@ export class ApiClient {
     return this._world.deleteSender(...args);
   }
 
-  // --- Voice (status pipeline'u głosowego) ---
+  // --- Voice (status pipeline'u głosowego, config dostawców STT/TTS) ---
   getVoiceStatus(...args) {
     return this._voice.getVoiceStatus(...args);
+  }
+  getVoiceProvidersConfig(...args) {
+    return this._voice.getVoiceProvidersConfig(...args);
+  }
+  updateVoiceProvidersConfig(...args) {
+    return this._voice.updateVoiceProvidersConfig(...args);
   }
 }

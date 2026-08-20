@@ -1,10 +1,59 @@
 /* ==========================================================================
-   WIDOK GŁOS — dziś w całości placeholder (STT/TTS/Satelity), patrz
-   `voice_config.js`. Karty sekcji to `.stat-panel` (components/stat_panel.css,
-   współdzielone z Dashboardem) — tu zostaje tylko lokalny styl tekstu.
+   WIDOK GŁOS — STT (Groq)/TTS (ElevenLabs) mają realne formularze configu
+   (`.form-card`, `forms.css`) od podłączenia realnych dostawców chmurowych;
+   Satelity zostają placeholderem-odnośnikiem do Świata. Pole klucza API to
+   ten sam wzorzec co Home Assistant (`extensions.css`, `.ha-token-*`), tylko
+   pod własną nazwą klasy — sekcje mają się nie znać nawzajem.
    ========================================================================== */
 .voice-placeholder-text {
   color: var(--text-secondary);
   font-size: 0.95rem;
   line-height: 1.6;
+}
+
+.voice-token-field-wrap {
+  position: relative;
+}
+
+.voice-token-field-wrap .form-control {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.voice-token-toggle-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.voice-token-toggle-eye:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-surface-hover);
+}
+
+.voice-token-toggle-eye svg.icon-svg {
+  width: 16px;
+  height: 16px;
+}
+
+.voice-token-hint {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.voice-restart-hint {
+  margin-top: -8px;
+  margin-bottom: 20px;
 }
