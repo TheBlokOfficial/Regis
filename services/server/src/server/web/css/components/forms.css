@@ -1,9 +1,13 @@
 /* Karta formularza odsłanianego na żądanie ("+ Nowy X" w Świecie, Konfiguracja
-   HA) — wzorem `.agent-composer` (agent.css): obrys pełny (nie kreskowany),
-   tło transparentne, promień na skali "duża karta" (`--radius-xl`, nie
-   `--radius-2xl` — ten zarezerwowany dla stałych, zawsze widocznych
-   composerów, których te formularze celowo nie są, patrz `extensions.css`). */
+   HA) — wypełnione tło (`--bg-surface`), tak jak pozostałe pływające karty
+   w aplikacji (`.stat-panel`, `.card`) — w odróżnieniu od `.agent-composer`
+   (agent.css), który jest świadomie transparentny, bo sąsiaduje bezpośrednio
+   z wypełnioną listą kart pod spodem (kontrast). Formularze Świata stoją
+   samodzielnie, więc potrzebują własnej wagi wizualnej. Promień na skali
+   "duża karta" (`--radius-xl`, nie `--radius-2xl` — ten zarezerwowany dla
+   stałych, zawsze widocznych composerów, patrz `extensions.css`). */
 .form-card {
+  background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
   padding: 18px 20px;

@@ -119,6 +119,19 @@
   margin-top: 4px;
 }
 
+/* Przycisk zapisu Konfiguracji — kwadratowa ikona w tym samym wierszu co pola,
+   nie pełny przycisk z etykietą pod spodem (dawniej `.btn-primary` — biel
+   zarezerwowana dla tekstu, patrz `agent.css`). `align-self: flex-end`
+   zestawia go z dolną krawędzią pól (`.form-group` ma nad polem etykietę,
+   więc bez tego przycisk wyrównałby się do góry, nie do inputów). Wymiar
+   dopasowany do wysokości `.form-control` (nie generyczne 32px z
+   `.btn-icon-square`) — wizualnie jeden spójny wiersz, nie dwa różne rzędy. */
+.ha-config-submit {
+  align-self: flex-end;
+  width: 42px;
+  height: 42px;
+}
+
 .ha-device-search {
   position: relative;
   margin-bottom: 4px;

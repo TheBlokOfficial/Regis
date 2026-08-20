@@ -1,5 +1,5 @@
 import { Icons } from '../../../icons.js';
-import { escapeHtml, escapeAttr } from '../../../utils/dom.js';
+import { escapeAttr } from '../../../utils/dom.js';
 
 /**
  * Panel "Konfiguracja" — singleton Home Assistant (`base_url`/`access_token`).
@@ -7,6 +7,7 @@ import { escapeHtml, escapeAttr } from '../../../utils/dom.js';
  */
 export function renderConfigForm(view) {
   const isConfigured = Boolean(view.config.base_url && view.config.access_token);
+  const tokenPlaceholder = isConfigured ? truncateMaskedToken(view.config.access_token) : 'eyJhbGciOi...';
   return `
     <div class="form-card ha-config-form-card">
       <div class="form-row">
@@ -16,12 +17,9 @@ export function renderConfigForm(view) {
         </div>
         <div class="form-group">
           <label for="ha-input-token">Długoterminowy token dostępu</label>
-          <input type="password" id="ha-input-token" class="form-control" placeholder="${isConfigured ? 'Zostaw puste, aby zachować obecny' : 'eyJhbGciOi...'}" />
+          <input type="password" id="ha-input-token" class="form-control" placeholder="${escapeAttr(tokenPlaceholder)}" />
         </div>
-      </div>
-      ${isConfigured ? `<p class="ha-empty-hint">Obecny token: ${escapeHtml(truncateMaskedToken(view.config.access_token))}</p>` : ''}
-      <div class="form-actions">
-        <button class="btn btn-primary" id="ha-btn-save-config">${Icons.RefreshCw()} Aktualizuj połączenie</button>
+        <button class="btn btn-ghost btn-icon-square ha-config-submit" id="ha-btn-save-config" title="Aktualizuj połączenie" aria-label="Aktualizuj połączenie">${Icons.RefreshCw()}</button>
       </div>
     </div>
   `;
