@@ -28,6 +28,13 @@ class TestHAConnectionRequest(BaseModel):
     )
 
 
+class TestConnectionResponse(BaseModel):
+    """Odpowiedź dla POST /config/test."""
+
+    ok: bool = Field(...)
+    message: str = Field(..., description="Czytelny dla użytkownika komunikat wyniku testu")
+
+
 class HAGroupDTO(BaseModel):
     """Reprezentacja grupy urządzeń dla API."""
 

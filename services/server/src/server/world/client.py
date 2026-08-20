@@ -192,11 +192,32 @@ class HomeAssistantClient:
 
         return ToolResult(is_error=True, content=f"Nieobsługiwana akcja: '{capability}'.")
 
-    async def check_health(self) -> bool:
-        url = f"{self.base_url}/api/"
+    async def test_connection(self) -> tuple[bool, str]:
+        """Testuje połączenie i zwraca (ok, komunikat czytelny dla użytkownika).
+
+        Rozróżnia najczęstsze przyczyny niepowodzenia (zły token vs zły adres
+        vs serwer nieosiągalny) zamiast zwracać gołe `bool` — użytkownik
+        konfigurujący połączenie potrzebuje wiedzieć CO poprawić.
+        """
+        url = f"{self.base_url}/api/config"
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(url, headers=self._headers())
-                return response.status_code == 200
+        except httpx.TimeoutException:
+            return False, "Przekroczono czas oczekiwania — sprawdź adres serwera."
+        except Exception as e:
+            return False, f"Nie udało się połączyć z serwerem: {e}"
+
+        if response.status_code == 401:
+            return False, "Błąd autoryzacji (401) — sprawdź token dostępu."
+        if response.status_code == 403:
+            return False, "Brak uprawnień (403) — token nie ma wymaganego dostępu."
+        if response.status_code != 200:
+            return False, f"Błąd połączenia (HTTP {response.status_code})."
+
+        try:
+            version = response.json().get("version", "")
         except Exception:
-            return False
+            version = ""
+        message = f"Połączono: Home Assistant {version}".strip() if version else "Połączono z Home Assistant."
+        return True, message

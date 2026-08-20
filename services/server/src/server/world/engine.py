@@ -111,20 +111,22 @@ class WorldEngine:
         logger.info("Zaktualizowano konfigurację Home Assistant.")
         return content
 
-    async def test_connection(self, base_url: str, access_token: str | None = None) -> bool:
+    async def test_connection(self, base_url: str, access_token: str | None = None) -> tuple[bool, str]:
         """Testuje połączenie z Home Assistant bez zapisywania konfiguracji.
 
         Brak tokenu w żądaniu = użyj obecnie zapisanego (test samego adresu
         bez konieczności ponownego wklejania tokenu).
         """
+        if not base_url:
+            return False, "Adres serwera jest wymagany."
         token = access_token
         if not token:
             current = await self.get_config()
             token = current.access_token
-        if not base_url or not token:
-            return False
+        if not token:
+            return False, "Token dostępu jest wymagany."
         client = self._build_client(HomeAssistantConfig(base_url=base_url, access_token=token))
-        return await client.check_health()
+        return await client.test_connection()
 
     # --------------------------------------------------------------------------
     # CRUD grup urządzeń

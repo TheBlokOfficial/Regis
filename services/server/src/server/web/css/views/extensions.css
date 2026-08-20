@@ -115,31 +115,63 @@
   margin-top: 4px;
 }
 
-/* Przycisk zapisu Konfiguracji — kwadratowa ikona w tym samym wierszu co pola,
-   nie pełny przycisk z etykietą pod spodem (dawniej `.btn-primary` — biel
-   zarezerwowana dla tekstu, patrz `agent.css`). Wyrównanie z inputem NIE
-   przez `align-self: flex-end` na samym przycisku (to zestawia go z dolną
-   krawędzią WIERSZA, która przez `margin-bottom` sąsiednich `.form-group`
-   leży kilkanaście px NIŻEJ niż realny dół pola — przycisk wtedy wisi za
-   nisko) — zamiast tego przycisk siedzi w swoim `.form-group--btn` z takim
-   samym "pustym" nagłówkiem-etykietą jak prawdziwe pola, więc pion wynika
-   z identycznego układu pudełek, nie z przeliczania marginesów. */
-.form-group--btn {
-  flex: 0 0 auto;
+/* Pole tokenu — przycisk pokaż/ukryj wpisany w prawą krawędź inputu (wzorem
+   standardowych password-fieldów), nie osobny element obok. */
+.ha-token-field-wrap {
+  position: relative;
 }
 
-.form-group-btn-spacer {
-  visibility: hidden;
+.ha-token-field-wrap .form-control {
+  padding-right: 40px;
 }
 
-.ha-config-actions {
+.ha-token-toggle-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.ha-config-submit {
-  width: 40px;
-  height: 40px;
+.ha-token-toggle-eye:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-surface-hover);
+}
+
+.ha-token-toggle-eye svg.icon-svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Podpis pod polami — `.section-hint` bazowo ma ujemny margines (myślany do
+   doklejenia pod nagłówkiem sekcji), tu następuje po wierszu pól wewnątrz
+   karty, więc dostaje własny, dodatni odstęp. */
+.ha-token-hint {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+/* Pasek akcji Konfiguracji — "Testuj połączenie" + plakietka wyniku po
+   lewej, "Zapisz" (jedyny akcent koloru sekcji) po prawej. */
+.ha-config-actions {
+  justify-content: space-between;
+}
+
+.ha-config-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .ha-device-search {
