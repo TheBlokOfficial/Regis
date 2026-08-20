@@ -17,9 +17,16 @@ from shared import SAMPLE_RATE_HZ
 
 
 class SilenceVadDetector:
-    """Wyzwala się po `silence_duration_ms` ciągłej ciszy (amplituda poniżej progu)
-    następującej po co najmniej jednej głośnej ramce — czyli po realnej wypowiedzi,
-    nie od razu na starcie nagrywania."""
+    """Wyzwala się po `silence_duration_ms` ciągłej ciszy (amplituda poniżej progu),
+    licząc od startu nagrywania (po `wake_detected`) albo od ostatniej głośnej ramki.
+
+    Świadomie **bez** bramki "musi najpierw usłyszeć mowę": wcześniejsza wersja
+    czekała na choć jedną głośną ramkę, zanim zaczęła liczyć ciszę jako koniec
+    wypowiedzi — jeśli użytkownik nic nie powiedział po wake-wordzie (fałszywe
+    wykrycie, wahanie, cisza), satelita wisiała w `RECORDING_UTTERANCE` bez
+    końca, bo `process()` zawsze zwracał `False`. Wymóg pełnego
+    `silence_duration_ms` ciągłej ciszy sam w sobie wystarcza jako margines
+    bezpieczeństwa przed przedwczesnym wyzwoleniem tuż po wake-wordzie."""
 
     def __init__(
         self,
@@ -30,15 +37,10 @@ class SilenceVadDetector:
         self._frames_required = max(1, round(silence_duration_ms / frame_duration_ms))
         self._amplitude_threshold = amplitude_threshold
         self._consecutive_silent_frames = 0
-        self._heard_speech = False
 
     def process(self, pcm_chunk: bytes) -> bool:
         if _peak_amplitude(pcm_chunk) >= self._amplitude_threshold:
-            self._heard_speech = True
             self._consecutive_silent_frames = 0
-            return False
-
-        if not self._heard_speech:
             return False
 
         self._consecutive_silent_frames += 1
@@ -46,7 +48,6 @@ class SilenceVadDetector:
 
     def reset(self) -> None:
         self._consecutive_silent_frames = 0
-        self._heard_speech = False
 
 
 def _peak_amplitude(pcm_chunk: bytes) -> int:

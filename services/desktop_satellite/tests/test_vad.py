@@ -13,10 +13,16 @@ def _quiet_frame() -> bytes:
     return (10).to_bytes(2, byteorder="little", signed=True) * 160
 
 
-def test_silence_before_any_speech_does_not_trigger() -> None:
+def test_silence_from_the_start_triggers_after_threshold() -> None:
+    """Użytkownik nic nie mówi po wake-wordzie (fałszywe wykrycie/wahanie) — VAD musi
+    mimo to wyzwolić po pełnym progu ciszy, żeby satelita nie wisiała w nieskończoność
+    w RECORDING_UTTERANCE czekając na mowę, która nigdy nie nadejdzie."""
     vad = SilenceVadDetector(frame_duration_ms=FRAME_DURATION_MS, silence_duration_ms=100.0)
-    for _ in range(20):
-        assert vad.process(_quiet_frame()) is False
+    assert vad.process(_quiet_frame()) is False
+    assert vad.process(_quiet_frame()) is False
+    assert vad.process(_quiet_frame()) is False
+    assert vad.process(_quiet_frame()) is False
+    assert vad.process(_quiet_frame()) is True
 
 
 def test_silence_after_speech_triggers_after_threshold() -> None:
