@@ -148,6 +148,9 @@ export class ApiClient {
   getVoiceStatus(...args) {
     return this._voice.getVoiceStatus(...args);
   }
+  getConnectedSenders(...args) {
+    return this._voice.getConnectedSenders(...args);
+  }
   getVoiceProvidersConfig(...args) {
     return this._voice.getVoiceProvidersConfig(...args);
   }

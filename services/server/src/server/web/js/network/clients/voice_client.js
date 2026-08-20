@@ -20,6 +20,20 @@ export class VoiceClient {
     }
   }
 
+  async getConnectedSenders() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/voice/connected`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      const data = await response.json();
+      return data?.sender_ids || [];
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania podłączonych satelit:', error);
+      return [];
+    }
+  }
+
   async getVoiceProvidersConfig() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/voice/providers/config`);

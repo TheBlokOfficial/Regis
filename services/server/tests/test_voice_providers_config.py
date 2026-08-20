@@ -30,6 +30,7 @@ def client(voice_config_path):
             stt_provider=MockSTTProvider(),
             tts_provider=MockTTSProvider(),
             wakeword_detector_class_name="ThresholdEnergyWakeWordDetector",
+            connected_sender_ids=set(),
         ),
         prefix="/api/v1/voice",
     )

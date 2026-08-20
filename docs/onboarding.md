@@ -150,6 +150,7 @@ python -m uv run --package server python -m server.main
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py` |
 | | `GET /api/v1/voice/status` | Status pipeline'u głosowego (nazwy klas aktywnych providerów STT/TTS/wake-word), tylko do odczytu |
 | | `GET/PUT /api/v1/voice/providers/config` | Config dostawców STT/TTS (Groq/ElevenLabs) — klucze API zamaskowane na odczyt; zmiana wymaga restartu serwera |
+| | `GET /api/v1/voice/connected` | `sender_id` z aktualnie żywym połączeniem WS — pozwala Web UI (Świat → Nadawcy) pokazać podłączone, ale jeszcze niezarejestrowane satelity |
 
 > **Świadome założenie**: `WS /ws/voice/{sender_id}` nie ma żadnego uwierzytelniania
 > — spójne z resztą systemu (opaque `sender_id` bez auth, model zaufanej sieci

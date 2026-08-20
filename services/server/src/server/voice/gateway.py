@@ -174,26 +174,38 @@ def create_voice_router(
     wakeword_detector_factory: WakeWordDetectorFactory,
     stt_provider: BaseSTTProvider,
     tts_provider: BaseTTSProvider,
+    connected_sender_ids: set[str],
 ) -> APIRouter:
     """Tworzy router z endpointem WS `/voice/{sender_id}`.
 
     `wakeword_detector_factory` tworzy nowy, świeży detektor (własny bufor/stan)
     dla każdego połączenia — jedna instancja detektora nie jest bezpieczna do
     współdzielenia między satelitami.
+
+    `connected_sender_ids` to współdzielony (z `create_voice_status_router`,
+    `routes.py`) zbiór `sender_id` z aktualnie żywym połączeniem WS — mechaniczny
+    fakt, zero wiedzy o rejestracji/pokoju (to należy do `World`, patrz
+    `docs/manifest.md` sekcja 5). Pozwala Web UI (panel Nadawcy) pokazać
+    podłączone, ale jeszcze niezarejestrowane satelity. Zwykły `set`, bez
+    locka — jeden wątek asyncio, mutacje bezpieczne.
     """
     router = APIRouter()
 
     @router.websocket("/voice/{sender_id}")
     async def voice_endpoint(websocket: WebSocket, sender_id: str) -> None:
         await websocket.accept()
-        connection = VoiceConnection(
-            sender_id=sender_id,
-            websocket=websocket,
-            agent_engine=agent_engine,
-            wakeword_detector=wakeword_detector_factory(),
-            stt_provider=stt_provider,
-            tts_provider=tts_provider,
-        )
-        await connection.run()
+        connected_sender_ids.add(sender_id)
+        try:
+            connection = VoiceConnection(
+                sender_id=sender_id,
+                websocket=websocket,
+                agent_engine=agent_engine,
+                wakeword_detector=wakeword_detector_factory(),
+                stt_provider=stt_provider,
+                tts_provider=tts_provider,
+            )
+            await connection.run()
+        finally:
+            connected_sender_ids.discard(sender_id)
 
     return router

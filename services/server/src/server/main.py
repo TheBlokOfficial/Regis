@@ -104,6 +104,10 @@ async def main() -> None:
     #    dev-providerów (Mock) gdy klucze puste. Wake-word: realny model .onnx
     #    (Settings.wakeword_model_path), z łagodną degradacją do placeholdera progu
     #    amplitudy gdy nieskonfigurowany/brak pliku.
+    # `sender_id` z aktualnie żywym połączeniem WS — mechaniczny fakt wypełniany przez
+    # gateway.py, czytany przez routes.py (panel Nadawcy w Web UI, Świat), bez importu
+    # między world/voice (patrz docs/manifest.md, sekcja 5).
+    connected_sender_ids: set[str] = set()
     voice_providers_config = await load_voice_providers_config()
     voice_stt_provider = _build_stt_provider(voice_providers_config)
     voice_tts_provider = _build_tts_provider(voice_providers_config)
@@ -113,10 +117,12 @@ async def main() -> None:
         wakeword_detector_factory=wakeword_detector_factory,
         stt_provider=voice_stt_provider,
         tts_provider=voice_tts_provider,
+        connected_sender_ids=connected_sender_ids,
     )
     voice_status_router = create_voice_status_router(
         stt_provider=voice_stt_provider,
         tts_provider=voice_tts_provider,
+        connected_sender_ids=connected_sender_ids,
         wakeword_detector_class_name=wakeword_detector_class_name,
     )
 

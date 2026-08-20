@@ -11,6 +11,11 @@ starcie serwera (`main.py`) i wstrzykiwane do `VoiceConnection` jako gotowe
 instancje — zmiana klucza/modelu przez `PUT` zapisuje się na dysk, ale zaczyna
 obowiązywać dopiero po restarcie serwera (ten sam kompromis co reszta configu
 bez hot-reloadu w tym projekcie, patrz `docs/onboarding.md` sekcja 4).
+
+`GET /connected` — `sender_id` z aktualnie żywym połączeniem WS
+(`connected_sender_ids`, wypełniany przez `gateway.py`, wstrzykiwany z
+`main.py` jako współdzielony `set`) — pozwala Web UI (panel Nadawcy, Świat)
+pokazać satelity podłączone, ale jeszcze niezarejestrowane w `World`.
 """
 
 from __future__ import annotations
@@ -58,10 +63,19 @@ class VoiceStatusDTO(BaseModel):
     )
 
 
+class ConnectedSendersDTO(BaseModel):
+    """`sender_id` z aktualnie żywym połączeniem WS — mechaniczny fakt (`gateway.py`),
+    zero wiedzy o rejestracji/pokoju (to należy do `World`). Pozwala Web UI (panel
+    Nadawcy, Świat) pokazać podłączone, ale jeszcze niezarejestrowane satelity."""
+
+    sender_ids: list[str] = Field(..., description="Posortowana lista sender_id z żywym połączeniem WS")
+
+
 def create_voice_status_router(
     stt_provider: BaseSTTProvider,
     tts_provider: BaseTTSProvider,
     wakeword_detector_class_name: str,
+    connected_sender_ids: set[str],
 ) -> APIRouter:
     """Tworzy router statusu — providerzy/nazwa detektora wstrzykiwane z `main.py`."""
     router = APIRouter()
@@ -76,6 +90,10 @@ def create_voice_status_router(
             wakeword_detector=wakeword_detector_class_name,
             is_production_ready=not any(name.startswith("Mock") for name in (stt_name, tts_name)),
         )
+
+    @router.get("/connected", response_model=ConnectedSendersDTO, tags=["Voice"])
+    async def get_connected() -> ConnectedSendersDTO:
+        return ConnectedSendersDTO(sender_ids=sorted(connected_sender_ids))
 
     @router.get("/providers/config", response_model=VoiceProvidersConfigDTO, tags=["Voice"])
     async def get_providers_config() -> VoiceProvidersConfigDTO:
