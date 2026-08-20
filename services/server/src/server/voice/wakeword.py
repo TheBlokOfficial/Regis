@@ -1,17 +1,26 @@
 """Detektor wake-word — jeden, świeży detektor per połączenie (własny bufor/stan).
 
-Docelowo: streaming inference nad modelem `.onnx` dostarczonym przez użytkownika
-(ścieżka/format pliku modelu nie są jeszcze ustalone — poza zakresem tej
-implementacji, patrz plan). `ThresholdEnergyWakeWordDetector` to świadomy
-placeholder dev/testowy — NIE rozpoznaje słów, tylko sekwencję głośnych ramek —
-wystarcza do przetestowania całego protokołu WS end-to-end (symulator satelity,
-testy jednostkowe automatu stanu) zanim realny model zostanie podłączony.
+`OnnxWakeWordDetector` to realny detektor oparty o wytrenowany model `.onnx`
+(biblioteka `livekit-wakeword` — ekstrakcja cech mel-spektrogram+embedding jest
+wbudowana w pakiet, tu tylko sklejamy kroczący bufor audio i próg pewności).
+`ThresholdEnergyWakeWordDetector` to świadomy placeholder dev/testowy — NIE
+rozpoznaje słów, tylko sekwencję głośnych ramek — używany dziś jako fallback,
+gdy w `Settings.wakeword_model_path` nie skonfigurowano żadnego modelu (patrz
+`main.py`), oraz w testach jednostkowych automatu stanu (`test_voice_pipeline.py`).
 """
 
 from __future__ import annotations
 
 import struct
+from pathlib import Path
 from typing import Protocol
+
+import numpy as np
+from livekit.wakeword import WakeWordModel
+
+from shared import SAMPLE_RATE_HZ, get_logger
+
+logger = get_logger("regis.voice.wakeword")
 
 
 class WakeWordDetector(Protocol):
@@ -52,6 +61,50 @@ class ThresholdEnergyWakeWordDetector:
 
     def reset(self) -> None:
         self._consecutive_loud_frames = 0
+
+
+class OnnxWakeWordDetector:
+    """Realny detektor — kroczący bufor ~2s audio, inference co ~320ms (stride),
+    zgodnie z zaleceniem `livekit-wakeword` (2s = dokładnie 16 embeddingów, wejście
+    klasyfikatora). Krótsze bufory `WakeWordModel.predict()` sam bezpiecznie
+    zwraca wynik 0.0 — nie trzeba tego pilnować ręcznie.
+
+    Koszt inference zmierzony empirycznie: ~20ms na wywołanie `predict()` na CPU
+    (model `regis.onnx`, ~930KB) — przy stride 320ms to ~6% czasu, akceptowalne
+    jako wywołanie synchroniczne (bez `run_in_executor`) przy skali tego projektu
+    (jednoosobowy, kilka satelit jednocześnie). Nowa instancja wymagana per
+    połączenie — stan bufora nie jest bezpieczny do współdzielenia.
+    """
+
+    _WINDOW_SECONDS = 2.0
+    _STRIDE_SECONDS = 0.32
+
+    def __init__(self, model_path: str | Path, threshold: float, sample_rate_hz: int = SAMPLE_RATE_HZ) -> None:
+        self._model_name = Path(model_path).stem
+        self._model = WakeWordModel(models=[model_path])
+        self._threshold = threshold
+        self._window_samples = round(self._WINDOW_SECONDS * sample_rate_hz)
+        self._stride_samples = round(self._STRIDE_SECONDS * sample_rate_hz)
+        self._buffer = np.zeros(0, dtype=np.int16)
+        self._samples_since_predict = 0
+        logger.info(f"Załadowano model wake-word '{self._model_name}' [próg: {threshold}].")
+
+    def process(self, pcm_chunk: bytes) -> bool:
+        samples = np.frombuffer(pcm_chunk, dtype=np.int16)
+        self._buffer = np.concatenate([self._buffer, samples])[-self._window_samples :]
+        self._samples_since_predict += len(samples)
+
+        if self._samples_since_predict < self._stride_samples:
+            return False
+        self._samples_since_predict = 0
+
+        scores = self._model.predict(self._buffer)
+        score = scores.get(self._model_name, 0.0)
+        return score >= self._threshold
+
+    def reset(self) -> None:
+        self._buffer = np.zeros(0, dtype=np.int16)
+        self._samples_since_predict = 0
 
 
 def _peak_amplitude(pcm_chunk: bytes) -> int:

@@ -31,6 +31,8 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`llm_default_max_tokens`**: Domyślna maksymalna liczba tokenów wyjściowych (domyślnie: `4096`).
 - **`max_history_messages`**: Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM (domyślnie: `40`).
 - **`max_tool_iterations`**: Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej (domyślnie: `8`).
+- **`wakeword_model_path`**: Ścieżka (względna wobec katalogu usługi) do wytrenowanego modelu wake-word `.onnx` (domyślnie: puste — placeholder progu amplitudy `ThresholdEnergyWakeWordDetector`, łagodna degradacja gdy plik nieskonfigurowany/nie istnieje). Model kopiuje się ręcznie, np. do `data/wakeword/<nazwa>.onnx` (katalog `data/` jest w `.gitignore`).
+- **`wakeword_threshold`**: Próg pewności detekcji wake-word, 0-1 (domyślnie: `0.5` — dla konkretnego modelu użyj wartości `optimal_threshold` z jego metryk ewaluacyjnych).
 
 ### Parametry dostawców LLM (`services/server/data/backends/*.json`, zarządzane przez `BackendRegistry`):
 - **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
@@ -174,7 +176,8 @@ wygenerowany przy pierwszym uruchomieniu i zapisany w
 (widoczny w logu startowym) w Web UI (zakładka **Świat → Nadawcy**), żeby
 satelita miała przypisany pokój. Opcje `--server-url`/`--sender-id` pozwalają
 pominąć auto-discovery/trwały UUID (np. inna podsieć, testy). Wake-word
-wykrywa dziś serwer (placeholder), a STT/TTS to nadal dev-providerzy Mock —
+wykrywa dziś serwer, realnym modelem `.onnx` gdy skonfigurowany
+(`wakeword_model_path` wyżej), a STT/TTS to nadal dev-providerzy Mock —
 realna rozmowa głosowa wymaga podłączenia docelowych dostawców chmurowych
 (patrz sekcja 2, "Zaplanowane" w `manifest.md`).
 

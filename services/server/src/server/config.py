@@ -15,6 +15,10 @@ class Settings(BaseModel):
     llm_default_max_tokens: int = Field(default=4096, description="Domyślna maksymalna liczba tokenów wyjściowych dla modeli LLM")
     max_history_messages: int = Field(default=40, description="Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM")
     max_tool_iterations: int = Field(default=8, description="Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej, zanim agent zakończy z tym co wygenerował")
+    wakeword_model_path: str = Field(
+        default="", description="Ścieżka do wytrenowanego modelu wake-word .onnx. Puste = placeholder progu amplitudy."
+    )
+    wakeword_threshold: float = Field(default=0.5, description="Próg pewności detekcji wake-word (0-1)")
 
 
 # Automatyczne odnajdywanie korzenia usługi (services/server)

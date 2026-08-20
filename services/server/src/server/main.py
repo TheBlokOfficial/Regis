@@ -1,24 +1,46 @@
 import asyncio
+
 import uvicorn
-from shared import EventBus, get_logger, setup_logging
+from shared import EventBus, get_logger, get_service_root, setup_logging
 
 from server.agent import AgentEngine
 from server.agent.backend import BackendRegistry
 from server.agent.context import ContextBuilder
 from server.agent.prompts import AgentDefaultPromptStore
-from server.config import load_settings
+from server.config import Settings, load_settings
 from server.discovery import DiscoveryBroadcaster
 from server.network.gateway import create_gateway_app
-from server.voice.gateway import create_voice_router
+from server.voice.gateway import WakeWordDetectorFactory, create_voice_router
 from server.voice.routes import create_voice_status_router
 from server.voice.stt import MockSTTProvider
 from server.voice.tts import MockTTSProvider
-from server.voice.wakeword import ThresholdEnergyWakeWordDetector
+from server.voice.wakeword import OnnxWakeWordDetector, ThresholdEnergyWakeWordDetector, WakeWordDetector
 from server.world import WorldEngine
 
 # 1. Konfiguracja jednolitych, minimalistycznych logów
 setup_logging(level="INFO")
 logger = get_logger("regis.main")
+
+
+def _build_wakeword_detector_factory(settings: Settings) -> tuple[WakeWordDetectorFactory, str]:
+    """Wybiera realny detektor `.onnx` (`Settings.wakeword_model_path` ustawiony i plik
+    istnieje) albo placeholder progu amplitudy — łagodna degradacja, ten sam wzorzec co
+    brak konfiguracji Home Assistant w `WorldEngine`. Zwraca fabrykę (nowa instancja per
+    połączenie, patrz `server/voice/wakeword.py`) i nazwę klasy do statusu `/voice/status`."""
+    if not settings.wakeword_model_path:
+        return ThresholdEnergyWakeWordDetector, ThresholdEnergyWakeWordDetector.__name__
+
+    model_path = get_service_root(__file__) / settings.wakeword_model_path
+    if not model_path.exists():
+        logger.warning(f"Plik modelu wake-word nie istnieje [{model_path}] — używam placeholdera progu amplitudy.")
+        return ThresholdEnergyWakeWordDetector, ThresholdEnergyWakeWordDetector.__name__
+
+    threshold = settings.wakeword_threshold
+
+    def factory() -> WakeWordDetector:
+        return OnnxWakeWordDetector(model_path, threshold)
+
+    return factory, OnnxWakeWordDetector.__name__
 
 
 async def main() -> None:
@@ -58,20 +80,21 @@ async def main() -> None:
     # 6. Inicjalizacja gatewaya głosowego (server.voice) — rozłącznego z WorldEngine,
     #    zna wyłącznie AgentEngine. STT/TTS to na razie dev-providerzy (mock) — konkretny
     #    dostawca chmurowy jeszcze niewybrany (patrz docs/manifest.md, sekcja "server/voice/").
-    #    ThresholdEnergyWakeWordDetector to świadomy placeholder do czasu podłączenia
-    #    realnego modelu .onnx.
+    #    Wake-word: realny model .onnx (Settings.wakeword_model_path), z łagodną
+    #    degradacją do placeholdera progu amplitudy gdy nieskonfigurowany/brak pliku.
     voice_stt_provider = MockSTTProvider()
     voice_tts_provider = MockTTSProvider()
+    wakeword_detector_factory, wakeword_detector_class_name = _build_wakeword_detector_factory(settings)
     voice_router = create_voice_router(
         agent_engine=agent_engine,
-        wakeword_detector_factory=ThresholdEnergyWakeWordDetector,
+        wakeword_detector_factory=wakeword_detector_factory,
         stt_provider=voice_stt_provider,
         tts_provider=voice_tts_provider,
     )
     voice_status_router = create_voice_status_router(
         stt_provider=voice_stt_provider,
         tts_provider=voice_tts_provider,
-        wakeword_detector_class_name=ThresholdEnergyWakeWordDetector.__name__,
+        wakeword_detector_class_name=wakeword_detector_class_name,
     )
 
     # 7. Inicjalizacja bramki sieciowej z rejestrem backendów, magazynem promptów i tą samą
