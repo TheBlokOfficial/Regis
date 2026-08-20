@@ -23,6 +23,7 @@ from shared.contracts import (
     SendChatMessageRequest,
     UpdatePromptRequest,
 )
+from shared.discovery import DISCOVERY_MAGIC, DISCOVERY_UDP_PORT, decode_beacon, encode_beacon
 from shared.event_bus import Event, EventBus, EventHandler
 from shared.logging import get_logger, setup_logging
 from shared.voice_protocol import (
@@ -46,6 +47,10 @@ __all__ = [
     "ConfigStore",
     "CreateLLMProviderRequest",
     "CreatePromptRequest",
+    "DISCOVERY_MAGIC",
+    "DISCOVERY_UDP_PORT",
+    "decode_beacon",
+    "encode_beacon",
     "Event",
     "EventBus",
     "EventHandler",

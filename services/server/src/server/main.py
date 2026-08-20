@@ -7,6 +7,7 @@ from server.agent.backend import BackendRegistry
 from server.agent.context import ContextBuilder
 from server.agent.prompts import AgentDefaultPromptStore
 from server.config import load_settings
+from server.discovery import DiscoveryBroadcaster
 from server.network.gateway import create_gateway_app
 from server.voice.gateway import create_voice_router
 from server.voice.routes import create_voice_status_router
@@ -95,10 +96,17 @@ async def main() -> None:
 
     server = uvicorn.Server(config)
 
+    # 9. Rozgłaszanie obecności serwera w sieci lokalnej (UDP broadcast) — pozwala
+    #    satelitom (services/desktop_satellite) znaleźć adres serwera bez ręcznej
+    #    konfiguracji IP.
+    discovery_broadcaster = DiscoveryBroadcaster(port=settings.port)
+    discovery_broadcaster.start()
+
     logger.info(f"Bramka sieciowa gotowa na http://{settings.host}:{settings.port}")
     try:
         await server.serve()
     finally:
+        discovery_broadcaster.stop()
         await agent_engine.shutdown()
 
 

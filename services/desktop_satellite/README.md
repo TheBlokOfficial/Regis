@@ -15,11 +15,22 @@ prosty detektor ciszy (`desktop_satellite.vad.SilenceVadDetector`).
 Wymaga uruchomionego serwera (`python -m uv run --package server python -m server.main`).
 
 ```bash
-python -m uv run --package desktop_satellite python -m desktop_satellite.main --sender-id moj_komputer
+python -m uv run --package desktop_satellite python -m desktop_satellite.main
 ```
 
-Opcje: `--server-url` (domyślnie `ws://127.0.0.1:8000/ws/voice`), `--log-level`.
+Bez żadnych flag: przy pierwszym uruchomieniu satelita generuje trwały
+`sender_id` (UUID4) i zapisuje go w `config/settings.json` — kolejne starty
+używają tego samego ID. Adres serwera znajduje automatycznie przez UDP
+broadcast (`desktop_satellite.discovery`, patrz `docs/manifest.md` sekcja
+3.7) — nie trzeba ręcznie wpisywać IP.
 
-Przed pierwszym uruchomieniem zarejestruj `sender_id` w Web UI (zakładka
-**Świat → Nadawcy**), żeby satelita miała przypisany pokój — bez tego agent
-nadal odpowie, ale bez kontekstu lokalizacji.
+Opcje:
+- `--server-url` — pomija auto-discovery, np. gdy satelita jest w innej
+  podsieci niż serwer (`ws://192.168.1.10:8000/ws/voice`).
+- `--sender-id` — pomija trwały UUID z pliku, przydatne np. do testów.
+- `--log-level` — domyślnie `INFO`.
+
+Po pierwszym uruchomieniu zarejestruj wygenerowany `sender_id` (widoczny w
+logu startowym, albo w `config/settings.json`) w Web UI (zakładka **Świat →
+Nadawcy**), żeby satelita miała przypisany pokój — bez tego agent nadal
+odpowie, ale bez kontekstu lokalizacji.

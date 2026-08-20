@@ -163,12 +163,20 @@ Wymaga uruchomionego serwera. Klient (`services/desktop_satellite/`, patrz
 `docs/manifest.md` sekcja 3.7) łączy się z `WS /ws/voice/{sender_id}`,
 strumieniuje mikrofon, lokalnie wykrywa koniec wypowiedzi i odtwarza odpowiedź:
 ```bash
-python -m uv run --package desktop_satellite python -m desktop_satellite.main --sender-id <id>
+python -m uv run --package desktop_satellite python -m desktop_satellite.main
 ```
-Zarejestruj `<id>` w Web UI (zakładka **Świat → Nadawcy**), żeby satelita miała
-przypisany pokój. Wake-word wykrywa dziś serwer (placeholder), a STT/TTS to
-nadal dev-providerzy Mock — realna rozmowa głosowa wymaga podłączenia
-docelowych dostawców chmurowych (patrz sekcja 2, "Zaplanowane" w `manifest.md`).
+Bez flag: serwer rozgłasza swoją obecność w sieci lokalnej (UDP broadcast,
+`server/discovery.py`/`shared/discovery.py`, port `41530`) — satelita znajduje
+go automatycznie, bez ręcznego wpisywania IP. `sender_id` to trwały UUID4
+wygenerowany przy pierwszym uruchomieniu i zapisany w
+`services/desktop_satellite/config/settings.json` (`desktop_satellite/config.py`)
+— kolejne starty używają tego samego ID. Zarejestruj wygenerowany `sender_id`
+(widoczny w logu startowym) w Web UI (zakładka **Świat → Nadawcy**), żeby
+satelita miała przypisany pokój. Opcje `--server-url`/`--sender-id` pozwalają
+pominąć auto-discovery/trwały UUID (np. inna podsieć, testy). Wake-word
+wykrywa dziś serwer (placeholder), a STT/TTS to nadal dev-providerzy Mock —
+realna rozmowa głosowa wymaga podłączenia docelowych dostawców chmurowych
+(patrz sekcja 2, "Zaplanowane" w `manifest.md`).
 
 ### Uruchomienie testów:
 Przed zgłoszeniem zmian obowiązkowo uruchom pełny zestaw testów (`services/server/tests/`):

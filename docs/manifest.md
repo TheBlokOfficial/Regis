@@ -61,6 +61,7 @@ server/
 ├── web/            # Wbudowana konsola SPA (HTML/CSS/JS)
 ├── config.py       # Settings (ConfigStore)
 ├── events.py       # ServerEventType
+├── discovery.py    # DiscoveryBroadcaster — UDP broadcast obecności serwera (auto-discovery satelit)
 └── main.py         # Kompozycja aplikacji: wstrzykuje WorldEngine do AgentEngine i do sieci
 ```
 
@@ -237,6 +238,7 @@ publiczny kontrakt `AgentEngine` — dokładnie ten sam, z którego korzysta
   - Prywatne słownictwo Home Assistant/satelit (config, katalog, grupy, rejestracje) żyje lokalnie w `world/dto.py`, nie tutaj — nie ma potrzeby generycznego kształtu skoro istnieje dokładnie jeden silnik.
 - **`logging.py`**: Jednolita konfiguracja logów dla całego monorepo z ustandaryzowanymi nazwami kategorii (`regis.main`, `regis.agent`, `regis.world`, itp.).
 - **`voice_protocol.py`**: Kontrakt ramek WS satelity (`SatelliteMessageType`/`ServerMessageType`/`SAMPLE_RATE_HZ`/`SAMPLE_WIDTH_BYTES`/`CHANNELS`) — przeniesiony tu z `server/voice/protocol.py`, bo od `desktop_satellite` (sekcja 3.7) jest to kontrakt między dwiema niezależnymi usługami, nie szczegół jednej z nich (ten sam powód, dla którego DTO REST żyją w `contracts.py`, nie w `server/network/`).
+- **`discovery.py`**: Kontrakt UDP auto-discovery — `DISCOVERY_UDP_PORT`, `DISCOVERY_MAGIC` (odsiewa obcy ruch UDP na tym porcie) i czyste funkcje `encode_beacon`/`decode_beacon` (JSON `{"service", "port"}`). Współdzielony przez `server/discovery.py` (nadawca) i `desktop_satellite/discovery.py` (odbiorca) — bez uwierzytelniania, spójnie z modelem zaufanej sieci lokalnej przyjętym dla `WS /ws/voice/{sender_id}` (sekcja 5).
 
 ### 3.7 `desktop_satellite` — realny klient satelity desktopowej (`services/desktop_satellite/src/desktop_satellite`)
 
@@ -248,7 +250,9 @@ niczego z `services/server`, łączy je wyłącznie `packages/shared` i protokó
 - **`session.py`**: `SatelliteSession` — klienckie odbicie automatu `VoiceSession`: `LISTENING_WAKEWORD` → (odbiór `wake_detected` od serwera — wake-word nadal wykrywa **serwer**, dziś placeholder `ThresholdEnergyWakeWordDetector`, satelita tylko ciągle strumieniuje mikrofon) → `RECORDING_UTTERANCE` (lokalny `vad.SilenceVadDetector` decyduje, kiedy wysłać `utterance_end` — zgodnie z decyzją "VAD po stronie satelity" niżej) → `PROCESSING` (mikrofon wstrzymany, ten sam powód co po stronie serwera: uniknięcie nagrywania własnego odtwarzania) → `SPEAKING` (odbiór `tts_start..tts_end`, odtworzenie, `playback_done`) → powrót do nasłuchu. Czysty automat + wstrzyknięte zależności (`link`/`speaker`/`vad`), testowalny bez gniazda/sprzętu (`tests/test_session.py`), tym samym wzorcem co serwerowy `VoiceSession`.
 - **`vad.py`**: `SilenceVadDetector` — czysta klasa (mirror stylu `ThresholdEnergyWakeWordDetector`), wyzwala się po skonfigurowanym czasie ciszy następującym po realnej mowie; testowalna w izolacji (`tests/test_vad.py`).
 - **`audio.py`**: `MicCapture`/`SpeakerPlayback` przez `sounddevice`+`numpy` (PortAudio, Windows/Linux) — PCM16 mono 16 kHz, ramki 20 ms. `synth_tone()` generuje lokalne dźwięki wake/stop-tone (sinusoidalny beep), zero plików audio, zero strumieniowania z serwera.
-- **`main.py`**: CLI (`--server-url`/`--sender-id`/`--log-level`), pętla reconnect z backoffem (log + `asyncio.sleep`), czyste zamknięcie mikrofonu na `KeyboardInterrupt`.
+- **`main.py`**: CLI (`--server-url`/`--sender-id`/`--log-level`, wszystkie opcjonalne), pętla reconnect z backoffem (log + `asyncio.sleep`), czyste zamknięcie mikrofonu na `KeyboardInterrupt`.
+- **`config.py`**: `SatelliteSettings` (`ConfigStore`+`get_service_root`, mirror `server/config.py`) — `sender_id: str` z `default_factory=uuid.uuid4`, trwale zapisywany w `services/desktop_satellite/config/settings.json` przy pierwszym uruchomieniu (brak pliku). Bez flagi `--sender-id` `main.py` używa `load_or_create_sender_id()` — ten sam UUID przy każdym kolejnym starcie, bez ręcznego wpisywania.
+- **`discovery.py`**: `discover_server()` — nasłuchuje UDP broadcast serwera (`shared/discovery.py`), buduje `ws://{ip nadawcy}:{port z beaconu}/ws/voice`. Bez flagi `--server-url` `main.py` wywołuje to przed każdą próbą połączenia (bez cachowania ostatniego znanego adresu — KISS, broadcaster serwera działa non-stop, ponowne odkrycie kosztuje najwyżej jeden interwał rozgłoszenia).
 - **Nadal placeholder**: wake-word (serwerowy `ThresholdEnergyWakeWordDetector`, bez zmian tą zmianą) i STT/TTS (`MockSTTProvider`/`MockTTSProvider`) — klient desktopowy dowodzi poprawności całego protokołu i lokalnego VAD, ale nie podłącza jeszcze realnego rozpoznawania mowy/syntezy głosu ani realnego modelu wake-word.
 
 ---
