@@ -87,6 +87,21 @@
   font-size: 0.84rem;
 }
 
+/* Rozbłysk wyniku akcji bezpośrednio na przycisku (np. "Testuj połączenie")
+   zamiast osobnej plakietki obok — przycisk na chwilę PRZEJMUJE znaczenie
+   wyniku (kolor + ikona), potem wraca do stanu spoczynku. */
+.btn-flash-success {
+  background-color: var(--accent-success);
+  border-color: var(--accent-success);
+  color: #ffffff;
+}
+
+.btn-flash-error {
+  background-color: var(--accent-danger);
+  border-color: var(--accent-danger);
+  color: #ffffff;
+}
+
 /* Modyfikator: kwadratowy przycisk tylko-ikona (32×32) — łączony z klasą
    koloru akcji (np. `.btn-ghost-danger`) zamiast osobnego, zduplikowanego
    wariantu na każdą listę w aplikacji (Agent: karty dostawców, Świat: pokoje/

@@ -1,5 +1,5 @@
 import { Icons } from '../../../icons.js';
-import { escapeAttr, escapeHtml } from '../../../utils/dom.js';
+import { escapeAttr } from '../../../utils/dom.js';
 
 /**
  * Panel "Konfiguracja" — singleton Home Assistant (`base_url`/`access_token`).
@@ -32,11 +32,8 @@ export function renderConfigForm(view) {
         Token wygenerujesz w profilu użytkownika Home Assistant → Bezpieczeństwo → Długoterminowe tokeny dostępu.
       </p>
       <div class="form-actions ha-config-actions">
-        <div class="ha-config-actions-left">
-          <button type="button" class="btn btn-ghost" id="ha-btn-test-config">Testuj połączenie</button>
-          <span id="ha-config-test-result"></span>
-        </div>
-        <button class="btn btn-primary" id="ha-btn-save-config">Zapisz</button>
+        <button type="button" class="btn" id="ha-btn-test-config">Testuj połączenie</button>
+        <button class="btn" id="ha-btn-save-config">Zapisz</button>
       </div>
     </div>
   `;
@@ -83,10 +80,12 @@ async function handleSaveConfig(view) {
   }
 }
 
+/** Wynik testu jest pokazywany BEZPOŚREDNIO na przycisku (kolor + ikona na
+ * 2s), nie osobną plakietką obok — jeden spójny element zamiast dwóch
+ * różnych stylistyk w tym samym wierszu. */
 async function handleTestConnection(view) {
   const baseUrl = document.getElementById('ha-input-base-url')?.value.trim() || '';
   const token = document.getElementById('ha-input-token')?.value || '';
-  const resultEl = document.getElementById('ha-config-test-result');
 
   if (!baseUrl) {
     view.showToast('Adres serwera jest wymagany.', 'error');
@@ -94,20 +93,30 @@ async function handleTestConnection(view) {
   }
 
   const btn = document.getElementById('ha-btn-test-config');
-  if (btn) btn.disabled = true;
-  if (resultEl) resultEl.innerHTML = '';
+  if (!btn) return;
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = Icons.CircleLoader();
+
+  let ok = false;
+  let message = 'Błąd sprawdzania połączenia.';
   try {
     const result = await view.apiClient.testHAConnection({ base_url: baseUrl, access_token: token || null });
-    if (resultEl) {
-      resultEl.innerHTML = `<span class="badge badge-status ${result.ok ? 'badge-status--success' : 'badge-status--error'}">${escapeHtml(result.message)}</span>`;
-    }
+    ok = Boolean(result?.ok);
+    message = result?.message || message;
   } catch (error) {
-    if (resultEl) {
-      resultEl.innerHTML = `<span class="badge badge-status badge-status--error">${escapeHtml(error.message || 'Błąd sprawdzania połączenia.')}</span>`;
-    }
-  } finally {
-    if (btn) btn.disabled = false;
+    message = error.message || message;
   }
+
+  btn.classList.add(ok ? 'btn-flash-success' : 'btn-flash-error');
+  btn.innerHTML = ok ? Icons.Check() : Icons.X();
+  btn.disabled = false;
+  view.showToast(message, ok ? 'success' : 'error');
+
+  setTimeout(() => {
+    btn.classList.remove('btn-flash-success', 'btn-flash-error');
+    btn.innerHTML = originalHtml;
+  }, 2000);
 }
 
 function truncateMaskedToken(masked) {

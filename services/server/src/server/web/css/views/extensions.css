@@ -122,6 +122,7 @@
 }
 
 .ha-token-field-wrap .form-control {
+  width: 100%;
   padding-right: 40px;
 }
 
@@ -162,16 +163,11 @@
   margin-bottom: 0;
 }
 
-/* Pasek akcji Konfiguracji — "Testuj połączenie" + plakietka wyniku po
-   lewej, "Zapisz" (jedyny akcent koloru sekcji) po prawej. */
+/* Pasek akcji Konfiguracji — "Testuj połączenie" (drugorzędne, wynik
+   pokazywany bezpośrednio na przycisku, patrz `.btn-flash-*`) po lewej,
+   "Zapisz" po prawej. */
 .ha-config-actions {
   justify-content: space-between;
-}
-
-.ha-config-actions-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .ha-device-search {

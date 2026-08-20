@@ -60,6 +60,15 @@ export const Icons = {
     <path d="M19.1 4.9a10 10 0 0 1 0 14.2m-14.2 0a10 10 0 0 1 0-14.2"></path>
   `),
 
+  Check: () => createSvg(`
+    <path d="M20 6 9 17l-5-5"></path>
+  `),
+
+  X: () => createSvg(`
+    <path d="M18 6 6 18"></path>
+    <path d="m6 6 12 12"></path>
+  `),
+
   CheckCircle2: () => createSvg(`
     <circle cx="12" cy="12" r="10"></circle>
     <path d="m9 12 2 2 4-4"></path>
