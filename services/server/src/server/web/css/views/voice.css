@@ -100,3 +100,17 @@
   font-size: 0.78rem;
   color: var(--text-muted-aa);
 }
+
+.voice-empty-hint {
+  color: var(--text-muted-aa);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.voice-browser-self-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}

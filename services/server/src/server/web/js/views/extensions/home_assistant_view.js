@@ -2,7 +2,7 @@ import { renderConfigForm, bindConfigEvents } from './ha/config_panel.js';
 import { renderRoomsPanel, bindRoomEvents } from './ha/rooms_panel.js';
 import { renderDeviceSearch, renderSearchResults, renderDeclaredList, initDeclaredRoomSelects, bindDeviceEvents } from './ha/devices_panel.js';
 import { renderGroupsList, renderGroupForm, bindGroupEvents } from './ha/groups_panel.js';
-import { renderThisBrowserHint, renderSatellitesList, renderSatelliteForm, bindSatelliteEvents } from './ha/satellites_panel.js';
+import { renderSatellitesList, initSatelliteRoomSelects, bindSatelliteEvents } from './ha/satellites_panel.js';
 
 /**
  * Widok konfiguracji silnika świata (WorldEngine) — w pełni domenowy (nie
@@ -12,11 +12,11 @@ import { renderThisBrowserHint, renderSatellitesList, renderSatelliteForm, bindS
  * Home Assistant Areas — te są wyłącznie podpowiedzią/importem jednorazowym),
  * Urządzenia (wyszukiwarka nad surowym katalogiem HA + opt-in zadeklarowana
  * lista, jedyne źródło prawdy o tym, co widzi agent — każde z przypisanym
- * pokojem), Grupy (multi-select nad zadeklarowaną listą), Nadawcy
- * (przypisanie `sender_id -> pokój` — World nie wie nic o kanale komunikacji
- * ani o typie fizycznego urządzenia; Web UI jest pierwszym, zawsze dostępnym
- * nadawcą, więc sekcja od razu proponuje jej własny, trwały `sender_id` do
- * rejestracji).
+ * pokojem), Grupy (multi-select nad zadeklarowaną listą), Nadawcy (lista już
+ * zarejestrowanych `sender_id -> pokój`, z pickerem pokoju per wiersz —
+ * **bez tworzenia nowych rejestracji tutaj**, to żyje w zakładce Głos,
+ * `voice_config.js`, bo pierwszy kontakt z nadawcą jest koncepcyjnie domeną
+ * `voice`, nie `world`).
  *
  * Wizualnie ten sam system co Agent: pełne (nie kreskowane) subtelne
  * obramowania, listy jako jeden kontener z hairline-separatorami (nie ramka
@@ -44,7 +44,6 @@ export class HomeAssistantExtensionView {
     this.rooms = [];
 
     this.isCreatingGroup = false;
-    this.isRegisteringSender = false;
   }
 
   async mount(container, apiClient, showToast) {
@@ -128,21 +127,16 @@ export class HomeAssistantExtensionView {
         </section>
 
         <section class="ha-section">
-          <div class="ha-section-header">
-            <h3 class="section-heading">Nadawcy</h3>
-            <button class="btn btn-sm btn-subtle" id="ha-btn-new-satellite">+ Nowa rejestracja</button>
-          </div>
-          ${renderThisBrowserHint(this)}
+          <h3 class="section-heading">Nadawcy</h3>
           <div class="ha-satellites-list">${renderSatellitesList(this)}</div>
-          <div id="ha-satellite-form"></div>
         </section>
       </div>
     `;
     this._bindEvents();
     renderSearchResults(this);
     initDeclaredRoomSelects(this);
+    initSatelliteRoomSelects(this);
     if (this.isCreatingGroup) renderGroupForm(this);
-    if (this.isRegisteringSender) renderSatelliteForm(this);
   }
 
   _bindEvents() {
