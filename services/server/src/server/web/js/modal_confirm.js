@@ -1,3 +1,5 @@
+import { escapeHtml } from './utils/dom.js';
+
 /**
  * Współdzielony modal potwierdzenia (zastępuje natywne window.confirm/alert),
  * oparty o istniejący kontener #modal-overlay/#modal-content.
@@ -59,10 +61,4 @@ export function confirmModal({ title = 'Potwierdź akcję', message, confirmLabe
       { once: true }
     );
   });
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str ?? '';
-  return div.innerHTML;
 }

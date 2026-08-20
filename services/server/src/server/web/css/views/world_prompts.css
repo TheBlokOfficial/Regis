@@ -1,5 +1,6 @@
 /* ==========================================================================
-   WIDOK AGENTY — Split Layout dla zarządzania promptami systemowymi
+   PROMPTY ŚWIATA — Split Layout dla zarządzania profilami promptu (Świat →
+   Prompty, `world_prompts_view.js`)
    ========================================================================== */
 
 /* Modifier na #workspace-content aplikowany przez TabManager przy aktywacji zakładki */
@@ -8,7 +9,7 @@
   overflow: hidden !important;
 }
 
-.agents-layout {
+.wp-layout {
   display: flex;
   height: 100%;
 }
@@ -16,7 +17,7 @@
 /* --------------------------------------------------------------------------
    Panel lewy: lista promptów
    -------------------------------------------------------------------------- */
-.agents-panel-list {
+.wp-panel-list {
   width: 300px;
   min-width: 240px;
   flex-shrink: 1;
@@ -27,7 +28,7 @@
   overflow: hidden;
 }
 
-.agents-panel-header {
+.wp-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -36,13 +37,13 @@
   flex-shrink: 0;
 }
 
-.agents-panel-title {
+.wp-panel-title {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.agents-list {
+.wp-list {
   flex: 1;
   overflow-y: auto;
   padding: 10px;
@@ -51,16 +52,16 @@
   gap: 6px;
 }
 
-.agents-list-loading,
-.agents-list-empty,
-.agents-list-error {
+.wp-list-loading,
+.wp-list-empty,
+.wp-list-error {
   padding: 20px 12px;
   text-align: center;
   color: var(--text-muted-aa);
   font-size: 0.86rem;
 }
 
-.agents-list-empty {
+.wp-list-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -69,7 +70,7 @@
 
 /* Wysokość zrównana 1:1 z .sidebar-footer (var(--footer-height)), żeby border-top
    obu stopek trafiał w tę samą linię siatki na wysokości pionowej krawędzi sidebar/content. */
-.agents-panel-footer {
+.wp-panel-footer {
   flex-shrink: 0;
   height: var(--footer-height);
   box-sizing: border-box;
@@ -83,7 +84,7 @@
   text-align: center;
 }
 
-.agents-list-item {
+.wp-list-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -94,33 +95,33 @@
   transition: all var(--transition-fast);
 }
 
-.agents-list-item:hover {
+.wp-list-item:hover {
   background-color: var(--bg-surface-hover);
 }
 
-.agents-list-item:focus-visible {
+.wp-list-item:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: -2px;
 }
 
-.agents-list-item.selected {
+.wp-list-item.selected {
   background-color: var(--bg-surface-hover);
   border-color: var(--border-medium);
   border-left: 3px solid var(--text-primary);
   padding-left: 9px;
 }
 
-.agents-list-item.is-active:not(.selected) {
+.wp-list-item.is-active:not(.selected) {
   background-color: rgba(34, 197, 94, 0.05);
 }
 
-.agents-list-item-row {
+.wp-list-item-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.agents-list-item-dot {
+.wp-list-item-dot {
   width: 7px;
   height: 7px;
   min-width: 7px;
@@ -128,12 +129,12 @@
   background-color: transparent;
 }
 
-.agents-list-item.is-active .agents-list-item-dot {
+.wp-list-item.is-active .wp-list-item-dot {
   background-color: var(--accent-success);
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
 }
 
-.agents-list-item-name {
+.wp-list-item-name {
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-primary);
@@ -143,7 +144,7 @@
   flex: 1;
 }
 
-.agents-list-item-desc {
+.wp-list-item-desc {
   font-size: 0.78rem;
   color: var(--text-muted-aa);
   overflow: hidden;
@@ -152,7 +153,7 @@
   padding-left: 15px;
 }
 
-.agents-badge-active {
+.wp-badge-active {
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -167,7 +168,7 @@
 /* --------------------------------------------------------------------------
    Panel prawy: edytor
    -------------------------------------------------------------------------- */
-.agents-panel-editor {
+.wp-panel-editor {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -176,7 +177,7 @@
   overflow-y: hidden;
 }
 
-.agents-editor-empty {
+.wp-editor-empty {
   margin: auto;
   text-align: center;
   display: flex;
@@ -186,12 +187,12 @@
   color: var(--text-muted);
 }
 
-.agents-editor-empty-icon {
+.wp-editor-empty-icon {
   font-size: 2rem;
   color: var(--text-secondary);
 }
 
-.agents-editor {
+.wp-editor {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -204,7 +205,7 @@
   overflow: hidden;
 }
 
-.agents-editor-header {
+.wp-editor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -214,14 +215,14 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.agents-editor-header-left {
+.wp-editor-header-left {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.agents-btn-copy-id {
+.wp-btn-copy-id {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -236,24 +237,24 @@
   transition: all var(--transition-fast);
 }
 
-.agents-btn-copy-id svg {
+.wp-btn-copy-id svg {
   width: 14px;
   height: 14px;
 }
 
-.agents-btn-copy-id:hover {
+.wp-btn-copy-id:hover {
   color: var(--text-primary);
   background-color: var(--bg-surface-hover);
   border-color: var(--border-subtle);
 }
 
-.agents-dirty-badge {
+.wp-dirty-badge {
   font-size: 0.76rem;
   font-weight: 500;
   color: #f0b429;
 }
 
-.agents-editor-fields {
+.wp-editor-fields {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -262,24 +263,24 @@
   overflow-y: auto;
 }
 
-.agents-editor-fields > .form-group {
+.wp-editor-fields > .form-group {
   margin-bottom: 0;
 }
 
 /* Pola Nazwa/Opis mają stałą, jednowierszową wysokość — nie powinny konkurować
    o przestrzeń flex z polem Treść, inaczej rozciągają się w pustkę. */
-.agents-field-compact {
+.wp-field-compact {
   flex: 0 0 auto;
 }
 
-.agents-editor-content-group {
+.wp-editor-content-group {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.agents-editor-content-wrap {
+.wp-editor-content-wrap {
   flex: 1;
   min-height: 240px;
   display: flex;
@@ -289,12 +290,12 @@
   background-color: var(--bg-base);
 }
 
-.agents-editor-content-wrap:focus-within {
+.wp-editor-content-wrap:focus-within {
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 2px var(--accent-glow);
 }
 
-.agents-line-gutter {
+.wp-line-gutter {
   flex-shrink: 0;
   width: 42px;
   padding: 10px 8px;
@@ -309,7 +310,7 @@
   user-select: none;
 }
 
-.agents-editor-textarea {
+.wp-editor-textarea {
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -321,25 +322,25 @@
   line-height: 1.6;
 }
 
-.agents-editor-textarea:focus {
+.wp-editor-textarea:focus {
   outline: none;
   box-shadow: none;
 }
 
-.agents-content-meta {
+.wp-content-meta {
   display: flex;
   justify-content: flex-end;
   padding-top: 6px;
   flex-shrink: 0;
 }
 
-.agents-char-count {
+.wp-char-count {
   font-size: 0.76rem;
   font-family: var(--font-mono);
   color: var(--text-muted-aa);
 }
 
-.agents-editor-actions {
+.wp-editor-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -349,7 +350,7 @@
   flex-shrink: 0;
 }
 
-.agents-editor-actions-left {
+.wp-editor-actions-left {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -358,7 +359,7 @@
 /* Usuń wyrównany do prawej krawędzi tej samej szerokości co pole Treść —
    grupuje akcje destrukcyjne osobno od głównej akcji (Zapisz), zamiast
    zbijać obie grupy przy lewej krawędzi. */
-.agents-editor-actions-right {
+.wp-editor-actions-right {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -366,23 +367,23 @@
 
 /* Usuń: czytelnie destrukcyjny już w spoczynku (subtelny czerwony obrys/tekst),
    nie tylko po najechaniu — hierarchia ważności widoczna bez interakcji. */
-.agents-btn-delete {
+.wp-btn-delete {
   background: transparent;
   border: 1px solid rgba(239, 68, 68, 0.25);
   color: var(--accent-danger);
 }
 
-.agents-btn-delete:hover:not(:disabled) {
+.wp-btn-delete:hover:not(:disabled) {
   background-color: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.45);
 }
 
-.agents-btn-delete:disabled {
+.wp-btn-delete:disabled {
   color: var(--text-muted);
   border-color: var(--border-subtle);
 }
 
-.agents-delete-hint {
+.wp-delete-hint {
   font-size: 0.76rem;
   color: var(--text-muted-aa);
 }

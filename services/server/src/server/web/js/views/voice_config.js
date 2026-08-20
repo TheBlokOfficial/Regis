@@ -10,6 +10,8 @@
  * Wizualnie ten sam system co Agent/Świat — bez zbędnego nagłówka strony
  * (pigułka nawigacji już mówi "Głos"), status na pływającej karcie.
  */
+import { escapeHtml } from '../utils/dom.js';
+
 export class VoiceConfigView {
   render() {
     return `
@@ -86,13 +88,4 @@ export class VoiceConfigView {
       </div>
     `;
   }
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

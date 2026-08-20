@@ -1,6 +1,8 @@
 import { Icons } from '../icons.js';
 import { confirmModal } from '../modal_confirm.js';
 import { renderSelectMarkup, initSelect } from '../components/select.js';
+import { escapeHtml, escapeAttr } from '../utils/dom.js';
+import { showToast } from '../utils/toast.js';
 
 /**
  * Sekcja Agent (Ustawienia) — dostawcy LLM (dawny Kernel) + system prompt
@@ -236,35 +238,6 @@ export class AgentConfigView {
   }
 
   showToast(message, type = 'info') {
-    let toastContainer = document.getElementById('toast-container');
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.id = 'toast-container';
-      toastContainer.className = 'toast-container';
-      document.body.appendChild(toastContainer);
-    }
-
-    const toast = document.createElement('div');
-    toast.className = `toast-notification toast-${type}`;
-    toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
-    toastContainer.appendChild(toast);
-
-    setTimeout(() => {
-      toast.classList.add('toast-leaving');
-      setTimeout(() => toast.remove(), 200);
-    }, 3200);
+    showToast(message, type);
   }
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escapeAttr(str) {
-  return escapeHtml(str).replace(/"/g, '&quot;');
 }

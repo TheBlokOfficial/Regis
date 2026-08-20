@@ -1,7 +1,8 @@
-import { getSenderId } from '../../sender_id.js';
-import { Icons } from '../../icons.js';
-import { confirmModal } from '../../modal_confirm.js';
-import { renderSelectMarkup, initSelect } from '../../components/select.js';
+import { renderConfigForm, bindConfigEvents } from './ha/config_panel.js';
+import { renderRoomsList, renderRoomForm, bindRoomEvents } from './ha/rooms_panel.js';
+import { renderDeviceSearch, renderSearchResults, renderDeclaredList, initDeclaredRoomSelects, bindDeviceEvents } from './ha/devices_panel.js';
+import { renderGroupsList, renderGroupForm, bindGroupEvents } from './ha/groups_panel.js';
+import { renderThisBrowserHint, renderSatellitesList, renderSatelliteForm, bindSatelliteEvents } from './ha/satellites_panel.js';
 
 /**
  * Widok konfiguracji silnika świata (WorldEngine) — w pełni domenowy (nie
@@ -22,6 +23,11 @@ import { renderSelectMarkup, initSelect } from '../../components/select.js';
  * na każdym wierszu), custom dropdown (`components/select.js`) zamiast
  * natywnego <select>, kwadratowe czerwone ikony usuwania + potwierdzenie
  * przez `confirmModal()` (dawniej: zero potwierdzenia przy kasowaniu).
+ *
+ * Klasa jest tu cienkim koordynatorem: trzyma współdzielony stan (urządzenia
+ * potrzebują listy pokoi, grupy potrzebują zadeklarowanych urządzeń) i deleguje
+ * render/zdarzenia do pięciu paneli domenowych w `./ha/` — każdy odpowiada
+ * jednej sekcji widoku i operuje na tym stanie przez przekazane `view` (this).
  */
 export class HomeAssistantExtensionView {
   constructor() {
@@ -74,7 +80,7 @@ export class HomeAssistantExtensionView {
           <div class="ha-section-header">
             <span class="ha-section-title">Konfiguracja</span>
           </div>
-          ${this._renderConfigForm()}
+          ${renderConfigForm(this)}
         </section>
 
         <section class="ha-section">
@@ -85,7 +91,7 @@ export class HomeAssistantExtensionView {
               <button class="btn btn-sm btn-primary" id="ha-btn-new-room">+ Nowy pokój</button>
             </div>
           </div>
-          <div class="ha-rooms-list">${this._renderRoomsList()}</div>
+          <div class="ha-rooms-list">${renderRoomsList(this)}</div>
           <div id="ha-room-form"></div>
         </section>
 
@@ -93,9 +99,9 @@ export class HomeAssistantExtensionView {
           <div class="ha-section-header">
             <span class="ha-section-title">Urządzenia</span>
           </div>
-          ${this._renderDeviceSearch()}
+          ${renderDeviceSearch(this)}
           <div id="ha-search-results"></div>
-          ${this._renderDeclaredList()}
+          ${renderDeclaredList(this)}
         </section>
 
         <section class="ha-section">
@@ -103,7 +109,7 @@ export class HomeAssistantExtensionView {
             <span class="ha-section-title">Grupy</span>
             <button class="btn btn-sm btn-primary" id="ha-btn-new-group">+ Nowa grupa</button>
           </div>
-          <div class="ha-groups-list">${this._renderGroupsList()}</div>
+          <div class="ha-groups-list">${renderGroupsList(this)}</div>
           <div id="ha-group-form"></div>
         </section>
 
@@ -112,617 +118,25 @@ export class HomeAssistantExtensionView {
             <span class="ha-section-title">Nadawcy</span>
             <button class="btn btn-sm btn-primary" id="ha-btn-new-satellite">+ Nowa rejestracja</button>
           </div>
-          ${this._renderThisBrowserHint()}
-          <div class="ha-satellites-list">${this._renderSatellitesList()}</div>
+          ${renderThisBrowserHint(this)}
+          <div class="ha-satellites-list">${renderSatellitesList(this)}</div>
           <div id="ha-satellite-form"></div>
         </section>
       </div>
     `;
     this._bindEvents();
-    this._renderSearchResults();
-    this._initDeclaredRoomSelects();
-    if (this.isCreatingRoom) this._renderRoomForm();
-    if (this.isCreatingGroup) this._renderGroupForm();
-    if (this.isRegisteringSender) this._renderSatelliteForm();
+    renderSearchResults(this);
+    initDeclaredRoomSelects(this);
+    if (this.isCreatingRoom) renderRoomForm(this);
+    if (this.isCreatingGroup) renderGroupForm(this);
+    if (this.isRegisteringSender) renderSatelliteForm(this);
   }
-
-  // --------------------------------------------------------------------------
-  // Pokoje — pełnoprawny byt World, niezależny od Home Assistant Areas
-  // --------------------------------------------------------------------------
-
-  _renderRoomsList() {
-    if (this.rooms.length === 0) {
-      return `<p class="ha-empty-hint">Brak pokoi — utwórz ręcznie albo zaimportuj z HA Areas.</p>`;
-    }
-    return `
-      <div class="ha-list">
-        ${this.rooms
-          .map(
-            (room) => `
-          <div class="ha-list-row" data-room-id="${escapeAttr(room.id)}">
-            <div class="ha-group-info">
-              <input type="text" class="form-control ha-room-name" data-room-id="${escapeAttr(room.id)}" value="${escapeAttr(room.name)}" />
-            </div>
-            <button class="btn btn-ghost-danger btn-icon-square" data-delete-room="${escapeAttr(room.id)}" title="Usuń pokój" aria-label="Usuń pokój">${Icons.Trash2()}</button>
-          </div>
-        `
-          )
-          .join('')}
-      </div>
-    `;
-  }
-
-  _renderRoomForm() {
-    const formContainer = document.getElementById('ha-room-form');
-    if (!formContainer) return;
-
-    formContainer.innerHTML = `
-      <div class="form-card">
-        <div class="form-card-title">Nowy pokój</div>
-        <div class="form-group">
-          <label for="ha-room-name">Nazwa pokoju</label>
-          <input type="text" id="ha-room-name" class="form-control" placeholder="np. Salon" />
-        </div>
-        <div class="form-actions">
-          <button class="btn btn-primary" id="ha-btn-save-room">Utwórz pokój</button>
-          <button class="btn btn-ghost" id="ha-btn-cancel-room">Anuluj</button>
-        </div>
-      </div>
-    `;
-
-    document.getElementById('ha-btn-save-room')?.addEventListener('click', () => this._handleCreateRoom());
-    document.getElementById('ha-btn-cancel-room')?.addEventListener('click', () => {
-      this.isCreatingRoom = false;
-      formContainer.innerHTML = '';
-    });
-  }
-
-  async _handleCreateRoom() {
-    const name = document.getElementById('ha-room-name')?.value.trim() || '';
-    if (!name) {
-      this.showToast('Nazwa pokoju jest wymagana.', 'error');
-      return;
-    }
-    try {
-      await this.apiClient.createRoom({ name });
-      this.showToast('Utworzono pokój.', 'success');
-      this.isCreatingRoom = false;
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd tworzenia pokoju.', 'error');
-    }
-  }
-
-  async _handleRenameRoom(roomId, name) {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      this.showToast('Nazwa pokoju nie może być pusta.', 'error');
-      await this._loadAndRender();
-      return;
-    }
-    try {
-      await this.apiClient.updateRoom(roomId, { name: trimmed });
-      this.showToast('Zaktualizowano nazwę pokoju.', 'success');
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd aktualizacji pokoju.', 'error');
-    }
-  }
-
-  async _handleDeleteRoomClick(roomId) {
-    const confirmed = await confirmModal({
-      title: 'Usunąć pokój?',
-      message: 'Urządzenia i nadawcy przypisani do tego pokoju staną się nieprzypisani. Tej operacji nie można cofnąć.',
-      confirmLabel: 'Usuń',
-      cancelLabel: 'Anuluj',
-    });
-    if (!confirmed) return;
-    try {
-      await this.apiClient.deleteRoom(roomId);
-      this.showToast('Usunięto pokój. Urządzenia/nadawcy przypisani do niego stają się nieprzypisani.', 'success');
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd usuwania pokoju.', 'error');
-    }
-  }
-
-  async _handleImportRoomsFromHA() {
-    try {
-      const created = await this.apiClient.importRoomsFromHA();
-      this.showToast(created.length > 0 ? `Zaimportowano ${created.length} pokoi z HA Areas.` : 'Brak nowych pokoi do importu.', 'success');
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd importu pokoi z HA.', 'error');
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // Konfiguracja
-  // --------------------------------------------------------------------------
-
-  _renderConfigForm() {
-    const isConfigured = Boolean(this.config.base_url && this.config.access_token);
-    return `
-      <div class="form-card ha-config-form-card">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="ha-input-base-url">Adres serwera</label>
-            <input type="text" id="ha-input-base-url" class="form-control" value="${escapeAttr(this.config.base_url)}" placeholder="http://homeassistant.local:8123" />
-          </div>
-          <div class="form-group">
-            <label for="ha-input-token">Długoterminowy token dostępu</label>
-            <input type="password" id="ha-input-token" class="form-control" placeholder="${isConfigured ? 'Zostaw puste, aby zachować obecny' : 'eyJhbGciOi...'}" />
-          </div>
-        </div>
-        ${isConfigured ? `<p class="ha-empty-hint">Obecny token: ${escapeHtml(truncateMaskedToken(this.config.access_token))}</p>` : ''}
-        <div class="form-actions">
-          <button class="btn btn-primary" id="ha-btn-save-config">${Icons.RefreshCw()} Aktualizuj połączenie</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // --------------------------------------------------------------------------
-  // Wyszukiwarka i zadeklarowana lista urządzeń (opt-in)
-  // --------------------------------------------------------------------------
-
-  _renderDeviceSearch() {
-    return `
-      <div class="form-group ha-device-search">
-        <label for="ha-search-input">Dodaj urządzenie</label>
-        <input type="text" id="ha-search-input" class="form-control" placeholder="Szukaj po nazwie lub entity_id..." value="${escapeAttr(this.searchQuery)}" />
-      </div>
-    `;
-  }
-
-  _renderSearchResults() {
-    const resultsContainer = document.getElementById('ha-search-results');
-    if (!resultsContainer) return;
-
-    const declaredIds = new Set(this.declaredDevices.map((d) => d.entity_id));
-    const query = this.searchQuery.trim().toLowerCase();
-    const matches = (this.catalog || [])
-      .filter((entry) => !declaredIds.has(entry.entity_id))
-      .filter((entry) => !query || entry.friendly_name.toLowerCase().includes(query) || entry.entity_id.toLowerCase().includes(query));
-
-    if (matches.length === 0) {
-      resultsContainer.innerHTML = `<p class="ha-empty-hint">${this.catalog.length === 0 ? 'Skonfiguruj serwer, aby zobaczyć dostępne encje.' : 'Brak pasujących encji.'}</p>`;
-      return;
-    }
-    resultsContainer.innerHTML = `
-      <div class="ha-search-dropdown-wrap">
-        <div class="ha-search-dropdown">
-          ${matches
-            .map(
-              (entry) => `
-            <button type="button" class="ha-search-result" data-add-entity="${escapeAttr(entry.entity_id)}">
-              <span class="ha-search-result-name">${escapeHtml(entry.friendly_name)}</span>
-              <span class="ha-search-result-meta">${escapeHtml(entry.entity_id)} · <span class="badge-chip">${escapeHtml(entry.kind)}</span></span>
-            </button>
-          `
-            )
-            .join('')}
-        </div>
-      </div>
-    `;
-    resultsContainer.querySelectorAll('[data-add-entity]').forEach((btn) => {
-      btn.addEventListener('click', () => this._handleAddDeclaredDevice(btn.getAttribute('data-add-entity')));
-    });
-  }
-
-  _renderDeclaredList() {
-    const count = this.declaredDevices.length;
-    const header = `<div class="ha-subsection-title">Zadeklarowane urządzenia${count ? ` (${count})` : ''}</div>`;
-
-    if (count === 0) {
-      return `${header}<p class="ha-empty-hint">Brak zadeklarowanych urządzeń — dodaj przez wyszukiwarkę powyżej.</p>`;
-    }
-
-    return `
-      ${header}
-      <div class="ha-declared-list">
-        ${this.declaredDevices
-          .map(
-            (entry) => `
-            <div class="ha-declared-card" data-entity-id="${escapeAttr(entry.entity_id)}">
-              <span class="ha-declared-entity-id" title="${escapeAttr(entry.entity_id)}">${escapeHtml(entry.entity_id)}</span>
-              <input type="text" class="form-control ha-declared-label" data-entity-id="${escapeAttr(entry.entity_id)}" value="${escapeAttr(entry.effective_name)}" />
-              ${!entry.display_name ? '<span class="ha-declared-default-hint" title="Domyślna nazwa z Home Assistant — warto nadać własną.">●</span>' : ''}
-              <span class="ha-declared-kind">${escapeHtml(entry.kind || '?')}</span>
-              ${renderSelectMarkup(`ha-declared-room-${entry.entity_id}`, { placeholder: '— brak pokoju —', className: 'select--compact ha-declared-room-select' })}
-              <span class="ha-declared-caps-text">${(entry.capabilities || []).map((cap) => escapeHtml(cap)).join(' · ')}</span>
-              <button class="btn btn-ghost-danger btn-icon-square" data-remove-entity="${escapeAttr(entry.entity_id)}" title="Usuń urządzenie" aria-label="Usuń urządzenie">${Icons.Trash2()}</button>
-            </div>
-          `
-          )
-          .join('')}
-      </div>
-    `;
-  }
-
-  /** Montuje custom-select picker pokoju dla każdego zadeklarowanego urządzenia — wywoływane po każdym `_render()`. */
-  _initDeclaredRoomSelects() {
-    const roomOptions = this.rooms.map((room) => ({ value: room.id, label: room.name }));
-    this.declaredDevices.forEach((entry) => {
-      initSelect({
-        idPrefix: `ha-declared-room-${entry.entity_id}`,
-        options: roomOptions,
-        value: entry.room_id || '',
-        placeholder: '— brak pokoju —',
-        onChange: (value) => this._handleAssignDeclaredDeviceRoom(entry.entity_id, value),
-      });
-    });
-  }
-
-  // --------------------------------------------------------------------------
-  // Grupy
-  // --------------------------------------------------------------------------
-
-  _renderGroupsList() {
-    if (this.groups.length === 0) {
-      return `<p class="ha-empty-hint">Brak skonfigurowanych grup.</p>`;
-    }
-    return `
-      <div class="ha-list">
-        ${this.groups
-          .map(
-            (g) => `
-          <div class="ha-list-row">
-            <div class="ha-group-info">
-              <span class="ha-group-name">${escapeHtml(g.name)}</span>
-              <span class="ha-group-meta">${g.device_ids.length} urządzeń</span>
-            </div>
-            <button class="btn btn-ghost-danger btn-icon-square" data-delete-group="${escapeAttr(g.id)}" title="Usuń grupę" aria-label="Usuń grupę">${Icons.Trash2()}</button>
-          </div>
-        `
-          )
-          .join('')}
-      </div>
-    `;
-  }
-
-  _renderGroupForm() {
-    const formContainer = document.getElementById('ha-group-form');
-    if (!formContainer) return;
-
-    const options = this.declaredDevices.map((entry) => ({ ref: entry.entity_id, label: entry.effective_name }));
-
-    formContainer.innerHTML = `
-      <div class="form-card">
-        <div class="form-card-title">Nowa grupa</div>
-        <div class="form-group">
-          <label for="ha-group-name">Nazwa grupy</label>
-          <input type="text" id="ha-group-name" class="form-control" placeholder="np. Łazienka" />
-        </div>
-        <div class="form-group">
-          <label>Urządzenia</label>
-          <div class="ha-group-device-options">
-            ${
-              options.length === 0
-                ? '<p class="ha-empty-hint">Brak zadeklarowanych urządzeń do wyboru.</p>'
-                : options
-                    .map(
-                      (opt) => `
-                    <label class="ha-group-device-option">
-                      <input type="checkbox" value="${escapeAttr(opt.ref)}" />
-                      <span>${escapeHtml(opt.label)}</span>
-                    </label>
-                  `
-                    )
-                    .join('')
-            }
-          </div>
-        </div>
-        <div class="form-actions">
-          <button class="btn btn-primary" id="ha-btn-save-group">Utwórz grupę</button>
-          <button class="btn btn-ghost" id="ha-btn-cancel-group">Anuluj</button>
-        </div>
-      </div>
-    `;
-
-    document.getElementById('ha-btn-save-group')?.addEventListener('click', () => this._handleCreateGroup());
-    document.getElementById('ha-btn-cancel-group')?.addEventListener('click', () => {
-      this.isCreatingGroup = false;
-      formContainer.innerHTML = '';
-    });
-  }
-
-  // --------------------------------------------------------------------------
-  // Nadawcy — sender_id -> pokój (World nie zna kanału/typu urządzenia)
-  // --------------------------------------------------------------------------
-
-  _renderThisBrowserHint() {
-    const thisId = getSenderId();
-    const alreadyRegistered = this.senders.some((s) => s.sender_id === thisId);
-    return `
-      <p class="ha-empty-hint ha-satellite-self-hint">
-        ID tej przeglądarki: <span class="ha-satellite-id">${escapeHtml(thisId)}</span>
-        ${alreadyRegistered ? '<span class="badge-chip">zarejestrowana</span>' : '<button type="button" class="btn btn-sm btn-ghost" id="ha-btn-use-this-browser">Zarejestruj tę przeglądarkę</button>'}
-      </p>
-    `;
-  }
-
-  _renderSatellitesList() {
-    if (this.senders.length === 0) {
-      return `<p class="ha-empty-hint">Brak zarejestrowanych nadawców.</p>`;
-    }
-    return `
-      <div class="ha-list">
-        ${this.senders
-          .map(
-            (s) => `
-          <div class="ha-list-row">
-            <div class="ha-satellite-info">
-              <span class="ha-satellite-name">${escapeHtml(s.sender_id)}</span>
-              <span class="ha-satellite-meta">
-                ${s.room_name ? `<span class="ha-satellite-id">${escapeHtml(s.room_name)}</span>` : '<span class="ha-satellite-id">— brak pokoju —</span>'}
-              </span>
-            </div>
-            <button class="btn btn-ghost-danger btn-icon-square" data-delete-satellite="${escapeAttr(s.sender_id)}" title="Usuń rejestrację" aria-label="Usuń rejestrację">${Icons.Trash2()}</button>
-          </div>
-        `
-          )
-          .join('')}
-      </div>
-    `;
-  }
-
-  _renderSatelliteForm(prefillSenderId = '') {
-    const formContainer = document.getElementById('ha-satellite-form');
-    if (!formContainer) return;
-
-    formContainer.innerHTML = `
-      <div class="form-card">
-        <div class="form-card-title">Nowa rejestracja nadawcy</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="ha-sat-sender-id">sender_id</label>
-            <input type="text" id="ha-sat-sender-id" class="form-control" placeholder="opaque identyfikator nadawcy" value="${escapeAttr(prefillSenderId)}" />
-          </div>
-          <div class="form-group">
-            <label>Pokój (opcjonalnie)</label>
-            ${renderSelectMarkup('ha-sat-room', { placeholder: '— brak —' })}
-          </div>
-        </div>
-        <div class="form-actions">
-          <button class="btn btn-primary" id="ha-btn-save-satellite">Zarejestruj</button>
-          <button class="btn btn-ghost" id="ha-btn-cancel-satellite">Anuluj</button>
-        </div>
-      </div>
-    `;
-
-    initSelect({
-      idPrefix: 'ha-sat-room',
-      options: this.rooms.map((room) => ({ value: room.id, label: room.name })),
-      value: '',
-      placeholder: '— brak —',
-    });
-
-    document.getElementById('ha-btn-save-satellite')?.addEventListener('click', () => this._handleRegisterSatellite());
-    document.getElementById('ha-btn-cancel-satellite')?.addEventListener('click', () => {
-      this.isRegisteringSender = false;
-      formContainer.innerHTML = '';
-    });
-  }
-
-  async _handleRegisterSatellite() {
-    const senderId = document.getElementById('ha-sat-sender-id')?.value.trim() || '';
-    const roomId = document.getElementById('ha-sat-room-value')?.value || null;
-
-    if (!senderId) {
-      this.showToast('sender_id jest wymagany.', 'error');
-      return;
-    }
-
-    try {
-      await this.apiClient.registerSender({
-        sender_id: senderId,
-        room_id: roomId || null,
-      });
-      this.showToast('Zarejestrowano nadawcę.', 'success');
-      this.isRegisteringSender = false;
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd rejestracji nadawcy.', 'error');
-    }
-  }
-
-  async _handleDeleteSatelliteClick(senderId) {
-    const confirmed = await confirmModal({
-      title: 'Usunąć rejestrację nadawcy?',
-      message: 'Ta operacja jest nieodwracalna.',
-      confirmLabel: 'Usuń',
-      cancelLabel: 'Anuluj',
-    });
-    if (!confirmed) return;
-    try {
-      await this.apiClient.deleteSender(senderId);
-      this.showToast('Usunięto rejestrację nadawcy.', 'success');
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd usuwania nadawcy.', 'error');
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // Zdarzenia
-  // --------------------------------------------------------------------------
 
   _bindEvents() {
-    document.getElementById('ha-btn-save-config')?.addEventListener('click', () => this._handleSaveConfig());
-
-    const searchInput = document.getElementById('ha-search-input');
-    searchInput?.addEventListener('input', (e) => {
-      this.searchQuery = e.target.value;
-      this._renderSearchResults();
-    });
-
-    this.container.querySelectorAll('.ha-declared-label')?.forEach((input) => {
-      input.addEventListener('change', (e) => this._handleRenameDeclaredDevice(e.target.getAttribute('data-entity-id'), e.target.value));
-    });
-    this.container.querySelectorAll('[data-remove-entity]')?.forEach((btn) => {
-      btn.addEventListener('click', () => this._handleRemoveDeclaredDeviceClick(btn.getAttribute('data-remove-entity')));
-    });
-
-    document.getElementById('ha-btn-new-room')?.addEventListener('click', () => {
-      this.isCreatingRoom = true;
-      this._renderRoomForm();
-    });
-    document.getElementById('ha-btn-import-rooms')?.addEventListener('click', () => this._handleImportRoomsFromHA());
-    this.container.querySelectorAll('.ha-room-name')?.forEach((input) => {
-      input.addEventListener('change', (e) => this._handleRenameRoom(e.target.getAttribute('data-room-id'), e.target.value));
-    });
-    this.container.querySelectorAll('[data-delete-room]')?.forEach((btn) => {
-      btn.addEventListener('click', () => this._handleDeleteRoomClick(btn.getAttribute('data-delete-room')));
-    });
-
-    document.getElementById('ha-btn-new-group')?.addEventListener('click', () => {
-      this.isCreatingGroup = true;
-      this._renderGroupForm();
-    });
-    this.container.querySelectorAll('[data-delete-group]')?.forEach((btn) => {
-      btn.addEventListener('click', () => this._handleDeleteGroupClick(btn.getAttribute('data-delete-group')));
-    });
-
-    document.getElementById('ha-btn-new-satellite')?.addEventListener('click', () => {
-      this.isRegisteringSender = true;
-      this._renderSatelliteForm();
-    });
-    document.getElementById('ha-btn-use-this-browser')?.addEventListener('click', () => {
-      this.isRegisteringSender = true;
-      this._renderSatelliteForm(getSenderId());
-    });
-    this.container.querySelectorAll('[data-delete-satellite]')?.forEach((btn) => {
-      btn.addEventListener('click', () => this._handleDeleteSatelliteClick(btn.getAttribute('data-delete-satellite')));
-    });
+    bindConfigEvents(this);
+    bindRoomEvents(this);
+    bindDeviceEvents(this);
+    bindGroupEvents(this);
+    bindSatelliteEvents(this);
   }
-
-  async _handleSaveConfig() {
-    const baseUrl = document.getElementById('ha-input-base-url')?.value.trim() || '';
-    const token = document.getElementById('ha-input-token')?.value || '';
-
-    if (!baseUrl) {
-      this.showToast('Adres serwera jest wymagany.', 'error');
-      return;
-    }
-
-    try {
-      const payload = { base_url: baseUrl, access_token: token || this.config.access_token };
-      await this.apiClient.updateHAConfig(payload);
-      this.showToast('Zapisano konfigurację.', 'success');
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd zapisu konfiguracji.', 'error');
-    }
-  }
-
-  async _handleAddDeclaredDevice(entityId) {
-    try {
-      await this.apiClient.addHADeclaredDevice({ entity_id: entityId });
-      this.showToast('Dodano urządzenie.', 'success');
-      this.searchQuery = '';
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd dodawania urządzenia.', 'error');
-    }
-  }
-
-  async _handleRenameDeclaredDevice(entityId, displayName) {
-    await this._handleUpdateDeclaredDevice(entityId, { display_name: displayName.trim() || null }, 'Zaktualizowano nazwę.');
-  }
-
-  async _handleAssignDeclaredDeviceRoom(entityId, roomId) {
-    await this._handleUpdateDeclaredDevice(entityId, { room_id: roomId || null }, 'Zaktualizowano pokój.');
-  }
-
-  /** PUT /declared/{id} nadpisuje cały wpis — łączymy nowe pole ze stanem istniejącego wpisu. */
-  async _handleUpdateDeclaredDevice(entityId, patch, successMessage) {
-    const current = this.declaredDevices.find((d) => d.entity_id === entityId);
-    const payload = {
-      display_name: current?.display_name ?? null,
-      room_id: current?.room_id ?? null,
-      ...patch,
-    };
-    try {
-      await this.apiClient.updateHADeclaredDevice(entityId, payload);
-      this.showToast(successMessage, 'success');
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd aktualizacji urządzenia.', 'error');
-    }
-  }
-
-  async _handleRemoveDeclaredDeviceClick(entityId) {
-    const confirmed = await confirmModal({
-      title: 'Usunąć urządzenie z listy?',
-      message: 'Urządzenie zniknie z kontekstu agenta, dopóki nie zostanie ponownie zadeklarowane przez wyszukiwarkę.',
-      confirmLabel: 'Usuń',
-      cancelLabel: 'Anuluj',
-    });
-    if (!confirmed) return;
-    try {
-      await this.apiClient.deleteHADeclaredDevice(entityId);
-      this.showToast('Usunięto urządzenie z listy.', 'success');
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd usuwania urządzenia.', 'error');
-    }
-  }
-
-  async _handleCreateGroup() {
-    const name = document.getElementById('ha-group-name')?.value.trim() || '';
-    const deviceIds = Array.from(this.container.querySelectorAll('.ha-group-device-option input:checked')).map((el) => el.value);
-
-    if (!name) {
-      this.showToast('Nazwa grupy jest wymagana.', 'error');
-      return;
-    }
-
-    try {
-      await this.apiClient.createHAGroup({ name, device_ids: deviceIds });
-      this.showToast('Utworzono grupę.', 'success');
-      this.isCreatingGroup = false;
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd tworzenia grupy.', 'error');
-    }
-  }
-
-  async _handleDeleteGroupClick(groupId) {
-    const confirmed = await confirmModal({
-      title: 'Usunąć grupę?',
-      message: 'Zadeklarowane urządzenia zostaną zachowane — usunięte zostanie tylko ich grupowanie. Tej operacji nie można cofnąć.',
-      confirmLabel: 'Usuń',
-      cancelLabel: 'Anuluj',
-    });
-    if (!confirmed) return;
-    try {
-      await this.apiClient.deleteHAGroup(groupId);
-      this.showToast('Usunięto grupę.', 'success');
-      await this._loadAndRender();
-    } catch (error) {
-      this.showToast(error.message || 'Błąd usuwania grupy.', 'error');
-    }
-  }
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str ?? '';
-  return div.innerHTML;
-}
-
-function escapeAttr(str) {
-  return escapeHtml(str).replace(/"/g, '&quot;');
-}
-
-function truncateMaskedToken(masked) {
-  // Backend maskuje token do jego pełnej długości kropkami (z ostatnimi 4 znakami
-  // widocznymi) — dla długich tokenów (JWT) to ściana kropek wychodząca poza kartę.
-  // Wizualnie ograniczamy do stałej liczby kropek, sens (zamaskowane + końcówka) zostaje.
-  const MAX_DOTS = 24;
-  const visibleSuffix = masked.replace(/^•+/, '');
-  const dotsCount = masked.length - visibleSuffix.length;
-  if (dotsCount <= MAX_DOTS) return masked;
-  return `${'•'.repeat(MAX_DOTS)}${visibleSuffix}`;
 }

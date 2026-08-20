@@ -56,6 +56,10 @@
   padding: 20px;
 }
 
+.card-loading {
+  opacity: 0.6;
+}
+
 /* Sekcja Ustawień */
 .section-header-bar {
   display: flex;

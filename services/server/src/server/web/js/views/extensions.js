@@ -1,5 +1,6 @@
 import { HomeAssistantExtensionView } from './extensions/home_assistant_view.js';
 import { WorldPromptsView } from './world_prompts_view.js';
+import { showToast } from '../utils/toast.js';
 
 /**
  * Widok konfiguracji świata — jedna, ciągła przewijana strona: najpierw
@@ -43,33 +44,7 @@ export class ExtensionsView {
     return Boolean(this.promptsView.hasUnsavedChanges?.());
   }
 
-  // --------------------------------------------------------------------------
-  // Toast — identyczny wzorzec co `WorldPromptsView`
-  // --------------------------------------------------------------------------
-
   _showToast(message, type = 'success') {
-    let toastContainer = document.getElementById('toast-container');
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.id = 'toast-container';
-      toastContainer.className = 'toast-container';
-      document.body.appendChild(toastContainer);
-    }
-
-    const toast = document.createElement('div');
-    toast.className = `toast-notification toast-${type}`;
-    toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
-    toastContainer.appendChild(toast);
-
-    setTimeout(() => {
-      toast.classList.add('toast-leaving');
-      setTimeout(() => toast.remove(), 200);
-    }, 3000);
+    showToast(message, type);
   }
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str ?? '';
-  return div.innerHTML;
 }

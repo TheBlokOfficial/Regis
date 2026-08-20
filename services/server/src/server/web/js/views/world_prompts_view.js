@@ -1,5 +1,7 @@
 import { Icons } from '../icons.js';
 import { confirmModal } from '../modal_confirm.js';
+import { escapeHtml, escapeAttr } from '../utils/dom.js';
+import { showToast } from '../utils/toast.js';
 
 const MAX_PROFILES = 3;
 
@@ -29,20 +31,20 @@ export class WorldPromptsView {
 
   render() {
     return `
-      <div class="agents-layout" id="agents-layout">
-        <div class="agents-panel-list">
-          <div class="agents-panel-header">
-            <span class="agents-panel-title">Prompty</span>
-            <button class="btn btn-sm btn-primary" id="agents-btn-new">${Icons.Plus()} Nowy</button>
+      <div class="wp-layout" id="wp-layout">
+        <div class="wp-panel-list">
+          <div class="wp-panel-header">
+            <span class="wp-panel-title">Prompty</span>
+            <button class="btn btn-sm btn-primary" id="wp-btn-new">${Icons.Plus()} Nowy</button>
           </div>
-          <div class="agents-list" id="agents-list">
-            <div class="agents-list-loading">Ładowanie...</div>
+          <div class="wp-list" id="wp-list">
+            <div class="wp-list-loading">Ładowanie...</div>
           </div>
-          <div class="agents-panel-footer" id="agents-panel-footer"></div>
+          <div class="wp-panel-footer" id="wp-panel-footer"></div>
         </div>
-        <div class="agents-panel-editor" id="agents-panel-editor">
-          <div class="agents-editor-empty">
-            <div class="agents-editor-empty-icon">${Icons.Cpu()}</div>
+        <div class="wp-panel-editor" id="wp-panel-editor">
+          <div class="wp-editor-empty">
+            <div class="wp-editor-empty-icon">${Icons.Cpu()}</div>
             <p>Wybierz prompt z listy lub utwórz nowy.</p>
           </div>
         </div>
@@ -52,7 +54,7 @@ export class WorldPromptsView {
 
   async init(apiClient) {
     this.apiClient = apiClient;
-    document.getElementById('agents-btn-new')?.addEventListener('click', () => this._enterNewMode());
+    document.getElementById('wp-btn-new')?.addEventListener('click', () => this._enterNewMode());
     await this._loadAndRender();
   }
 
@@ -86,16 +88,16 @@ export class WorldPromptsView {
   }
 
   _renderListError() {
-    const list = document.getElementById('agents-list');
-    if (list) list.innerHTML = `<div class="agents-list-error">Błąd ładowania listy profili promptu.</div>`;
-    const footer = document.getElementById('agents-panel-footer');
+    const list = document.getElementById('wp-list');
+    if (list) list.innerHTML = `<div class="wp-list-error">Błąd ładowania listy profili promptu.</div>`;
+    const footer = document.getElementById('wp-panel-footer');
     if (footer) footer.innerHTML = '';
   }
 
   _renderList() {
-    const list = document.getElementById('agents-list');
-    const footer = document.getElementById('agents-panel-footer');
-    const newBtn = document.getElementById('agents-btn-new');
+    const list = document.getElementById('wp-list');
+    const footer = document.getElementById('wp-panel-footer');
+    const newBtn = document.getElementById('wp-btn-new');
     if (!list) return;
 
     const atLimit = this.prompts.length >= MAX_PROFILES;
@@ -106,12 +108,12 @@ export class WorldPromptsView {
 
     if (this.prompts.length === 0) {
       list.innerHTML = `
-        <div class="agents-list-empty">
+        <div class="wp-list-empty">
           <p>Brak zapisanych profili promptu.</p>
-          <button class="btn btn-sm btn-subtle" id="agents-btn-empty-new">+ Utwórz pierwszy profil</button>
+          <button class="btn btn-sm btn-subtle" id="wp-btn-empty-new">+ Utwórz pierwszy profil</button>
         </div>
       `;
-      document.getElementById('agents-btn-empty-new')?.addEventListener('click', () => this._enterNewMode());
+      document.getElementById('wp-btn-empty-new')?.addEventListener('click', () => this._enterNewMode());
       if (footer) footer.innerHTML = '';
       return;
     }
@@ -121,19 +123,19 @@ export class WorldPromptsView {
         const isActive = p.id === this.activeId;
         const isSelected = !this.isNewMode && p.id === this.selectedId;
         return `
-          <div class="agents-list-item ${isSelected ? 'selected' : ''} ${isActive ? 'is-active' : ''}" data-id="${escapeHtml(p.id)}" role="button" tabindex="0" ${isSelected ? 'aria-current="true"' : ''}>
-            <div class="agents-list-item-row">
-              <span class="agents-list-item-dot"></span>
-              <span class="agents-list-item-name" title="${escapeAttr(p.name)}">${escapeHtml(p.name)}</span>
-              ${isActive ? '<span class="agents-badge-active">Aktywny</span>' : ''}
+          <div class="wp-list-item ${isSelected ? 'selected' : ''} ${isActive ? 'is-active' : ''}" data-id="${escapeHtml(p.id)}" role="button" tabindex="0" ${isSelected ? 'aria-current="true"' : ''}>
+            <div class="wp-list-item-row">
+              <span class="wp-list-item-dot"></span>
+              <span class="wp-list-item-name" title="${escapeAttr(p.name)}">${escapeHtml(p.name)}</span>
+              ${isActive ? '<span class="wp-badge-active">Aktywny</span>' : ''}
             </div>
-            ${p.description ? `<span class="agents-list-item-desc" title="${escapeAttr(p.description)}">${escapeHtml(p.description)}</span>` : ''}
+            ${p.description ? `<span class="wp-list-item-desc" title="${escapeAttr(p.description)}">${escapeHtml(p.description)}</span>` : ''}
           </div>
         `;
       })
       .join('');
 
-    list.querySelectorAll('.agents-list-item').forEach((el) => {
+    list.querySelectorAll('.wp-list-item').forEach((el) => {
       el.addEventListener('click', () => this._selectPrompt(el.getAttribute('data-id')));
       el.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -186,128 +188,128 @@ export class WorldPromptsView {
   // --------------------------------------------------------------------------
 
   _renderEmptyEditor() {
-    const panel = document.getElementById('agents-panel-editor');
+    const panel = document.getElementById('wp-panel-editor');
     if (!panel) return;
     panel.innerHTML = `
-      <div class="agents-editor-empty">
-        <div class="agents-editor-empty-icon">${Icons.Cpu()}</div>
+      <div class="wp-editor-empty">
+        <div class="wp-editor-empty-icon">${Icons.Cpu()}</div>
         <p>Wybierz prompt z listy lub utwórz nowy.</p>
       </div>
     `;
   }
 
   _renderEditor(prompt) {
-    const panel = document.getElementById('agents-panel-editor');
+    const panel = document.getElementById('wp-panel-editor');
     if (!panel) return;
     this.isDirty = false;
     const isActive = prompt.id === this.activeId;
 
     panel.innerHTML = `
-      <div class="agents-editor">
-        <div class="agents-editor-header">
-          <div class="agents-editor-header-left">
+      <div class="wp-editor">
+        <div class="wp-editor-header">
+          <div class="wp-editor-header-left">
             <span class="badge-muted" title="Wewnętrzny identyfikator profilu">ID: ${escapeHtml(prompt.id)}</span>
-            <button class="agents-btn-copy-id" id="agents-btn-copy-id" title="Skopiuj ID profilu" aria-label="Skopiuj ID profilu">${Icons.Copy()}</button>
-            <span class="agents-dirty-badge hidden" id="agents-dirty-badge">● Niezapisane zmiany</span>
+            <button class="wp-btn-copy-id" id="wp-btn-copy-id" title="Skopiuj ID profilu" aria-label="Skopiuj ID profilu">${Icons.Copy()}</button>
+            <span class="wp-dirty-badge hidden" id="wp-dirty-badge">● Niezapisane zmiany</span>
           </div>
           ${
             !isActive
-              ? `<button class="btn btn-sm btn-subtle" id="agents-btn-activate" title="Ustaw jako aktywny profil promptu">Ustaw jako aktywny</button>`
+              ? `<button class="btn btn-sm btn-subtle" id="wp-btn-activate" title="Ustaw jako aktywny profil promptu">Ustaw jako aktywny</button>`
               : ''
           }
         </div>
-        <div class="agents-editor-fields">
-          <div class="form-group agents-field-compact">
-            <label for="agents-input-name">Nazwa</label>
-            <input type="text" id="agents-input-name" class="form-control" value="${escapeAttr(prompt.name)}" />
+        <div class="wp-editor-fields">
+          <div class="form-group wp-field-compact">
+            <label for="wp-input-name">Nazwa</label>
+            <input type="text" id="wp-input-name" class="form-control" value="${escapeAttr(prompt.name)}" />
           </div>
-          <div class="form-group agents-field-compact">
-            <label for="agents-input-desc">Opis (opcjonalny)</label>
-            <input type="text" id="agents-input-desc" class="form-control" value="${escapeAttr(prompt.description || '')}" />
+          <div class="form-group wp-field-compact">
+            <label for="wp-input-desc">Opis (opcjonalny)</label>
+            <input type="text" id="wp-input-desc" class="form-control" value="${escapeAttr(prompt.description || '')}" />
           </div>
-          <div class="form-group agents-editor-content-group">
-            <label for="agents-input-content">Treść</label>
-            <div class="agents-editor-content-wrap">
-              <div class="agents-line-gutter" id="agents-line-gutter">1</div>
-              <textarea id="agents-input-content" class="form-control agents-editor-textarea">${escapeHtml(prompt.content)}</textarea>
+          <div class="form-group wp-editor-content-group">
+            <label for="wp-input-content">Treść</label>
+            <div class="wp-editor-content-wrap">
+              <div class="wp-line-gutter" id="wp-line-gutter">1</div>
+              <textarea id="wp-input-content" class="form-control wp-editor-textarea">${escapeHtml(prompt.content)}</textarea>
             </div>
-            <div class="agents-content-meta">
-              <span class="agents-char-count" id="agents-char-count">0 znaków</span>
+            <div class="wp-content-meta">
+              <span class="wp-char-count" id="wp-char-count">0 znaków</span>
             </div>
           </div>
         </div>
-        <div class="agents-editor-actions">
-          <div class="agents-editor-actions-left">
-            <button class="btn btn-primary" id="agents-btn-save" disabled>Zapisz</button>
+        <div class="wp-editor-actions">
+          <div class="wp-editor-actions-left">
+            <button class="btn btn-primary" id="wp-btn-save" disabled>Zapisz</button>
           </div>
-          <div class="agents-editor-actions-right" id="agents-delete-zone">
+          <div class="wp-editor-actions-right" id="wp-delete-zone">
             ${
               isActive
-                ? `<span class="agents-delete-hint">Aby usunąć, najpierw ustaw inny profil jako aktywny</span>
-                   <button class="btn agents-btn-delete" id="agents-btn-delete" disabled title="Nie można usunąć aktywnego profilu">Usuń</button>`
-                : `<button class="btn agents-btn-delete" id="agents-btn-delete">Usuń</button>`
+                ? `<span class="wp-delete-hint">Aby usunąć, najpierw ustaw inny profil jako aktywny</span>
+                   <button class="btn wp-btn-delete" id="wp-btn-delete" disabled title="Nie można usunąć aktywnego profilu">Usuń</button>`
+                : `<button class="btn wp-btn-delete" id="wp-btn-delete">Usuń</button>`
             }
           </div>
         </div>
       </div>
     `;
 
-    document.getElementById('agents-btn-save')?.addEventListener('click', () => this._handleSave(prompt.id));
+    document.getElementById('wp-btn-save')?.addEventListener('click', () => this._handleSave(prompt.id));
     if (!isActive) {
-      document.getElementById('agents-btn-activate')?.addEventListener('click', () => this._handleActivate(prompt.id));
-      document.getElementById('agents-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(prompt.id));
+      document.getElementById('wp-btn-activate')?.addEventListener('click', () => this._handleActivate(prompt.id));
+      document.getElementById('wp-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(prompt.id));
     }
-    document.getElementById('agents-btn-copy-id')?.addEventListener('click', () => this._handleCopyId(prompt.id));
+    document.getElementById('wp-btn-copy-id')?.addEventListener('click', () => this._handleCopyId(prompt.id));
     this._bindDirtyTracking(true);
     this._bindContentEditorExtras();
   }
 
   _renderNewEditor() {
-    const panel = document.getElementById('agents-panel-editor');
+    const panel = document.getElementById('wp-panel-editor');
     if (!panel) return;
     this.isDirty = false;
 
     panel.innerHTML = `
-      <div class="agents-editor">
-        <div class="agents-editor-header">
-          <div class="agents-editor-header-left">
+      <div class="wp-editor">
+        <div class="wp-editor-header">
+          <div class="wp-editor-header-left">
             <span class="badge-muted">Nowy profil</span>
-            <span class="agents-dirty-badge hidden" id="agents-dirty-badge">● Niezapisane zmiany</span>
+            <span class="wp-dirty-badge hidden" id="wp-dirty-badge">● Niezapisane zmiany</span>
           </div>
         </div>
-        <div class="agents-editor-fields">
-          <div class="form-group agents-field-compact">
-            <label for="agents-input-name">Nazwa</label>
-            <input type="text" id="agents-input-name" class="form-control" placeholder="np. Dom" />
+        <div class="wp-editor-fields">
+          <div class="form-group wp-field-compact">
+            <label for="wp-input-name">Nazwa</label>
+            <input type="text" id="wp-input-name" class="form-control" placeholder="np. Dom" />
           </div>
-          <div class="form-group agents-field-compact">
-            <label for="agents-input-desc">Opis (opcjonalny)</label>
-            <input type="text" id="agents-input-desc" class="form-control" placeholder="Krótki opis przeznaczenia profilu" />
+          <div class="form-group wp-field-compact">
+            <label for="wp-input-desc">Opis (opcjonalny)</label>
+            <input type="text" id="wp-input-desc" class="form-control" placeholder="Krótki opis przeznaczenia profilu" />
           </div>
-          <div class="form-group agents-editor-content-group">
-            <label for="agents-input-content">Treść</label>
-            <div class="agents-editor-content-wrap">
-              <div class="agents-line-gutter" id="agents-line-gutter">1</div>
-              <textarea id="agents-input-content" class="form-control agents-editor-textarea" placeholder="Treść instrukcji systemowej... (może być pusta)"></textarea>
+          <div class="form-group wp-editor-content-group">
+            <label for="wp-input-content">Treść</label>
+            <div class="wp-editor-content-wrap">
+              <div class="wp-line-gutter" id="wp-line-gutter">1</div>
+              <textarea id="wp-input-content" class="form-control wp-editor-textarea" placeholder="Treść instrukcji systemowej... (może być pusta)"></textarea>
             </div>
-            <div class="agents-content-meta">
-              <span class="agents-char-count" id="agents-char-count">0 znaków</span>
+            <div class="wp-content-meta">
+              <span class="wp-char-count" id="wp-char-count">0 znaków</span>
             </div>
           </div>
         </div>
-        <div class="agents-editor-actions">
-          <div class="agents-editor-actions-left">
-            <button class="btn btn-primary" id="agents-btn-save">Zapisz</button>
+        <div class="wp-editor-actions">
+          <div class="wp-editor-actions-left">
+            <button class="btn btn-primary" id="wp-btn-save">Zapisz</button>
           </div>
-          <div class="agents-editor-actions-right">
-            <button class="btn btn-ghost" id="agents-btn-cancel-new">Anuluj</button>
+          <div class="wp-editor-actions-right">
+            <button class="btn btn-ghost" id="wp-btn-cancel-new">Anuluj</button>
           </div>
         </div>
       </div>
     `;
 
-    document.getElementById('agents-btn-save')?.addEventListener('click', () => this._handleCreate());
-    document.getElementById('agents-btn-cancel-new')?.addEventListener('click', () => {
+    document.getElementById('wp-btn-save')?.addEventListener('click', () => this._handleCreate());
+    document.getElementById('wp-btn-cancel-new')?.addEventListener('click', () => {
       this.isDirty = false;
       this.isNewMode = false;
       this.selectedId = this.activeId || (this.prompts[0]?.id ?? null);
@@ -319,7 +321,7 @@ export class WorldPromptsView {
     this._bindDirtyTracking();
     this._bindContentEditorExtras();
 
-    document.getElementById('agents-input-name')?.focus();
+    document.getElementById('wp-input-name')?.focus();
   }
 
   /**
@@ -328,12 +330,12 @@ export class WorldPromptsView {
    * tylko edycji istniejącego profilu, nie tworzenia nowego (tam Zapisz jest potrzebny od razu).
    */
   _bindDirtyTracking(lockSaveUntilDirty = false) {
-    const saveBtn = document.getElementById('agents-btn-save');
-    ['agents-input-name', 'agents-input-desc', 'agents-input-content'].forEach((id) => {
+    const saveBtn = document.getElementById('wp-btn-save');
+    ['wp-input-name', 'wp-input-desc', 'wp-input-content'].forEach((id) => {
       document.getElementById(id)?.addEventListener('input', (e) => {
         this.isDirty = true;
         e.target.classList.remove('is-invalid');
-        document.getElementById('agents-dirty-badge')?.classList.remove('hidden');
+        document.getElementById('wp-dirty-badge')?.classList.remove('hidden');
         if (lockSaveUntilDirty && saveBtn) saveBtn.disabled = false;
       });
     });
@@ -341,9 +343,9 @@ export class WorldPromptsView {
 
   /** Numeracja linii (zsynchronizowana ze scrollem) i licznik znaków dla pola Treść. */
   _bindContentEditorExtras() {
-    const textarea = document.getElementById('agents-input-content');
-    const gutter = document.getElementById('agents-line-gutter');
-    const charCount = document.getElementById('agents-char-count');
+    const textarea = document.getElementById('wp-input-content');
+    const gutter = document.getElementById('wp-line-gutter');
+    const charCount = document.getElementById('wp-char-count');
     if (!textarea) return;
 
     const update = () => {
@@ -368,15 +370,15 @@ export class WorldPromptsView {
   // --------------------------------------------------------------------------
 
   _readForm() {
-    const name = document.getElementById('agents-input-name')?.value.trim() || '';
-    const description = document.getElementById('agents-input-desc')?.value.trim() || '';
-    const content = document.getElementById('agents-input-content')?.value.trim() || '';
+    const name = document.getElementById('wp-input-name')?.value.trim() || '';
+    const description = document.getElementById('wp-input-desc')?.value.trim() || '';
+    const content = document.getElementById('wp-input-content')?.value.trim() || '';
     return { name, description, content };
   }
 
   /** Oznacza puste wymagane pola (Nazwa) na czerwono i przenosi focus. Treść może być pusta (brak persony). Zwraca true jeśli formularz jest poprawny. */
   _validateForm(name) {
-    const nameEl = document.getElementById('agents-input-name');
+    const nameEl = document.getElementById('wp-input-name');
     nameEl?.classList.toggle('is-invalid', !name);
     if (!name) {
       nameEl?.focus();
@@ -436,21 +438,21 @@ export class WorldPromptsView {
   }
 
   _handleDeleteClick(promptId) {
-    const zone = document.getElementById('agents-delete-zone');
+    const zone = document.getElementById('wp-delete-zone');
     if (!zone) return;
     zone.innerHTML = `
       <div class="delete-confirm-inline">
         <span class="delete-confirm-text">Usunąć profil?</span>
-        <button class="btn-confirm-yes" id="agents-btn-delete-yes">Tak</button>
-        <button class="btn-confirm-no" id="agents-btn-delete-no">Anuluj</button>
+        <button class="btn-confirm-yes" id="wp-btn-delete-yes">Tak</button>
+        <button class="btn-confirm-no" id="wp-btn-delete-no">Anuluj</button>
       </div>
     `;
-    document.getElementById('agents-btn-delete-yes')?.addEventListener('click', () => this._handleDeleteConfirm(promptId));
-    document.getElementById('agents-btn-delete-no')?.addEventListener('click', () => {
+    document.getElementById('wp-btn-delete-yes')?.addEventListener('click', () => this._handleDeleteConfirm(promptId));
+    document.getElementById('wp-btn-delete-no')?.addEventListener('click', () => {
       // Przywraca tylko strefę przycisku Usuń — pełny re-render edytora
       // wyzerowałby niezapisane zmiany w Nazwie/Opisie/Treści.
-      zone.innerHTML = `<button class="btn agents-btn-delete" id="agents-btn-delete">Usuń</button>`;
-      document.getElementById('agents-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(promptId));
+      zone.innerHTML = `<button class="btn wp-btn-delete" id="wp-btn-delete">Usuń</button>`;
+      document.getElementById('wp-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(promptId));
     });
   }
 
@@ -470,32 +472,6 @@ export class WorldPromptsView {
   // --------------------------------------------------------------------------
 
   _showToast(message, type = 'success') {
-    let toastContainer = document.getElementById('toast-container');
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.id = 'toast-container';
-      toastContainer.className = 'toast-container';
-      document.body.appendChild(toastContainer);
-    }
-
-    const toast = document.createElement('div');
-    toast.className = `toast-notification toast-${type}`;
-    toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
-    toastContainer.appendChild(toast);
-
-    setTimeout(() => {
-      toast.classList.add('toast-leaving');
-      setTimeout(() => toast.remove(), 200);
-    }, 3000);
+    showToast(message, type);
   }
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str ?? '';
-  return div.innerHTML;
-}
-
-function escapeAttr(str) {
-  return escapeHtml(str).replace(/"/g, '&quot;');
 }

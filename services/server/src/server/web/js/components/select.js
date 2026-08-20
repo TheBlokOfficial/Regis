@@ -1,4 +1,5 @@
 import { Icons } from '../icons.js';
+import { escapeHtml, escapeAttr } from '../utils/dom.js';
 
 /**
  * Wspólny, dostępny (ARIA listbox) custom dropdown — zastępuje natywny
@@ -161,17 +162,4 @@ export function initSelect({ idPrefix, options, value = '', placeholder = '', on
   setValue(value, { silent: true });
 
   return api;
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escapeAttr(str) {
-  return escapeHtml(str).replace(/"/g, '&quot;');
 }

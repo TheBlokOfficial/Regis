@@ -1,0 +1,291 @@
+/* ==========================================================================
+   TIMELINE KROKÓW REACT (myślenie + wywołania narzędzi) — lustrzany podział
+   względem `js/views/chat/step_rail.js` (StepRailRenderer). Wydzielone z
+   chat.css, który zostaje z layoutem/composerem/wiadomościami czatu.
+   ========================================================================== */
+
+.step-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  position: relative;
+  padding: 4px 0;
+  font-size: 0.88rem;
+}
+
+.rail-icon-col {
+  position: relative;
+  width: 20px;
+  flex: 0 0 20px;
+  display: flex;
+  justify-content: center;
+  padding-top: 5px;
+}
+
+.rail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+/* Cienka linia łącząca ikonę bieżącego wiersza z ikoną następnego — ukryta na ostatnim
+   node'ie sekwencji. Zaczepiona o `.rail-item` (nie `.rail-icon-col`), którego rzeczywista
+   wysokość poprawnie rośnie/maleje wraz z rozwinięciem/zwinięciem treści — dzięki temu linia
+   zawsze sięga dokładnie do ikony kolejnego node'a, niezależnie od stanu rozwinięcia.
+   Odstępy top/bottom celowo zostawiają mały margines, żeby linia nie wchodziła pod ikony.
+   `:has(+ .rail-item)` zamiast `:not(:last-child)` celowo — ten drugi rysował linię też dla
+   node'a "rozpakowanego" z .rail-group (auto-unwrap przy dokładnie jednej jednostce, patrz
+   closeCurrentRail w chat.js), bo wtedy jego kolejnym DOM-rodzeństwem jest zwykły akapit
+   tekstu (.message-text-run), nie kolejny rail-item — linia wchodziła w tekst poniżej
+   (feedback). `:has(+ .rail-item)` rysuje linię tylko, gdy bezpośrednio po node'ie
+   faktycznie następuje kolejny rail-item, niezależnie od tego, co jest jego rodzicem. */
+.rail-item:has(+ .rail-item)::after {
+  content: '';
+  position: absolute;
+  top: 36px;
+  bottom: -5px;
+  left: 9px;
+  width: 1px;
+  background: var(--border-medium);
+}
+
+.rail-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.rail-title-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.rail-title-code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  white-space: normal;
+  word-break: break-word;
+}
+
+@keyframes rail-icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rail-item-step.step-running .rail-icon {
+  animation: rail-icon-spin 1.2s linear infinite;
+}
+
+/* Sukces jest zwykłym, oczekiwanym przebiegiem — nie krzyczy kolorem. Tylko błąd realnie
+   przyciąga wzrok (jedyny akcent koloru w całym drzewku). */
+.rail-item-step.step-done .rail-icon {
+  color: var(--text-muted-aa);
+}
+
+.rail-item-step.step-error .rail-icon {
+  color: var(--accent-danger);
+}
+
+.step-result {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+
+.step-result-pending {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* --- Klaster kolejnych wywołań narzędzi (bez przerwy w postaci myślenia/tekstu) -------- */
+
+.rail-item-cluster.cluster-running .rail-icon {
+  animation: rail-icon-spin 1.2s linear infinite;
+}
+
+.rail-item-cluster.cluster-done .rail-icon {
+  color: var(--text-muted-aa);
+}
+
+.rail-item-cluster.cluster-error .rail-icon {
+  color: var(--accent-danger);
+}
+
+.rail-item-cluster.cluster-mixed .rail-icon {
+  color: var(--accent-warning);
+}
+
+.cluster-call {
+  margin-bottom: 10px;
+}
+
+.cluster-call:last-child {
+  margin-bottom: 0;
+}
+
+.cluster-call-signature {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.cluster-call-result {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.cluster-call-result.is-error {
+  color: var(--accent-danger);
+}
+
+/* Nagłówek pojedynczego node'a — bez cursor:pointer, nie jest już interaktywny (jeden
+   poziom rozwijania w całym drzewku, patrz .rail-group niżej). Jaśniejszy niż nagłówek
+   grupy — to on niesie faktyczną, czytaną treść (sygnaturę wywołania/"Analiza"). */
+.rail-item-header {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+/* Bez border-left (w przeciwieństwie do .thinking-content bloków "Analiza") — dwie
+   równoległe pionowe kreski (ten pasek + linia łącząca rail) obok siebie na każdym kroku
+   dawały wrażenie "kratki" przy dłuższych sekwencjach (feedback: nadmierne kreskowanie).
+   Zostaje tylko jedna, ta łącząca ikony. */
+.rail-item-body {
+  margin-top: 4px;
+  padding-left: 12px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+/* --- Zbiorczy, zwijalny nagłówek szyny ("N kroków") ------------------------------------ */
+/* Celowo BEZ ikony i stonowany kolorystycznie (ciemniejszy niż .rail-item-header) — sam
+   tekst + chevron, żeby nagłówek grupy nie wyglądał jak "kolejny node" tej samej rangi co
+   elementy, które owija (feedback po pierwszej iteracji z ikoną). */
+
+.rail-group {
+  margin: 6px 0 10px 0;
+  animation: thinkingBlockIn 0.25s ease forwards;
+}
+
+.rail-group.group-error .rail-group-summary,
+.rail-group.group-error .thinking-title-text {
+  color: var(--accent-danger);
+}
+
+/* Osobna klasa (nie .thinking-content-wrapper, użyty przez node'y wewnątrz) celowo —
+   .rail-group zagnieżdża w sobie .step-rail z pojedynczymi node'ami; wspólny selektor po
+   klasie plątałby oba poziomy. */
+/* Animacja wysokości sterowana z JS (setCollapsibleOpen w chat.js), nie samym CSS —
+   transition na sztywnym limicie (dawne max-height: 4000px) był nieliniowy względem
+   realnej treści (błyskawiczne rozwijanie, opóźnione zwijanie). JS ustawia dokładną,
+   zmierzoną wysokość (scrollHeight) przed przejściem, więc animacja jest proporcjonalna
+   1:1 do faktycznej treści — i, w przeciwieństwie do grid-template-rows:1fr, poprawnie
+   działa mimo zagnieżdżonego display:flex (.step-rail) w środku. `height: auto` w regule
+   [data-open="true"] niżej to tylko deklaratywny stan początkowy (element utworzony od
+   razu otwarty, bez przejścia) — JS nadpisuje go inline stylem na czas animacji. */
+.rail-group-content-wrapper {
+  height: 0;
+  overflow: hidden;
+  transition: height 0.3s ease;
+}
+
+.rail-group[data-open="true"] > .rail-group-content-wrapper {
+  height: auto;
+}
+
+.rail-group[data-open="true"] > .thinking-summary .thinking-chevron {
+  transform: rotate(90deg);
+}
+
+.rail-group-content-wrapper .thinking-content-inner {
+  padding-top: 4px;
+}
+
+.thinking-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  padding: 4px 0;
+  width: fit-content;
+  max-width: 100%;
+  transition: color var(--transition-fast);
+  list-style: none;
+}
+
+.thinking-summary:hover {
+  color: var(--text-secondary);
+}
+
+/* .rail-title-label ma własny statyczny kolor (przygaszony prefiks) — bez tej reguły hover
+   na .thinking-summary go nie obejmuje, bo specyficzność własnego koloru wygrywa niezależnie
+   od stanu hover rodzica. Cały nagłówek (prefiks + sygnatura) ma podświetlać się razem. */
+.thinking-summary:hover .rail-title-label {
+  color: var(--text-secondary);
+}
+
+.thinking-chevron {
+  transition: transform 0.25s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+/* --- Collapse dla pojedynczego node'a (tylko bloki "Analiza") ---------------------------
+   Kroki narzędzi (.rail-item-step) są płaskie/zawsze widoczne (patrz .rail-item-header/
+   .rail-item-body wyżej) — wynik zwykle to jedna krótka linijka, więc drugi poziom
+   rozwijania byłby zbędnym tarciem. Bloki myślenia bywają długie i nieprzewidywalne
+   (surowy, nie streszczony CoT modelu) — dla nich zachowujemy własny, niezależny od grupy
+   collapse, żeby rozwinięcie grupy nie wysypywało ściany surowego tekstu na raz. */
+.rail-item[data-open="true"] .thinking-chevron {
+  transform: rotate(90deg);
+}
+
+/* Animacja wysokości sterowana z JS (setCollapsibleOpen) — patrz komentarz przy
+   .rail-group-content-wrapper. `height: auto` w regule [data-open="true"] to tylko
+   deklaratywny stan początkowy (blok utworzony od razu otwarty podczas streamu). */
+.thinking-content-wrapper {
+  height: 0;
+  overflow: hidden;
+  transition: height 0.3s ease;
+}
+
+.rail-item[data-open="true"] .thinking-content-wrapper {
+  height: auto;
+}
+
+.thinking-content-inner {
+  overflow: hidden;
+}
+
+.thinking-content {
+  margin-top: 6px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  font-family: var(--font-mono, monospace);
+}

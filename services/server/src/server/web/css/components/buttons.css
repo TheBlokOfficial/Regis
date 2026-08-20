@@ -69,7 +69,7 @@
 
 /* Czytelnie destrukcyjny już w spoczynku (subtelny czerwony obrys/tekst),
    nie tylko po najechaniu — hierarchia ważności widoczna bez interakcji
-   (ten sam wzorzec co `.agents-btn-delete` w edytorze promptów Świata). */
+   (ten sam wzorzec co `.wp-btn-delete` w edytorze promptów Świata). */
 .btn-ghost-danger {
   background: transparent;
   border: 1px solid rgba(239, 68, 68, 0.25);
