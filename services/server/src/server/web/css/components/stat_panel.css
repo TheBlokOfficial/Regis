@@ -1,0 +1,84 @@
+/* ==========================================================================
+   STAT PANEL — karta statusu: etykieta + duży tytuł + plakietki stanu +
+   opcjonalna siatka metadanych klucz/wartość w mono-pigułkach. Jeden wzorzec
+   reużywany przez Dashboard (status węzła) i Głos (status pipeline'u) —
+   wcześniej niezależnie zaimplementowany w obu miejscach (`dashboard.css`
+   `.dashboard-hero-*` + `providers.css` `.provider-meta-*`), tu scalony
+   w jeden, właściwie nazwany komponent. Skala `--radius-xl`, zgodna z
+   Chat/Agent ("pływająca karta").
+   ========================================================================== */
+.stat-panel {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 24px 26px;
+}
+
+.stat-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.stat-panel-label {
+  font-size: 0.70rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.stat-panel-title {
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.stat-panel-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.stat-panel-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.stat-panel-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stat-panel-meta-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.stat-panel-meta-value {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  color: var(--text-primary);
+  background-color: var(--bg-base);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

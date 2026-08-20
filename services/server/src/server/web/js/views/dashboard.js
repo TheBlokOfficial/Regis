@@ -1,7 +1,20 @@
+import { Icons } from '../icons.js';
+
 /**
  * Moduł widoku głównego Dashboard — czysty panel powitalny/statusowy.
  * Zarządzanie konfiguracją przeniesione do zakładki Ustawienia (sekcje Agent/Świat/Głos).
+ *
+ * Status węzła w `.stat-panel` (`components/stat_panel.css`, współdzielone
+ * z Głosem) i karty skrótów (`.dashboard-shortcut-card`) wzorem klikalnych
+ * kart Agent (`.agent-provider-card`, agent.css) — cała karta jest celem
+ * kliknięcia, hover-elewacja identyczna jak w Agent.
  */
+const SHORTCUTS = [
+  { section: 'agent', icon: 'Activity', title: 'Agent', desc: 'Zarządzaj dostawcami LLM' },
+  { section: 'world', icon: 'Puzzle', title: 'Świat', desc: 'Pokoje, urządzenia, nadawcy, prompty' },
+  { section: 'voice', icon: 'Radio', title: 'Głos', desc: "Status pipeline'u głosowego" },
+];
+
 export class DashboardView {
   render() {
     return `
@@ -14,52 +27,36 @@ export class DashboardView {
           <span class="badge-muted">v0.1.0</span>
         </div>
 
-        <div class="dashboard-hero-top">
-          <div>
-            <div class="provider-section-label">Status Węzła</div>
-            <div class="dashboard-hero-name" id="dashboard-status-name">Sprawdzanie...</div>
-          </div>
-          <div class="dashboard-hero-badges">
-            <span class="badge badge-status" id="dashboard-status-badge">
-              <span class="status-dot-pulse"></span>...
-            </span>
+        <div class="stat-panel">
+          <div class="stat-panel-header">
+            <div>
+              <div class="stat-panel-label">Status Węzła</div>
+              <div class="stat-panel-title" id="dashboard-status-name">Sprawdzanie...</div>
+            </div>
+            <div class="stat-panel-badges">
+              <span class="badge badge-status" id="dashboard-status-badge">
+                <span class="status-dot-pulse"></span>...
+              </span>
+            </div>
           </div>
         </div>
 
         <div class="section-header-bar">
           <h3 class="section-title">Skróty</h3>
         </div>
-        <div class="modal-provider-list">
-          <div class="modal-provider-item">
-            <div class="modal-provider-main-row">
-              <div class="modal-provider-title-group">
-                <span class="modal-provider-name">Agent</span>
+        <div class="dashboard-shortcut-grid">
+          ${SHORTCUTS.map(
+            (s) => `
+            <a href="#" class="dashboard-shortcut-card" data-nav-section="${s.section}">
+              <div class="hero-icon-box dashboard-shortcut-icon">${Icons[s.icon]()}</div>
+              <div class="dashboard-shortcut-body">
+                <div class="dashboard-shortcut-title">${s.title}</div>
+                <div class="dashboard-shortcut-desc">${s.desc}</div>
               </div>
-              <div class="modal-provider-actions">
-                <a href="#" class="btn btn-subtle btn-sm" data-nav-section="agent">Zarządzaj dostawcami LLM →</a>
-              </div>
-            </div>
-          </div>
-          <div class="modal-provider-item">
-            <div class="modal-provider-main-row">
-              <div class="modal-provider-title-group">
-                <span class="modal-provider-name">Świat</span>
-              </div>
-              <div class="modal-provider-actions">
-                <a href="#" class="btn btn-subtle btn-sm" data-nav-section="world">Pokoje, urządzenia, nadawcy, prompty →</a>
-              </div>
-            </div>
-          </div>
-          <div class="modal-provider-item">
-            <div class="modal-provider-main-row">
-              <div class="modal-provider-title-group">
-                <span class="modal-provider-name">Głos</span>
-              </div>
-              <div class="modal-provider-actions">
-                <a href="#" class="btn btn-subtle btn-sm" data-nav-section="voice">Status pipeline'u głosowego →</a>
-              </div>
-            </div>
-          </div>
+              <span class="dashboard-shortcut-arrow">${Icons.ChevronRight()}</span>
+            </a>
+          `
+          ).join('')}
         </div>
       </div>
     `;

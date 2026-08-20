@@ -52,27 +52,27 @@ export class VoiceConfigView {
     }
 
     container.innerHTML = `
-      <div class="voice-status-card">
-        <div class="dashboard-hero-top">
+      <div class="stat-panel">
+        <div class="stat-panel-header">
           <div>
-            <div class="provider-section-label">Konfiguracja aktywna</div>
-            <div class="dashboard-hero-name">Wake-word: ${escapeHtml(status.wakeword_detector)}</div>
+            <div class="stat-panel-label">Konfiguracja aktywna</div>
+            <div class="stat-panel-title">Wake-word: ${escapeHtml(status.wakeword_detector)}</div>
           </div>
-          <div class="dashboard-hero-badges">
+          <div class="stat-panel-badges">
             <span class="badge badge-status">
               <span class="status-dot-pulse"></span>${status.is_production_ready ? 'Gotowe' : 'Tylko dev'}
             </span>
           </div>
         </div>
 
-        <div class="provider-meta-grid">
-          <div class="provider-meta-item">
-            <span class="provider-meta-label">Dostawca STT</span>
-            <span class="provider-meta-value">${escapeHtml(status.stt_provider)}</span>
+        <div class="stat-panel-meta-grid">
+          <div class="stat-panel-meta-item">
+            <span class="stat-panel-meta-label">Dostawca STT</span>
+            <span class="stat-panel-meta-value">${escapeHtml(status.stt_provider)}</span>
           </div>
-          <div class="provider-meta-item">
-            <span class="provider-meta-label">Dostawca TTS</span>
-            <span class="provider-meta-value">${escapeHtml(status.tts_provider)}</span>
+          <div class="stat-panel-meta-item">
+            <span class="stat-panel-meta-label">Dostawca TTS</span>
+            <span class="stat-panel-meta-value">${escapeHtml(status.tts_provider)}</span>
           </div>
         </div>
 

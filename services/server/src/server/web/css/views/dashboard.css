@@ -6,83 +6,69 @@
   gap: 20px;
 }
 
-/* Hero Aktywnego Dostawcy (Frameless — jak Chat, bez pudełka) */
-.dashboard-hero-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
+/* --------------------------------------------------------------------------
+   Skróty — karty w pełni klikalne, wzorem `.agent-provider-card` (agent.css):
+   duże zaokrąglenie, subtelny obrys, elewacja na hover (identyczny cień).
+   -------------------------------------------------------------------------- */
+.dashboard-shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
 }
 
-.dashboard-hero-name {
-  font-size: 1.85rem;
-  font-weight: 700;
+.dashboard-shortcut-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.dashboard-shortcut-card:hover {
+  border-color: var(--border-medium);
+  background-color: var(--bg-surface-hover);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.dashboard-shortcut-card:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.dashboard-shortcut-icon {
+  flex-shrink: 0;
+}
+
+.dashboard-shortcut-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboard-shortcut-title {
+  font-size: 1rem;
+  font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+}
+
+.dashboard-shortcut-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted-aa);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dashboard-hero-model {
-  font-size: 0.85rem;
-  font-weight: 400;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  margin-top: 8px;
-}
-
-.dashboard-hero-badges {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.dashboard-shortcut-arrow {
   flex-shrink: 0;
-  margin-top: 4px;
-}
-
-.dashboard-hero-endpoint {
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.dashboard-hero-endpoint-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
   color: var(--text-muted);
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-
-.dashboard-hero-endpoint-value {
-  font-size: 0.88rem;
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
-  background-color: var(--bg-base);
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-  display: inline-block;
-}
-
-.dashboard-hero-footer {
-  margin-top: 24px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border-subtle);
-  display: flex;
-  justify-content: flex-end;
-}
-
-.dashboard-hero-arrow {
-  opacity: 0.55;
-}
-
-.dashboard-empty-desc {
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-}
-
-.dashboard-loading-text {
-  color: var(--text-secondary);
-  font-size: 0.88rem;
+  opacity: 0.7;
 }

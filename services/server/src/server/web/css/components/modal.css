@@ -25,7 +25,7 @@
 .modal-content {
   background-color: var(--bg-base);
   border: 1px solid var(--border-medium);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   width: 100%;
   max-width: 860px;
   max-height: 88vh;

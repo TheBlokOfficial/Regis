@@ -1,13 +1,8 @@
 /* ==========================================================================
-   WIDOK GŁOS — status pipeline'u głosowego, wyłącznie do odczytu. Ten sam
-   system co Agent/Świat: pływająca karta, duże zaokrąglenie.
+   WIDOK GŁOS — status pipeline'u głosowego, wyłącznie do odczytu. Kontener
+   statusu to `.stat-panel` (components/stat_panel.css, współdzielone
+   z Dashboardem) — tu zostaje tylko lokalny modyfikator hintu.
    ========================================================================== */
-.voice-status-card {
-  background-color: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  padding: 24px 26px;
-}
 
 /* Wewnątrz karty `.section-hint` nie powinien dziedziczyć ujemnego marginesu
    (ten jest pomyślany do "doklejenia" pod nagłówkiem sekcji, nie wewnątrz karty). */
