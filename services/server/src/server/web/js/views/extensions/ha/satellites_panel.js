@@ -21,41 +21,6 @@ export function renderThisBrowserHint(view) {
   `;
 }
 
-/**
- * `sender_id` z żywym połączeniem WS (`view.connectedSenderIds`,
- * `GET /api/v1/voice/connected` — mechaniczny fakt z `server/voice`), które
- * nie mają jeszcze rejestracji w `World` — ani jako zwykły wpis
- * (`view.senders`), ani jako ID tej przeglądarki (własny, dedykowany hint
- * wyżej, `renderThisBrowserHint`, więc pomijamy tu, żeby nie dublować).
- * Renderuje się tylko, gdy lista niepusta — spójnie z resztą panelu
- * (`renderSatellitesList` też nie pokazuje pustej ramki na stałe).
- */
-export function renderPendingSatellites(view) {
-  const thisBrowserId = getSenderId();
-  const registeredIds = new Set(view.senders.map((s) => s.sender_id));
-  const pending = (view.connectedSenderIds || []).filter((id) => id !== thisBrowserId && !registeredIds.has(id));
-
-  if (pending.length === 0) return '';
-
-  return `
-    <div class="ha-pending-satellites">
-      <p class="ha-pending-satellites-label">Podłączone, oczekujące na rejestrację:</p>
-      <div class="ha-list">
-        ${pending
-          .map(
-            (senderId) => `
-          <div class="ha-list-row">
-            <span class="ha-satellite-id">${escapeHtml(senderId)}</span>
-            <button type="button" class="btn btn-sm btn-subtle" data-register-pending="${escapeAttr(senderId)}">Zarejestruj</button>
-          </div>
-        `
-          )
-          .join('')}
-      </div>
-    </div>
-  `;
-}
-
 export function renderSatellitesList(view) {
   if (view.senders.length === 0) {
     return `<p class="ha-empty-hint">Brak zarejestrowanych nadawców.</p>`;
@@ -127,12 +92,6 @@ export function bindSatelliteEvents(view) {
   document.getElementById('ha-btn-use-this-browser')?.addEventListener('click', () => {
     view.isRegisteringSender = true;
     renderSatelliteForm(view, getSenderId());
-  });
-  view.container.querySelectorAll('[data-register-pending]')?.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      view.isRegisteringSender = true;
-      renderSatelliteForm(view, btn.getAttribute('data-register-pending'));
-    });
   });
   view.container.querySelectorAll('[data-delete-satellite]')?.forEach((btn) => {
     btn.addEventListener('click', () => handleDeleteSatelliteClick(view, btn.getAttribute('data-delete-satellite')));

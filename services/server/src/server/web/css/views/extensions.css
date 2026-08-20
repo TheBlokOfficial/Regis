@@ -442,19 +442,6 @@
   margin-bottom: 14px;
 }
 
-/* Satelity z żywym połączeniem WS, ale bez rejestracji w World — osobny blok
-   nad listą już zarejestrowanych, żeby nie mieszać "co istnieje" (rejestracja)
-   z "co żyje teraz" (WS), a jednocześnie dać jednoklikowy skrót między nimi. */
-.ha-pending-satellites {
-  margin-bottom: 14px;
-}
-
-.ha-pending-satellites-label {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  margin-bottom: 8px;
-}
-
 .ha-satellite-id {
   font-family: var(--font-mono);
   font-size: 0.78rem;

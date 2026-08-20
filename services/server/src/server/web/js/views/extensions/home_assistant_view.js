@@ -2,13 +2,7 @@ import { renderConfigForm, bindConfigEvents } from './ha/config_panel.js';
 import { renderRoomsPanel, bindRoomEvents } from './ha/rooms_panel.js';
 import { renderDeviceSearch, renderSearchResults, renderDeclaredList, initDeclaredRoomSelects, bindDeviceEvents } from './ha/devices_panel.js';
 import { renderGroupsList, renderGroupForm, bindGroupEvents } from './ha/groups_panel.js';
-import {
-  renderThisBrowserHint,
-  renderPendingSatellites,
-  renderSatellitesList,
-  renderSatelliteForm,
-  bindSatelliteEvents,
-} from './ha/satellites_panel.js';
+import { renderThisBrowserHint, renderSatellitesList, renderSatelliteForm, bindSatelliteEvents } from './ha/satellites_panel.js';
 
 /**
  * Widok konfiguracji silnika świata (WorldEngine) — w pełni domenowy (nie
@@ -48,7 +42,6 @@ export class HomeAssistantExtensionView {
     this.searchQuery = '';
     this.senders = [];
     this.rooms = [];
-    this.connectedSenderIds = [];
 
     this.isCreatingGroup = false;
     this.isRegisteringSender = false;
@@ -62,14 +55,13 @@ export class HomeAssistantExtensionView {
   }
 
   async _loadAndRender() {
-    const [config, declared, groups, catalog, senders, rooms, connectedSenderIds] = await Promise.all([
+    const [config, declared, groups, catalog, senders, rooms] = await Promise.all([
       this.apiClient.getHAConfig(),
       this.apiClient.getHADeclaredDevices(),
       this.apiClient.getHAGroups(),
       this.apiClient.getHACatalog(),
       this.apiClient.getSenders(),
       this.apiClient.getRooms(),
-      this.apiClient.getConnectedSenders(),
     ]);
     this.config = config || { base_url: '', access_token: '' };
     this.declaredDevices = declared || [];
@@ -77,7 +69,6 @@ export class HomeAssistantExtensionView {
     this.catalog = catalog || [];
     this.senders = senders || [];
     this.rooms = rooms || [];
-    this.connectedSenderIds = connectedSenderIds || [];
     this._render();
   }
 
@@ -92,20 +83,18 @@ export class HomeAssistantExtensionView {
    * tam zostaje w użyciu).
    */
   async _refresh() {
-    const [config, declared, groups, senders, rooms, connectedSenderIds] = await Promise.all([
+    const [config, declared, groups, senders, rooms] = await Promise.all([
       this.apiClient.getHAConfig(),
       this.apiClient.getHADeclaredDevices(),
       this.apiClient.getHAGroups(),
       this.apiClient.getSenders(),
       this.apiClient.getRooms(),
-      this.apiClient.getConnectedSenders(),
     ]);
     this.config = config || { base_url: '', access_token: '' };
     this.declaredDevices = declared || [];
     this.groups = groups || [];
     this.senders = senders || [];
     this.rooms = rooms || [];
-    this.connectedSenderIds = connectedSenderIds || [];
     this._render();
   }
 
@@ -144,7 +133,6 @@ export class HomeAssistantExtensionView {
             <button class="btn btn-sm btn-subtle" id="ha-btn-new-satellite">+ Nowa rejestracja</button>
           </div>
           ${renderThisBrowserHint(this)}
-          ${renderPendingSatellites(this)}
           <div class="ha-satellites-list">${renderSatellitesList(this)}</div>
           <div id="ha-satellite-form"></div>
         </section>

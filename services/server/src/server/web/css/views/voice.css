@@ -1,9 +1,11 @@
 /* ==========================================================================
    WIDOK GŁOS — STT (Groq)/TTS (ElevenLabs) mają realne formularze configu
-   (`.form-card`, `forms.css`) od podłączenia realnych dostawców chmurowych;
-   Satelity zostają placeholderem-odnośnikiem do Świata. Pole klucza API to
-   ten sam wzorzec co Home Assistant (`extensions.css`, `.ha-token-*`), tylko
-   pod własną nazwą klasy — sekcje mają się nie znać nawzajem.
+   (`.form-card`, `forms.css`) od podłączenia realnych dostawców chmurowych.
+   Satelity: lista podłączonych-ale-niezarejestrowanych (monitorowanie żywego
+   WS to domena voice, nie world) + odnośnik do właściwej rejestracji w
+   Świecie. Pole klucza API to ten sam wzorzec co Home Assistant
+   (`extensions.css`, `.ha-token-*`/`.ha-list*`), tylko pod własną nazwą klasy
+   — sekcje mają się nie znać nawzajem, nawet w CSS.
    ========================================================================== */
 .voice-placeholder-text {
   color: var(--text-secondary);
@@ -56,4 +58,45 @@
 .voice-restart-hint {
   margin-top: -8px;
   margin-bottom: 20px;
+}
+
+.voice-pending-satellites {
+  margin-bottom: 14px;
+}
+
+.voice-pending-satellites-label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.voice-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.voice-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  transition: background-color var(--transition-fast);
+}
+
+.voice-list-row + .voice-list-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.voice-list-row:hover {
+  background-color: var(--bg-surface-hover);
+}
+
+.voice-satellite-id {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted-aa);
 }
