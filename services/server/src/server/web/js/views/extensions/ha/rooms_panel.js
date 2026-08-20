@@ -26,14 +26,12 @@ function renderRoomsList(view) {
     return `<p class="ha-empty-hint">Brak pokoi — dodaj pierwszy powyżej.</p>`;
   }
   return `
-    <div class="ha-list">
+    <div class="ha-rooms-list">
       ${view.rooms
         .map(
           (room) => `
-        <div class="ha-list-row" data-room-id="${escapeAttr(room.id)}">
-          <div class="ha-group-info">
-            <input type="text" class="form-control ha-room-name" data-room-id="${escapeAttr(room.id)}" value="${escapeAttr(room.name)}" />
-          </div>
+        <div class="ha-rooms-row" data-room-id="${escapeAttr(room.id)}">
+          <input type="text" class="form-control ha-editable-label ha-room-name" data-room-id="${escapeAttr(room.id)}" value="${escapeAttr(room.name)}" />
           <button class="btn btn-ghost-danger btn-icon-square" data-delete-room="${escapeAttr(room.id)}" title="Usuń pokój" aria-label="Usuń pokój">${Icons.Trash2()}</button>
         </div>
       `

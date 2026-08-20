@@ -68,7 +68,7 @@ export function renderDeclaredList(view) {
           (entry) => `
           <div class="ha-declared-card" data-entity-id="${escapeAttr(entry.entity_id)}">
             <span class="ha-declared-entity-id" title="${escapeAttr(entry.entity_id)}">${escapeHtml(entry.entity_id)}</span>
-            <input type="text" class="form-control ha-declared-label" data-entity-id="${escapeAttr(entry.entity_id)}" value="${escapeAttr(entry.effective_name)}" />
+            <input type="text" class="form-control ha-editable-label ha-declared-name-input" data-entity-id="${escapeAttr(entry.entity_id)}" value="${escapeAttr(entry.effective_name)}" />
             ${!entry.display_name ? '<span class="ha-declared-default-hint" title="Domyślna nazwa z Home Assistant — warto nadać własną.">●</span>' : ''}
             <span class="ha-declared-kind">${escapeHtml(entry.kind || '?')}</span>
             ${renderSelectMarkup(`ha-declared-room-${entry.entity_id}`, { placeholder: '— brak pokoju —', className: 'select--compact ha-declared-room-select' })}
@@ -103,7 +103,7 @@ export function bindDeviceEvents(view) {
     renderSearchResults(view);
   });
 
-  view.container.querySelectorAll('.ha-declared-label')?.forEach((input) => {
+  view.container.querySelectorAll('.ha-declared-name-input')?.forEach((input) => {
     input.addEventListener('change', (e) => handleRenameDeclaredDevice(view, e.target.getAttribute('data-entity-id'), e.target.value));
   });
   view.container.querySelectorAll('[data-remove-entity]')?.forEach((btn) => {

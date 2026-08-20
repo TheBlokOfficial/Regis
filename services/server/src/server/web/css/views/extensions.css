@@ -71,6 +71,38 @@
   flex-shrink: 0;
 }
 
+/* Lista pokoi — BEZ własnej ramki/promienia (w przeciwieństwie do `.ha-list`
+   używanego przez Grupy/Nadawcy, które siedzą samodzielnie w przepływie
+   strony). Tutaj dodatkowy poziom obwódki byłby zagnieżdżony wewnątrz już
+   istniejącej ramki `.ha-rooms-panel` — dwie ramki w tym samym miejscu
+   ("dużo ramkowości"). Wiersz dostaje `margin`/`padding`, które się znoszą
+   (`-26px`/`26px`, dokładnie padding `.stat-panel`) — treść wyrównuje się
+   1:1 z composerem powyżej (który siedzi bezpośrednio w paddingu panelu,
+   bez dodatkowego wcięcia), a tło hover mimo to sięga do realnej krawędzi
+   panelu, nie tylko do węższej kolumny treści. */
+.ha-rooms-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ha-rooms-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 -26px;
+  padding: 10px 26px;
+  transition: background-color var(--transition-fast);
+}
+
+.ha-rooms-row + .ha-rooms-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ha-rooms-row:hover {
+  background-color: var(--bg-surface-hover);
+}
+
 /* --------------------------------------------------------------------------
    Listy płaskie (Pokoje/Grupy/Nadawcy) — jeden border na cały kontener,
    wiersze rozdzielone hairline, bez ramki na każdym elemencie z osobna.
@@ -306,10 +338,15 @@
   white-space: nowrap;
 }
 
-/* Pole nazwy — bez ramki/tła w spoczynku, wygląda jak zwykły tekst.
-   Ramkę fokusu (kolor, bez box-shadow) dziedziczy z `.form-control:focus`
-   w forms.css — tu dokładamy tylko stan spoczynku/hover i tło na fokus. */
-.ha-declared-label {
+/* Pole nazwy edytowalnej inline (nazwa urządzenia, nazwa pokoju...) — bez
+   ramki/tła w spoczynku, wygląda jak zwykły tekst, nie jak pusty formularz
+   czekający na wypełnienie. Ramkę fokusu (kolor, bez box-shadow) dziedziczy
+   z `.form-control:focus` w forms.css — tu dokładamy tylko stan
+   spoczynku/hover i tło na fokus. Generyczna, współdzielona przez
+   Urządzenia (`.ha-declared-name-input`) i Pokoje (`.ha-room-name`) —
+   selektor eventów w JS jest osobną, specyficzną klasą na tym samym
+   elemencie, ta klasa odpowiada wyłącznie za wygląd. */
+.ha-editable-label {
   flex: 1 1 160px;
   min-width: 0;
   background: transparent;
@@ -317,11 +354,11 @@
   padding: 5px 8px;
 }
 
-.ha-declared-label:hover {
+.ha-editable-label:hover {
   border-color: var(--border-subtle);
 }
 
-.ha-declared-label:focus {
+.ha-editable-label:focus {
   background-color: var(--bg-base);
 }
 
