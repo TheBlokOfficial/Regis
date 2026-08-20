@@ -102,6 +102,14 @@
   color: #ffffff;
 }
 
+/* Przycisk zostaje `disabled` (realnie nieklikalny, zero hover) przez cały
+   czas trwania rozbłysku — bez tego nadpisania domyślne `.btn:disabled`
+   przygaszałoby zielony/czerwony do 50% opacity, gasząc sygnał wyniku. */
+.btn-flash-success:disabled,
+.btn-flash-error:disabled {
+  opacity: 1;
+}
+
 /* Modyfikator: kwadratowy przycisk tylko-ikona (32×32) — łączony z klasą
    koloru akcji (np. `.btn-ghost-danger`) zamiast osobnego, zduplikowanego
    wariantu na każdą listę w aplikacji (Agent: karty dostawców, Świat: pokoje/

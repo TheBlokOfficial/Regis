@@ -33,16 +33,27 @@ export function renderConfigForm(view) {
       </p>
       <div class="form-actions ha-config-actions">
         <button type="button" class="btn" id="ha-btn-test-config">Testuj połączenie</button>
-        <button class="btn" id="ha-btn-save-config">Zapisz</button>
+        <button class="btn" id="ha-btn-save-config" disabled>Zapisz</button>
       </div>
     </div>
   `;
 }
 
 export function bindConfigEvents(view) {
-  document.getElementById('ha-btn-save-config')?.addEventListener('click', () => handleSaveConfig(view));
+  const saveBtn = document.getElementById('ha-btn-save-config');
+  saveBtn?.addEventListener('click', () => handleSaveConfig(view));
   document.getElementById('ha-btn-test-config')?.addEventListener('click', () => handleTestConnection(view));
   document.getElementById('ha-btn-toggle-token')?.addEventListener('click', () => handleToggleTokenVisibility());
+
+  // "Zapisz" zaczyna zablokowany (świeży render = zero niezapisanych zmian) i
+  // odblokowuje się dopiero, gdy user faktycznie coś zmieni — nie jest to
+  // stały, zawsze-klikalny przycisk. Po udanym zapisie `_loadAndRender()`
+  // przerenderowuje cały panel od nowa (świeży `disabled` wraca sam).
+  const markDirty = () => {
+    if (saveBtn) saveBtn.disabled = false;
+  };
+  document.getElementById('ha-input-base-url')?.addEventListener('input', markDirty);
+  document.getElementById('ha-input-token')?.addEventListener('input', markDirty);
 }
 
 function handleToggleTokenVisibility() {
@@ -82,7 +93,18 @@ async function handleSaveConfig(view) {
 
 /** Wynik testu jest pokazywany BEZPOŚREDNIO na przycisku (kolor + ikona na
  * 2s), nie osobną plakietką obok — jeden spójny element zamiast dwóch
- * różnych stylistyk w tym samym wierszu. */
+ * różnych stylistyk w tym samym wierszu.
+ *
+ * Szerokość/wysokość przycisku są zablokowane PRZED jakąkolwiek zmianą
+ * zawartości (tekst -> spinner -> checkmark/X -> z powrotem tekst) —
+ * inaczej krótsza treść (sama ikona) kurczy przycisk, co przesuwa resztę
+ * wiersza/karty. `disabled` zostaje `true` przez CAŁY czas (spinner + 2s
+ * rozbłysku) — przycisk ma być realnie nieklikalny, nie tylko wizualnie
+ * przygaszony; `.btn-flash-*:disabled` w buttons.css nadpisuje domyślne
+ * przygaszenie `:disabled`, żeby kolor wyniku zostawał żywy mimo blokady
+ * (i żeby hover nie mógł go w ogóle dotknąć — `pointer-events: none`
+ * z `:disabled` wyłącza hover całkowicie).
+ */
 async function handleTestConnection(view) {
   const baseUrl = document.getElementById('ha-input-base-url')?.value.trim() || '';
   const token = document.getElementById('ha-input-token')?.value || '';
@@ -95,6 +117,8 @@ async function handleTestConnection(view) {
   const btn = document.getElementById('ha-btn-test-config');
   if (!btn) return;
   const originalHtml = btn.innerHTML;
+  const originalWidth = btn.getBoundingClientRect().width;
+  btn.style.width = `${originalWidth}px`;
   btn.disabled = true;
   btn.innerHTML = Icons.CircleLoader();
 
@@ -110,12 +134,13 @@ async function handleTestConnection(view) {
 
   btn.classList.add(ok ? 'btn-flash-success' : 'btn-flash-error');
   btn.innerHTML = ok ? Icons.Check() : Icons.X();
-  btn.disabled = false;
   view.showToast(message, ok ? 'success' : 'error');
 
   setTimeout(() => {
     btn.classList.remove('btn-flash-success', 'btn-flash-error');
     btn.innerHTML = originalHtml;
+    btn.disabled = false;
+    btn.style.width = '';
   }, 2000);
 }
 

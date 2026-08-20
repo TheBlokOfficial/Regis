@@ -165,9 +165,15 @@
 
 /* Pasek akcji Konfiguracji — "Testuj połączenie" (drugorzędne, wynik
    pokazywany bezpośrednio na przycisku, patrz `.btn-flash-*`) po lewej,
-   "Zapisz" po prawej. */
+   "Zapisz" po prawej. Stała wysokość obu przycisków — "Testuj połączenie"
+   zamienia treść (tekst -> spinner -> checkmark/X -> tekst), bez jawnej
+   wysokości ta zmiana treści przesuwałaby resztę karty w pionie. */
 .ha-config-actions {
   justify-content: space-between;
+}
+
+.ha-config-actions .btn {
+  height: 40px;
 }
 
 .ha-device-search {
