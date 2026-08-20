@@ -31,9 +31,14 @@ class FakeLink:
 class FakeSpeaker:
     def __init__(self) -> None:
         self.played: list[bytes] = []
+        self.cues: list[str] = []
 
     async def play(self, pcm_audio: bytes) -> None:
         self.played.append(pcm_audio)
+
+    async def play_cue(self, windows_sound_name: str, fallback_pcm: bytes) -> None:
+        self.cues.append(windows_sound_name)
+        self.played.append(fallback_pcm)
 
 
 class AlwaysTriggerVad:
@@ -75,6 +80,7 @@ async def test_wake_detected_transitions_to_recording_and_plays_tone() -> None:
     await session.handle_server_frame({"type": ServerMessageType.WAKE_DETECTED.value})
     assert session.state == SessionState.RECORDING_UTTERANCE
     assert len(speaker.played) == 1
+    assert speaker.cues == ["Speech On"]
 
 
 @pytest.mark.anyio
@@ -103,6 +109,7 @@ async def test_full_tts_cycle_plays_audio_and_returns_to_listening() -> None:
 
     await session.handle_server_frame({"type": ServerMessageType.PLAY_STOP_TONE.value})
     assert len(speaker.played) == 1  # stop-tone
+    assert speaker.cues == ["Speech Sleep"]
 
     await session.handle_server_frame({"type": ServerMessageType.TTS_START.value})
     assert session.state == SessionState.SPEAKING

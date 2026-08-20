@@ -25,6 +25,11 @@ from desktop_satellite.vad import SilenceVadDetector
 
 logger = get_logger("regis.desktop_satellite.session")
 
+# Dźwięki systemowe Windows Speech Recognition (`C:\Windows\Media\*.wav`) — te same
+# dźwięki, które kiedyś towarzyszyły Cortanie. `SpeakerPlayback.play_cue` odtwarza je
+# preferencyjnie, z fallbackiem do syntezowanego tonu (Linux / plik nieobecny).
+WAKE_SOUND_NAME = "Speech On"
+STOP_SOUND_NAME = "Speech Sleep"
 WAKE_TONE_HZ = 880.0
 STOP_TONE_HZ = 440.0
 TONE_DURATION_MS = 150.0
@@ -94,7 +99,7 @@ class SatelliteSession:
         if message_type == ServerMessageType.WAKE_DETECTED:
             await self._on_wake_detected()
         elif message_type == ServerMessageType.PLAY_STOP_TONE:
-            await self._speaker.play(synth_tone(STOP_TONE_HZ, TONE_DURATION_MS))
+            await self._speaker.play_cue(STOP_SOUND_NAME, synth_tone(STOP_TONE_HZ, TONE_DURATION_MS))
         elif message_type == ServerMessageType.TTS_START:
             self.state = SessionState.SPEAKING
             self._response_buffer.clear()
@@ -110,7 +115,7 @@ class SatelliteSession:
         logger.info("Wake-word wykryty.")
         self.state = SessionState.RECORDING_UTTERANCE
         self._vad.reset()
-        await self._speaker.play(synth_tone(WAKE_TONE_HZ, TONE_DURATION_MS))
+        await self._speaker.play_cue(WAKE_SOUND_NAME, synth_tone(WAKE_TONE_HZ, TONE_DURATION_MS))
 
     async def _on_tts_end(self) -> None:
         audio = bytes(self._response_buffer)

@@ -1,6 +1,9 @@
 """Wejście/wyjście audio na realnym sprzęcie — mikrofon (`MicCapture`), głośnik
-(`SpeakerPlayback`) i lokalna synteza tonów wake/stop (`synth_tone`), przez
-`sounddevice` (PortAudio, działa na Windows/Linux) i `numpy`.
+(`SpeakerPlayback`) przez `sounddevice` (PortAudio, działa na Windows/Linux) i
+`numpy`. Dźwięki wake/stop-tone (`SpeakerPlayback.play_cue`) preferują wbudowane
+dźwięki systemowe Windows (`C:\\Windows\\Media\\*.wav` — własność użytkownika,
+część każdej instalacji Windows, nigdy nie kopiowane do repo), z fallbackiem do
+lokalnie syntezowanego tonu (`synth_tone`) na Linux albo gdy plik nie istnieje.
 
 Format zawsze zgodny z kontraktem WS (`shared.voice_protocol`): PCM16 mono,
 16 kHz. Ramki mikrofonu mają stały rozmiar (`FRAME_DURATION_MS`), spójny z
@@ -11,6 +14,8 @@ oczekują do analizy.
 from __future__ import annotations
 
 import asyncio
+import sys
+from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
@@ -21,6 +26,20 @@ logger = get_logger("regis.desktop_satellite.audio")
 
 FRAME_DURATION_MS = 20.0
 FRAME_SAMPLES = round(SAMPLE_RATE_HZ * FRAME_DURATION_MS / 1000.0)
+
+WINDOWS_MEDIA_DIR = Path(r"C:\Windows\Media")
+
+
+def _windows_system_sound_path(sound_name: str) -> Path | None:
+    """Ścieżka do wbudowanego dźwięku systemowego Windows (Speech Recognition —
+    `Speech On`/`Speech Sleep` itd., `C:\\Windows\\Media\\*.wav`) — te same dźwięki,
+    które kiedyś towarzyszyły Cortanie. Pliki są częścią każdej instalacji Windows
+    (własność użytkownika), nigdy nie kopiowane do repo — `None` na Linux/gdy plik
+    nie istnieje (np. edycja Windows bez funkcji multimedialnych)."""
+    if sys.platform != "win32":
+        return None
+    path = WINDOWS_MEDIA_DIR / f"{sound_name}.wav"
+    return path if path.exists() else None
 
 
 class MicCapture:
@@ -78,9 +97,26 @@ class SpeakerPlayback:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._play_blocking, samples)
 
+    async def play_cue(self, windows_sound_name: str, fallback_pcm: bytes) -> None:
+        """Odtwarza dźwięk systemowy Windows (`windows_sound_name`, patrz
+        `_windows_system_sound_path`); gdy niedostępny (Linux, brak pliku) — odtwarza
+        `fallback_pcm` (lokalnie syntezowany ton, patrz `synth_tone`)."""
+        path = _windows_system_sound_path(windows_sound_name)
+        if path is None:
+            await self.play(fallback_pcm)
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._play_system_sound_blocking, path)
+
     @staticmethod
     def _play_blocking(samples: np.ndarray) -> None:
         sd.play(samples, samplerate=SAMPLE_RATE_HZ, blocking=True)
+
+    @staticmethod
+    def _play_system_sound_blocking(path: Path) -> None:
+        import winsound
+
+        winsound.PlaySound(str(path), winsound.SND_FILENAME)
 
 
 def synth_tone(freq_hz: float, duration_ms: float, amplitude: float = 0.3) -> bytes:
