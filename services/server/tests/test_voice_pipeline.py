@@ -10,12 +10,13 @@ from typing import Any, AsyncIterator, List
 
 import pytest
 
+from shared import ServerMessageType
+
 from server.agent import AgentEngine
 from server.agent.backend import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
 from server.agent.context_provider import ContextBuild
 from server.agent.memory import MemoryManager
 from server.events import ServerEventType
-from server.voice.protocol import ServerMessageType
 from server.voice.session import VoiceSession
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider

@@ -25,9 +25,10 @@ Regis/
 │   └── onboarding.md # Jednolity przewodnik deweloperski
 │   └── specs/        # Efemeryczne briefy implementacyjne (cykl życia: AGENTS.md, sekcja "Dokumentacja")
 ├── packages/         # Wspólne pakiety kodowe
-│   └── shared/       # Paczka shared (ConfigStore, EventBus, DTO, logging)
+│   └── shared/       # Paczka shared (ConfigStore, EventBus, DTO, kontrakt WS voice_protocol, logging)
 ├── services/         # Niezależne usługi sieciowe
-│   └── server/       # Główna usługa serwera Regis (bramka REST/SSE, kernel, silnik świata, Web UI)
+│   ├── server/       # Główna usługa serwera Regis (bramka REST/SSE, kernel, silnik świata, Web UI)
+│   └── desktop_satellite/  # Klient WS satelity desktopowej (Windows/Linux) — mikrofon/głośnik
 ├── pyproject.toml    # Główna konfiguracja workspace, grupy dev (pytest, anyio) oraz pytest
 └── README.md         # Wprowadzenie do projektu
 ```
@@ -55,8 +56,7 @@ server/
 │   ├── gateway.py    # WS endpoint /voice/{sender_id}, VoiceConnection (handshake, ciągła subskrypcja EventBus)
 │   ├── session.py    # VoiceSession — automat stanu jednej rozmowy
 │   ├── wakeword.py    # WakeWordDetector (dziś: placeholder ThresholdEnergyWakeWordDetector)
-│   ├── stt.py / tts.py # BaseSTTProvider/BaseTTSProvider (dziś: dev-providerzy Mock*)
-│   └── protocol.py    # Kontrakt ramek WS (control JSON + binarne PCM16)
+│   └── stt.py / tts.py # BaseSTTProvider/BaseTTSProvider (dziś: dev-providerzy Mock*)
 ├── network/        # Bramka FastAPI i routery REST/SSE
 ├── web/            # Wbudowana konsola SPA (HTML/CSS/JS)
 ├── config.py       # Settings (ConfigStore)
@@ -219,12 +219,12 @@ publiczny kontrakt `AgentEngine` — dokładnie ten sam, z którego korzysta
   o `ToolResult.redirect_sender_id` niżej).
 - **`ToolResult.redirect_sender_id`** (`agent/backend/providers/base.py`): mechaniczne pole — kernel nie interpretuje jego znaczenia, tylko zmienia `effective_session_id` używany do publikacji `CHAT_CHUNK`/`TOOL_CALL_START`/`TOOL_CALL_RESULT` na resztę tury (`agent/engine.py`, `_generate_in_background`). `CHAT_DONE`/`CHAT_ERROR`/`CHAT_CANCELLED` są **dodatkowo zawsze publikowane też pod oryginalnym `session_id`** (dual-cast), nawet po przekierowaniu — gwarantuje to, że `interact_stream()` (subskrybowany wyłącznie po oryginalnym `session_id`, używany też wewnętrznie przez `interact()`) zawsze poprawnie się kończy, zamiast zawiesić się w oczekiwaniu na zdarzenie, które nigdy nie nadejdzie pod starym tagiem. Historia rozmowy (`MemoryManager`) zawsze zapisywana pod oryginalnym `session_id` — przekierowanie zmienia wyłącznie dostawę, nigdy właściciela konwersacji.
 - **`VoiceSession`** (`voice/session.py`): czysty automat stanu treści (`LISTENING_WAKEWORD` → `RECORDING_UTTERANCE` → `PROCESSING` → `SPEAKING` → z powrotem), zero wiedzy o WebSocket/EventBus — testowalny w izolacji (`tests/test_voice_pipeline.py`). `reset_to_listening()` to awaryjny powrót do nasłuchu wołany przez gateway po `CHAT_ERROR`/`CHAT_CANCELLED`, żeby sesja nigdy nie utknęła w `PROCESSING`/`SPEAKING` na zawsze.
-- **Protokół WS** (`voice/protocol.py`): ramki binarne = surowe PCM16 mono (bez kodeka) w obie strony; ramki tekstowe JSON = control-plane (`hello`/`utterance_end`/`playback_done` od satelity, `wake_detected`/`play_stop_tone`/`tts_start`/`tts_end`/`error` od serwera). Dźwięki wake/stop-tone są lokalne (wypalone w firmware satelity), nigdy strumieniowane z serwera.
+- **Protokół WS** (`shared/voice_protocol.py` — **od tej sesji w `packages/shared`, nie w `server/voice/`**: kontrakt ramek, współdzielony przez dwie niezależne usługi, `server` i `desktop_satellite`, patrz sekcja 3.6): ramki binarne = surowe PCM16 mono (bez kodeka) w obie strony; ramki tekstowe JSON = control-plane (`hello`/`utterance_end`/`playback_done` od satelity, `wake_detected`/`play_stop_tone`/`tts_start`/`tts_end`/`error` od serwera). Dźwięki wake/stop-tone są lokalne (wypalone w firmware satelity/generowane przez klienta desktopowego), nigdy strumieniowane z serwera.
 - **VAD po stronie satelity**: to satelita (nie serwer) decyduje o końcu wypowiedzi (min. 1.5s ciszy) i wysyła `utterance_end` — świadoma decyzja architektoniczna (satelita i tak musi wiedzieć, kiedy przestać nagrywać/streamować, żeby nie wysyłać ciszy w nieskończoność).
 - **STT/TTS** (`voice/stt.py`, `voice/tts.py`): `BaseSTTProvider`/`BaseTTSProvider` to mirror `BaseLLMProvider` (`agent/backend/providers/base.py`). **Dziś skonfigurowane wyłącznie z dev-providerami** (`MockSTTProvider`/`MockTTSProvider`, `main.py`) — nie wołają żadnej chmury. Konkretny dostawca chmurowy (i towarzyszący mu rejestr instancji, jeśli okaże się potrzebny — YAGNI, nie budować z wyprzedzeniem, patrz sekcja 5) to świadomie odłożony następny krok.
 - **`wakeword.py`**: `ThresholdEnergyWakeWordDetector` to świadomy placeholder (sekwencja głośnych ramek, nie prawdziwe rozpoznawanie słowa) do czasu podłączenia realnego modelu `.onnx` — ścieżka/format pliku modelu nie są jeszcze ustalone.
 - **Brak uwierzytelniania WS**: `WS /ws/voice/{sender_id}` nie weryfikuje w żaden sposób tożsamości łączącego się klienta — spójne z resztą systemu (opaque `sender_id` bez auth), świadome założenie modelu zaufanej sieci lokalnej, do rewizji dopiero przy realnej potrzebie (np. wystawienie serwera poza LAN).
-- **`services/server/scripts/voice_satellite_sim.py`**: symulator satelity (Python + `websockets`) przechodzący cały cykl protokołu bez żadnego sprzętu — jedyny sposób ręcznej weryfikacji end-to-end dopóki nie istnieje realny klient ESP32/desktop.
+- **`services/server/scripts/voice_satellite_sim.py`**: symulator satelity (Python + `websockets`) przechodzący cały cykl protokołu bez żadnego sprzętu — dziś głównie do testów regresyjnych; realny klient istnieje w `services/desktop_satellite/` (sekcja 3.7).
 
 ### 3.6 Warstwa Wspólna (`packages/shared/src/shared`)
 - **`ConfigStore` (`config.py`)**: Centralny zarządca persystentnej konfiguracji w formacie JSON z automatyczną walidacją i domyślnymi wartościami.
@@ -236,6 +236,20 @@ publiczny kontrakt `AgentEngine` — dokładnie ten sam, z którego korzysta
   - **Profile promptu Świata** (CRUD, do 3, `world/routes.py`): `PromptDTO`, `PromptListResponse`, `CreatePromptRequest`, `UpdatePromptRequest`. **Fallback promptu kernela** (jedna wartość, `network/routes/prompts.py`): `AgentDefaultPromptDTO`.
   - Prywatne słownictwo Home Assistant/satelit (config, katalog, grupy, rejestracje) żyje lokalnie w `world/dto.py`, nie tutaj — nie ma potrzeby generycznego kształtu skoro istnieje dokładnie jeden silnik.
 - **`logging.py`**: Jednolita konfiguracja logów dla całego monorepo z ustandaryzowanymi nazwami kategorii (`regis.main`, `regis.agent`, `regis.world`, itp.).
+- **`voice_protocol.py`**: Kontrakt ramek WS satelity (`SatelliteMessageType`/`ServerMessageType`/`SAMPLE_RATE_HZ`/`SAMPLE_WIDTH_BYTES`/`CHANNELS`) — przeniesiony tu z `server/voice/protocol.py`, bo od `desktop_satellite` (sekcja 3.7) jest to kontrakt między dwiema niezależnymi usługami, nie szczegół jednej z nich (ten sam powód, dla którego DTO REST żyją w `contracts.py`, nie w `server/network/`).
+
+### 3.7 `desktop_satellite` — realny klient satelity desktopowej (`services/desktop_satellite/src/desktop_satellite`)
+
+Pierwsza realna (nie-symulowana) implementacja satelity — długo działający proces
+konsolowy na Windows/Linux, niezależna usługa `services/*` (nie importuje
+niczego z `services/server`, łączy je wyłącznie `packages/shared` i protokół WS).
+
+- **`protocol_client.py`**: `ProtocolClient` — cienki klient `websockets` kodujący/dekodujący ramki zgodnie z `shared/voice_protocol.py`, symetryczny do `VoiceConnection` (`server/voice/gateway.py`) z odwróconą rolą klient/serwer.
+- **`session.py`**: `SatelliteSession` — klienckie odbicie automatu `VoiceSession`: `LISTENING_WAKEWORD` → (odbiór `wake_detected` od serwera — wake-word nadal wykrywa **serwer**, dziś placeholder `ThresholdEnergyWakeWordDetector`, satelita tylko ciągle strumieniuje mikrofon) → `RECORDING_UTTERANCE` (lokalny `vad.SilenceVadDetector` decyduje, kiedy wysłać `utterance_end` — zgodnie z decyzją "VAD po stronie satelity" niżej) → `PROCESSING` (mikrofon wstrzymany, ten sam powód co po stronie serwera: uniknięcie nagrywania własnego odtwarzania) → `SPEAKING` (odbiór `tts_start..tts_end`, odtworzenie, `playback_done`) → powrót do nasłuchu. Czysty automat + wstrzyknięte zależności (`link`/`speaker`/`vad`), testowalny bez gniazda/sprzętu (`tests/test_session.py`), tym samym wzorcem co serwerowy `VoiceSession`.
+- **`vad.py`**: `SilenceVadDetector` — czysta klasa (mirror stylu `ThresholdEnergyWakeWordDetector`), wyzwala się po skonfigurowanym czasie ciszy następującym po realnej mowie; testowalna w izolacji (`tests/test_vad.py`).
+- **`audio.py`**: `MicCapture`/`SpeakerPlayback` przez `sounddevice`+`numpy` (PortAudio, Windows/Linux) — PCM16 mono 16 kHz, ramki 20 ms. `synth_tone()` generuje lokalne dźwięki wake/stop-tone (sinusoidalny beep), zero plików audio, zero strumieniowania z serwera.
+- **`main.py`**: CLI (`--server-url`/`--sender-id`/`--log-level`), pętla reconnect z backoffem (log + `asyncio.sleep`), czyste zamknięcie mikrofonu na `KeyboardInterrupt`.
+- **Nadal placeholder**: wake-word (serwerowy `ThresholdEnergyWakeWordDetector`, bez zmian tą zmianą) i STT/TTS (`MockSTTProvider`/`MockTTSProvider`) — klient desktopowy dowodzi poprawności całego protokołu i lokalnego VAD, ale nie podłącza jeszcze realnego rozpoznawania mowy/syntezy głosu ani realnego modelu wake-word.
 
 ---
 
@@ -328,6 +342,6 @@ Klient (Web UI)        REST Gateway            AgentEngine         Task (Asyncio
 
 1. **Pamięć Długoterminowa i Wektorowa**: Planowana integracja modułów pamięci wektorowej i semantycznej w usłudze `server`.
 2. **Realny model wake-word i chmurowy STT/TTS**: `server/voice` ma już pełny szkielet działający end-to-end (`WS /ws/voice/{sender_id}`, automat stanu, protokół ramek — patrz sekcja 3.5), ale wyłącznie z dev-providerami (`ThresholdEnergyWakeWordDetector` — placeholder bez rozpoznawania słów; `MockSTTProvider`/`MockTTSProvider` — bez żadnej chmury). Podłączenie realnego modelu `.onnx` i wybranego dostawcy chmurowego STT/TTS to następny krok, odłożony do czasu ustalenia konkretnego pliku modelu/dostawcy.
-3. **Fizyczni klienci satelit (ESP32/desktop)**: Protokół WS (`server/voice/protocol.py`) i serwerowa strona są gotowe i zweryfikowane symulatorem (`scripts/voice_satellite_sim.py`), ale nie istnieje jeszcze żaden prawdziwy klient — ani firmware ESP32 (I2S mikrofon/głośnik, lokalne tony wake/stop), ani usługa desktopowa (Windows/Linux, mikrofon systemowy). Web UI pozostaje dziś jedynym zawsze dostępnym nadawcą, wyłącznie tekstowym: generuje i trwale zapisuje własny opaque `sender_id` w `localStorage` (`web/js/sender_id.js`) i wysyła go z każdym `POST /api/v1/chat*`, a zakładka "Świat" pozwala zarejestrować tę przeglądarkę (albo dowolny inny `sender_id`) pod pokojem.
+3. **Fizyczni klienci satelit (ESP32/desktop)**: Klient desktopowy (Windows/Linux, `services/desktop_satellite/`, sekcja 3.7) **istnieje od tej sesji** — pełny cykl audio (mikrofon+głośnik) przez `sounddevice`, lokalny VAD końca wypowiedzi, lokalnie syntezowane tony wake/stop. Nadal placeholder: wake-word (serwerowy `ThresholdEnergyWakeWordDetector`) i STT/TTS (`MockSTTProvider`/`MockTTSProvider`) — realny model `.onnx` i chmurowy STT/TTS to osobny, jeszcze nieodłożony krok (patrz punkt 2 wyżej). Firmware ESP32 (I2S mikrofon/głośnik, lokalne tony wake/stop) nadal nie istnieje. Web UI pozostaje jedynym zawsze dostępnym nadawcą tekstowym: generuje i trwale zapisuje własny opaque `sender_id` w `localStorage` (`web/js/sender_id.js`) i wysyła go z każdym `POST /api/v1/chat*`, a zakładka "Świat" pozwala zarejestrować tę przeglądarkę (albo dowolny inny `sender_id`, w tym satelitę desktopową) pod pokojem.
 4. **Widoczność kroków ReAct w toku generowania (polling fallback)**: `startPolling` (Web UI, fallback gdy SSE nie jest aktywne — np. po odświeżeniu strony w trakcie długiej pętli ReAct) pokazuje tylko narastający tekst finalnej odpowiedzi, bez kroków pośrednich — `metadata.steps` istnieje dopiero po zakończeniu tury.
 5. **Zakładka ogólnej konfiguracji systemu**: Web UI ma dziś podział na cztery zakładki konfiguracyjne — **Dashboard** (czysty panel powitalny/statusowy, `web/js/views/dashboard.js`), **Kernel** (dostawcy LLM, `kernel_config.js`, wydzielone z dawnego Dashboardu), **Świat** (Home Assistant, pokoje, nadawcy — `views/extensions.js` montuje `HomeAssistantExtensionView` wprost, bez generycznej listy) i **Głos** (status `server/voice`, `voice_config.js`, tylko do odczytu). Jeszcze bardziej ogólna, w pełni generyczna zakładka konfiguracji (poza tym czteroczłonowym podziałem) pozostaje wizją końcową.

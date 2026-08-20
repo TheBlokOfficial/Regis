@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "shared",
     "server",
+    "desktop_satellite",
 ]
 
 [dependency-groups]
@@ -24,6 +25,7 @@ package = false
 [tool.uv.sources]
 shared = { workspace = true }
 server = { workspace = true }
+desktop_satellite = { workspace = true }
 
 [tool.uv.workspace]
 members = [
@@ -34,6 +36,7 @@ members = [
 [tool.pytest.ini_options]
 pythonpath = [
     "services/server/src",
+    "services/desktop_satellite/src",
     "packages/shared/src",
 ]
 

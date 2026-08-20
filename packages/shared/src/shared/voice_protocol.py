@@ -5,8 +5,13 @@ brak narzutu enkodowania/dekodowania), w obu kierunkach (mikrofon satelity ->
 serwer, audio TTS serwer -> satelita). Ramki tekstowe to JSON control-plane,
 symetryczny w obie strony — patrz `SatelliteMessageType`/`ServerMessageType`.
 
-Dźwięki wake/stop-tone są lokalne (wypalone w firmware satelity), nigdy
-strumieniowane z serwera — zero dodatkowego opóźnienia, prostszy protokół.
+Dźwięki wake/stop-tone są lokalne (wypalone w firmware satelity/kliencie
+desktopowym), nigdy strumieniowane z serwera — zero dodatkowego opóźnienia,
+prostszy protokół.
+
+Moduł żyje w `packages/shared`, nie w `services/server`, bo to kontrakt
+współdzielony przez dwie niezależne usługi (`server` i `desktop_satellite`) —
+tak jak DTO REST w `shared/contracts.py`.
 """
 
 from __future__ import annotations

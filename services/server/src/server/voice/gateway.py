@@ -17,11 +17,10 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from shared import Event, EventBus, get_logger
+from shared import Event, EventBus, SatelliteMessageType, ServerMessageType, get_logger
 
 from server.agent import AgentEngine
 from server.events import ServerEventType
-from server.voice.protocol import SatelliteMessageType, ServerMessageType
 from server.voice.session import VoiceSession
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider

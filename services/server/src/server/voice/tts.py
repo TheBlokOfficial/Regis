@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from server.voice.protocol import SAMPLE_RATE_HZ, SAMPLE_WIDTH_BYTES
+from shared import SAMPLE_RATE_HZ, SAMPLE_WIDTH_BYTES
 
 _MIN_DURATION_SECONDS = 0.2
 _MAX_DURATION_SECONDS = 10.0

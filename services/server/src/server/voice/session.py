@@ -17,9 +17,8 @@ from __future__ import annotations
 from enum import Enum, auto
 from typing import Callable, Protocol
 
-from shared import get_logger
+from shared import ServerMessageType, get_logger
 
-from server.voice.protocol import ServerMessageType
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider
 from server.voice.wakeword import WakeWordDetector

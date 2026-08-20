@@ -142,7 +142,7 @@ python -m uv run --package server python -m server.main
 | | `POST /api/v1/world/rooms/import-from-ha` | Jednorazowy import pokoju per unikalna HA Area — nie ciągła synchronizacja |
 | **World (nadawcy)** | `GET/POST /api/v1/world/senders` | Lista i rejestracja przypisania nadawcy do pokoju (`sender_id -> room_id`) |
 | | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
-| **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `server/voice/protocol.py` |
+| **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py` |
 | | `GET /api/v1/voice/status` | Status pipeline'u głosowego (nazwy klas aktywnych providerów STT/TTS/wake-word), tylko do odczytu |
 
 > **Świadome założenie**: `WS /ws/voice/{sender_id}` nie ma żadnego uwierzytelniania
@@ -157,6 +157,18 @@ Przy uruchomionym serwerze, symulator satelity przechodzi cały cykl protokołu
 ```bash
 python services/server/scripts/voice_satellite_sim.py [sender_id]
 ```
+
+### Uruchomienie satelity desktopowej (realny mikrofon/głośnik):
+Wymaga uruchomionego serwera. Klient (`services/desktop_satellite/`, patrz
+`docs/manifest.md` sekcja 3.7) łączy się z `WS /ws/voice/{sender_id}`,
+strumieniuje mikrofon, lokalnie wykrywa koniec wypowiedzi i odtwarza odpowiedź:
+```bash
+python -m uv run --package desktop_satellite python -m desktop_satellite.main --sender-id <id>
+```
+Zarejestruj `<id>` w Web UI (zakładka **Świat → Nadawcy**), żeby satelita miała
+przypisany pokój. Wake-word wykrywa dziś serwer (placeholder), a STT/TTS to
+nadal dev-providerzy Mock — realna rozmowa głosowa wymaga podłączenia
+docelowych dostawców chmurowych (patrz sekcja 2, "Zaplanowane" w `manifest.md`).
 
 ### Uruchomienie testów:
 Przed zgłoszeniem zmian obowiązkowo uruchom pełny zestaw testów (`services/server/tests/`):

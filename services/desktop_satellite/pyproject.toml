@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "desktop_satellite"
+version = "0.1.0"
+description = "Satelita desktopowa (Windows/Linux) — klient WS łączący się z /ws/voice serwera Regis"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "websockets>=12.0",
+    "sounddevice>=0.4.6",
+    "numpy>=1.26",
+    "shared",
+]
+
+[tool.uv.sources]
+shared = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/desktop_satellite"]

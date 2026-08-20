@@ -25,11 +25,19 @@ from shared.contracts import (
 )
 from shared.event_bus import Event, EventBus, EventHandler
 from shared.logging import get_logger, setup_logging
+from shared.voice_protocol import (
+    CHANNELS,
+    SAMPLE_RATE_HZ,
+    SAMPLE_WIDTH_BYTES,
+    SatelliteMessageType,
+    ServerMessageType,
+)
 
 __version__ = "0.1.0"
 __all__ = [
     "AgentDefaultPromptDTO",
     "CancelChatApiRequest",
+    "CHANNELS",
     "ChatMessageDTO",
     "ChatResponseDTO",
     "ChatSessionHistoryResponse",
@@ -49,8 +57,12 @@ __all__ = [
     "ProviderMetadataResponse",
     "ProviderOptionSpec",
     "ProviderTypeSpecDTO",
+    "SAMPLE_RATE_HZ",
+    "SAMPLE_WIDTH_BYTES",
+    "SatelliteMessageType",
     "SelectLLMProviderRequest",
     "SendChatMessageRequest",
+    "ServerMessageType",
     "UpdatePromptRequest",
     "get_logger",
     "get_service_root",
