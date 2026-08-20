@@ -1,12 +1,10 @@
 /* ==========================================================================
-   WIDOK GŁOS — status pipeline'u głosowego, wyłącznie do odczytu. Kontener
-   statusu to `.stat-panel` (components/stat_panel.css, współdzielone
-   z Dashboardem) — tu zostaje tylko lokalny modyfikator hintu.
+   WIDOK GŁOS — dziś w całości placeholder (STT/TTS/Satelity), patrz
+   `voice_config.js`. Karty sekcji to `.stat-panel` (components/stat_panel.css,
+   współdzielone z Dashboardem) — tu zostaje tylko lokalny styl tekstu.
    ========================================================================== */
-
-/* Wewnątrz karty `.section-hint` nie powinien dziedziczyć ujemnego marginesu
-   (ten jest pomyślany do "doklejenia" pod nagłówkiem sekcji, nie wewnątrz karty). */
-.voice-status-notice {
-  margin-top: 18px;
-  margin-bottom: 0;
+.voice-placeholder-text {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
 }
