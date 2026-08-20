@@ -268,27 +268,6 @@ class WorldEngine:
                 return True
             return False
 
-    async def import_rooms_from_ha(self) -> list[RoomInstanceConfig]:
-        """Jednorazowy import: tworzy pokój dla każdej unikalnej, niepustej Home Assistant
-        Area obecnej w surowym katalogu HA, która nie ma jeszcze odpowiednika po nazwie
-        (case-insensitive) wśród istniejących pokoi. Jawna akcja administratora — nie
-        automatyczna, ciągła synchronizacja (HA Areas zostają wyłącznie podpowiedzią)."""
-        raw_devices = await self.get_catalog()
-        ha_area_names = sorted({d.area for d in raw_devices if d.area})
-        if not ha_area_names:
-            return []
-
-        existing_rooms = await self.list_rooms()
-        existing_names_lower = {room.name.lower() for room in existing_rooms.values()}
-
-        created: list[RoomInstanceConfig] = []
-        for area_name in ha_area_names:
-            if area_name.lower() in existing_names_lower:
-                continue
-            created.append(await self.create_room(name=area_name))
-        logger.info(f"Zaimportowano {len(created)} pokoi z Home Assistant Areas.")
-        return created
-
     # --------------------------------------------------------------------------
     # Zadeklarowane urządzenia — jedyne źródło prawdy o tym, co widzi agent
     # --------------------------------------------------------------------------

@@ -128,11 +128,6 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Pokój o ID '{room_id}' nie istnieje.")
         return {"success": True, "deleted_id": room_id}
 
-    @router.post("/rooms/import-from-ha", response_model=list[RoomDTO], tags=["World"])
-    async def import_rooms_from_ha() -> list[RoomDTO]:
-        created = await engine.import_rooms_from_ha()
-        return [_to_room_dto(cfg) for cfg in created]
-
     # --------------------------------------------------------------------------
     # Zadeklarowane urządzenia — jedyne źródło prawdy o tym, co widzi agent
     # --------------------------------------------------------------------------

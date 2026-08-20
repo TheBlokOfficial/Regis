@@ -310,35 +310,6 @@ async def test_room_crud_roundtrip():
         assert created.id not in await engine.list_rooms()
 
 
-@pytest.mark.anyio
-async def test_import_rooms_from_ha_creates_room_per_unique_area():
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        devices = [
-            Device(id="light.a", name="A", kind="light", capabilities=dict(_CORE_CAPS), area="salon"),
-            Device(id="light.b", name="B", kind="light", capabilities=dict(_CORE_CAPS), area="salon"),
-            Device(id="light.c", name="C", kind="light", capabilities=dict(_CORE_CAPS), area="kuchnia"),
-            Device(id="light.d", name="D", kind="light", capabilities=dict(_CORE_CAPS), area=None),
-        ]
-        engine, _ = await _engine_with_ha(tmp_dir, devices)
-
-        created = await engine.import_rooms_from_ha()
-
-        assert sorted(r.name for r in created) == ["kuchnia", "salon"]
-
-
-@pytest.mark.anyio
-async def test_import_rooms_from_ha_skips_existing_room_by_name_case_insensitive():
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        devices = [Device(id="light.a", name="A", kind="light", capabilities=dict(_CORE_CAPS), area="Salon")]
-        engine, _ = await _engine_with_ha(tmp_dir, devices)
-        await engine.create_room(name="salon")  # już istnieje, inna wielkość liter
-
-        created = await engine.import_rooms_from_ha()
-
-        assert created == []
-        assert len(await engine.list_rooms()) == 1
-
-
 # --------------------------------------------------------------------------
 # AgentEngine — NullWorldInterface domyślny, pętla ReAct z WorldEngine end-to-end
 # --------------------------------------------------------------------------

@@ -11,10 +11,10 @@ informację jako efemeryczny parametr wywołania
 `Room` jest pełnoprawnym, niezależnym od Home Assistant bytem World — nie
 surowym `area_id` HA. HA renamując/usuwając swoją Area nie może po cichu
 zepsuć mapowania nadawcy: `Device.area` zostaje wyłącznie **podpowiedzią**
-(widoczną w surowym katalogu HA, do ręcznego przypisania w UI albo
-jednorazowego importu, `WorldEngine.import_rooms_from_ha()`), nigdy prawdą.
-Jedyne źródło prawdy o przypisaniu do pokoju to `DeclaredDeviceEntry.room_id`
-(urządzenia) i `SenderProfile.room_id` (nadawcy).
+(widoczną w surowym katalogu HA, do ręcznego przypisania w UI), nigdy
+prawdą. Jedyne źródło prawdy o przypisaniu do pokoju to
+`DeclaredDeviceEntry.room_id` (urządzenia) i `SenderProfile.room_id`
+(nadawcy).
 """
 
 from dataclasses import dataclass, field

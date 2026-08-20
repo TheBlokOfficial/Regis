@@ -134,9 +134,6 @@ export class ApiClient {
   deleteRoom(...args) {
     return this._world.deleteRoom(...args);
   }
-  importRoomsFromHA(...args) {
-    return this._world.importRoomsFromHA(...args);
-  }
   getSenders(...args) {
     return this._world.getSenders(...args);
   }

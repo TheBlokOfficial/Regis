@@ -36,12 +36,6 @@
   margin-bottom: 12px;
 }
 
-.ha-section-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 .ha-section-header-actions {
   display: flex;
   align-items: center;
@@ -53,6 +47,28 @@
   color: var(--text-muted-aa);
   font-size: 0.86rem;
   overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+   Pokoje — jeden wypełniony kontener (`.stat-panel`) zamiast luźnej listy +
+   warunkowo odsłanianego formularza: composer dodawania jest stale widoczny
+   u góry, lista pod spodem w tym samym pudełku.
+   -------------------------------------------------------------------------- */
+.ha-rooms-composer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.ha-rooms-composer .form-control {
+  flex: 1;
+}
+
+/* Biel zarezerwowana dla tekstu — przycisk dodawania zostaje neutralny/szary,
+   ten sam język co `.agent-composer-submit` (agent.css). */
+.ha-rooms-composer-submit {
+  flex-shrink: 0;
 }
 
 /* --------------------------------------------------------------------------

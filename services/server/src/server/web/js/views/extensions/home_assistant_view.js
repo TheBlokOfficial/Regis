@@ -1,5 +1,5 @@
 import { renderConfigForm, bindConfigEvents } from './ha/config_panel.js';
-import { renderRoomsList, renderRoomForm, bindRoomEvents } from './ha/rooms_panel.js';
+import { renderRoomsPanel, bindRoomEvents } from './ha/rooms_panel.js';
 import { renderDeviceSearch, renderSearchResults, renderDeclaredList, initDeclaredRoomSelects, bindDeviceEvents } from './ha/devices_panel.js';
 import { renderGroupsList, renderGroupForm, bindGroupEvents } from './ha/groups_panel.js';
 import { renderThisBrowserHint, renderSatellitesList, renderSatelliteForm, bindSatelliteEvents } from './ha/satellites_panel.js';
@@ -45,7 +45,6 @@ export class HomeAssistantExtensionView {
 
     this.isCreatingGroup = false;
     this.isRegisteringSender = false;
-    this.isCreatingRoom = false;
   }
 
   async mount(container, apiClient, showToast) {
@@ -103,28 +102,17 @@ export class HomeAssistantExtensionView {
     this.container.innerHTML = `
       <div class="ha-view">
         <section class="ha-section">
-          <div class="ha-section-header">
-            <span class="ha-section-title">Konfiguracja</span>
-          </div>
+          <h3 class="section-heading">Konfiguracja</h3>
           ${renderConfigForm(this)}
         </section>
 
         <section class="ha-section">
-          <div class="ha-section-header">
-            <span class="ha-section-title">Pokoje</span>
-            <div class="ha-section-header-actions">
-              <button class="btn btn-sm btn-ghost" id="ha-btn-import-rooms" title="Jednorazowy import — bez ciągłej synchronizacji">Zaimportuj z HA Areas</button>
-              <button class="btn btn-sm btn-subtle" id="ha-btn-new-room">+ Nowy pokój</button>
-            </div>
-          </div>
-          <div class="ha-rooms-list">${renderRoomsList(this)}</div>
-          <div id="ha-room-form"></div>
+          <h3 class="section-heading">Pokoje</h3>
+          ${renderRoomsPanel(this)}
         </section>
 
         <section class="ha-section">
-          <div class="ha-section-header">
-            <span class="ha-section-title">Urządzenia</span>
-          </div>
+          <h3 class="section-heading">Urządzenia</h3>
           ${renderDeviceSearch(this)}
           <div id="ha-search-results"></div>
           ${renderDeclaredList(this)}
@@ -132,7 +120,7 @@ export class HomeAssistantExtensionView {
 
         <section class="ha-section">
           <div class="ha-section-header">
-            <span class="ha-section-title">Grupy</span>
+            <h3 class="section-heading">Grupy</h3>
             <button class="btn btn-sm btn-subtle" id="ha-btn-new-group">+ Nowa grupa</button>
           </div>
           <div class="ha-groups-list">${renderGroupsList(this)}</div>
@@ -141,7 +129,7 @@ export class HomeAssistantExtensionView {
 
         <section class="ha-section">
           <div class="ha-section-header">
-            <span class="ha-section-title">Nadawcy</span>
+            <h3 class="section-heading">Nadawcy</h3>
             <button class="btn btn-sm btn-subtle" id="ha-btn-new-satellite">+ Nowa rejestracja</button>
           </div>
           ${renderThisBrowserHint(this)}
@@ -153,7 +141,6 @@ export class HomeAssistantExtensionView {
     this._bindEvents();
     renderSearchResults(this);
     initDeclaredRoomSelects(this);
-    if (this.isCreatingRoom) renderRoomForm(this);
     if (this.isCreatingGroup) renderGroupForm(this);
     if (this.isRegisteringSender) renderSatelliteForm(this);
   }

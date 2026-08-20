@@ -96,14 +96,19 @@ async function handleSaveConfig(view) {
  * różnych stylistyk w tym samym wierszu.
  *
  * Szerokość/wysokość przycisku są zablokowane PRZED jakąkolwiek zmianą
- * zawartości (tekst -> spinner -> checkmark/X -> z powrotem tekst) —
- * inaczej krótsza treść (sama ikona) kurczy przycisk, co przesuwa resztę
- * wiersza/karty. `disabled` zostaje `true` przez CAŁY czas (spinner + 2s
- * rozbłysku) — przycisk ma być realnie nieklikalny, nie tylko wizualnie
- * przygaszony; `.btn-flash-*:disabled` w buttons.css nadpisuje domyślne
- * przygaszenie `:disabled`, żeby kolor wyniku zostawał żywy mimo blokady
- * (i żeby hover nie mógł go w ogóle dotknąć — `pointer-events: none`
- * z `:disabled` wyłącza hover całkowicie).
+ * zawartości (tekst -> checkmark/X -> z powrotem tekst) — inaczej krótsza
+ * treść (sama ikona) kurczy przycisk, co przesuwa resztę wiersza/karty. Bez
+ * fazy spinnera — na szybkim połączeniu odpowiedź przychodzi w <200ms, co
+ * zmienia spinner w nieprzyjemny błysk; przycisk zostaje z oryginalnym
+ * tekstem "Testuj połączenie" (i `disabled`) aż do przyjścia wyniku, dopiero
+ * wtedy zamienia treść na checkmark/X + kolor. `disabled` zostaje `true`
+ * przez CAŁY czas (oczekiwanie + 2s rozbłysku) — przycisk ma być realnie
+ * nieklikalny, nie tylko wizualnie przygaszony; `.btn-flash-*:disabled` w
+ * buttons.css nadpisuje domyślne przygaszenie `:disabled`, żeby kolor
+ * wyniku zostawał żywy mimo blokady (i żeby hover nie mógł go w ogóle
+ * dotknąć — `pointer-events: none` z `:disabled` wyłącza hover całkowicie).
+ * Wynik nie idzie też do toastu — kolor+ikona na przycisku już w pełni go
+ * niesie, drugi kanał informacji byłby redundantny.
  */
 async function handleTestConnection(view) {
   const baseUrl = document.getElementById('ha-input-base-url')?.value.trim() || '';
@@ -120,21 +125,17 @@ async function handleTestConnection(view) {
   const originalWidth = btn.getBoundingClientRect().width;
   btn.style.width = `${originalWidth}px`;
   btn.disabled = true;
-  btn.innerHTML = Icons.CircleLoader();
 
   let ok = false;
-  let message = 'Błąd sprawdzania połączenia.';
   try {
     const result = await view.apiClient.testHAConnection({ base_url: baseUrl, access_token: token || null });
     ok = Boolean(result?.ok);
-    message = result?.message || message;
-  } catch (error) {
-    message = error.message || message;
+  } catch {
+    ok = false;
   }
 
   btn.classList.add(ok ? 'btn-flash-success' : 'btn-flash-error');
   btn.innerHTML = ok ? Icons.Check() : Icons.X();
-  view.showToast(message, ok ? 'success' : 'error');
 
   setTimeout(() => {
     btn.classList.remove('btn-flash-success', 'btn-flash-error');

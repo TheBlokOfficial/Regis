@@ -352,20 +352,6 @@ export class WorldClient {
     }
   }
 
-  async importRoomsFromHA() {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/world/rooms/import-from-ha`, { method: 'POST' });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('[ApiClient] Błąd importu pokoi z Home Assistant:', error);
-      throw error;
-    }
-  }
-
   // --- Nadawcy (sender_id -> pokój) ---
 
   async getSenders() {
