@@ -350,11 +350,6 @@ class WorldEngine:
             )
         return result
 
-    async def list_areas(self) -> list[str]:
-        """Unikalne, niepuste `area_id` wśród zadeklarowanych urządzeń — wygoda formularza rejestracji satelity."""
-        devices = await self.resolve_devices()
-        return sorted({d.area for d in devices if d.area})
-
     # --------------------------------------------------------------------------
     # Przypisania nadawców do pokoi — sender_id -> pokój (zero wiedzy o kanale/urządzeniu)
     # --------------------------------------------------------------------------

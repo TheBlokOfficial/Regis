@@ -97,7 +97,7 @@ async function handleCreateGroup(view) {
     await view.apiClient.createHAGroup({ name, device_ids: deviceIds });
     view.showToast('Utworzono grupę.', 'success');
     view.isCreatingGroup = false;
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd tworzenia grupy.', 'error');
   }
@@ -114,7 +114,7 @@ async function handleDeleteGroupClick(view, groupId) {
   try {
     await view.apiClient.deleteHAGroup(groupId);
     view.showToast('Usunięto grupę.', 'success');
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd usuwania grupy.', 'error');
   }

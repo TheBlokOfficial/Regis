@@ -77,7 +77,7 @@ async function handleCreateRoom(view) {
     await view.apiClient.createRoom({ name });
     view.showToast('Utworzono pokój.', 'success');
     view.isCreatingRoom = false;
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd tworzenia pokoju.', 'error');
   }
@@ -87,13 +87,13 @@ async function handleRenameRoom(view, roomId, name) {
   const trimmed = name.trim();
   if (!trimmed) {
     view.showToast('Nazwa pokoju nie może być pusta.', 'error');
-    await view._loadAndRender();
+    await view._refresh();
     return;
   }
   try {
     await view.apiClient.updateRoom(roomId, { name: trimmed });
     view.showToast('Zaktualizowano nazwę pokoju.', 'success');
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd aktualizacji pokoju.', 'error');
   }
@@ -110,7 +110,7 @@ async function handleDeleteRoomClick(view, roomId) {
   try {
     await view.apiClient.deleteRoom(roomId);
     view.showToast('Usunięto pokój. Urządzenia/nadawcy przypisani do niego stają się nieprzypisani.', 'success');
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd usuwania pokoju.', 'error');
   }
@@ -120,7 +120,7 @@ async function handleImportRoomsFromHA(view) {
   try {
     const created = await view.apiClient.importRoomsFromHA();
     view.showToast(created.length > 0 ? `Zaimportowano ${created.length} pokoi z HA Areas.` : 'Brak nowych pokoi do importu.', 'success');
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd importu pokoi z HA.', 'error');
   }

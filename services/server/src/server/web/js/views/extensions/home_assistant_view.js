@@ -73,6 +73,32 @@ export class HomeAssistantExtensionView {
     this._render();
   }
 
+  /**
+   * Odświeżenie po typowej mutacji (pokój/urządzenie/grupa/nadawca) — bez
+   * `getHACatalog()`, jedynego z sześciu zasobów, który realnie kosztuje
+   * (żywe zapytanie HTTP do fizycznego Home Assistant, zero cache po stronie
+   * `WorldEngine`). Katalog nie jest potrzebny do poprawnego odświeżenia
+   * żadnej z list w tym widoku (wyszukiwarka filtruje względem świeżych
+   * `declaredDevices`, pickery pokoju budują opcje ze świeżych `rooms`) —
+   * realnie zmienia się tylko po zapisie Konfiguracji (`_loadAndRender()`
+   * tam zostaje w użyciu).
+   */
+  async _refresh() {
+    const [config, declared, groups, senders, rooms] = await Promise.all([
+      this.apiClient.getHAConfig(),
+      this.apiClient.getHADeclaredDevices(),
+      this.apiClient.getHAGroups(),
+      this.apiClient.getSenders(),
+      this.apiClient.getRooms(),
+    ]);
+    this.config = config || { base_url: '', access_token: '' };
+    this.declaredDevices = declared || [];
+    this.groups = groups || [];
+    this.senders = senders || [];
+    this.rooms = rooms || [];
+    this._render();
+  }
+
   _render() {
     this.container.innerHTML = `
       <div class="ha-view">

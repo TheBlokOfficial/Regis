@@ -74,9 +74,6 @@ export class ApiClient {
   getWorldPrompts(...args) {
     return this._world.getWorldPrompts(...args);
   }
-  getWorldPrompt(...args) {
-    return this._world.getWorldPrompt(...args);
-  }
   createWorldPrompt(...args) {
     return this._world.createWorldPrompt(...args);
   }
@@ -136,9 +133,6 @@ export class ApiClient {
   }
   importRoomsFromHA(...args) {
     return this._world.importRoomsFromHA(...args);
-  }
-  getWorldAreas(...args) {
-    return this._world.getWorldAreas(...args);
   }
   getSenders(...args) {
     return this._world.getSenders(...args);

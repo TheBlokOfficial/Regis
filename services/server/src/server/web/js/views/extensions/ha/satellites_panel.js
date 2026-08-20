@@ -114,7 +114,7 @@ async function handleRegisterSatellite(view) {
     });
     view.showToast('Zarejestrowano nadawcę.', 'success');
     view.isRegisteringSender = false;
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd rejestracji nadawcy.', 'error');
   }
@@ -131,7 +131,7 @@ async function handleDeleteSatelliteClick(view, senderId) {
   try {
     await view.apiClient.deleteSender(senderId);
     view.showToast('Usunięto rejestrację nadawcy.', 'success');
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd usuwania nadawcy.', 'error');
   }

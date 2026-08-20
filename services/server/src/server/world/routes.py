@@ -92,10 +92,6 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         devices = await engine.get_catalog()
         return [CatalogEntryDTO(entity_id=d.id, friendly_name=d.name, kind=d.kind, ha_area=d.area) for d in devices]
 
-    @router.get("/areas", response_model=list[str], tags=["World"])
-    async def get_areas() -> list[str]:
-        return await engine.list_areas()
-
     # --------------------------------------------------------------------------
     # Pokoje — pełnoprawny byt World, niezależny od Home Assistant Areas
     # --------------------------------------------------------------------------
@@ -249,17 +245,6 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
             )
         except ValueError as err:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
-        active_id = await engine.get_active_prompt_id()
-        return PromptDTO(is_active=(instance.id == active_id), **instance.model_dump())
-
-    @router.get("/prompts/{prompt_id}", response_model=PromptDTO, tags=["World"])
-    async def get_prompt(prompt_id: str) -> PromptDTO:
-        try:
-            instance = await engine.get_prompt(prompt_id)
-        except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
-        if not instance:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Profil promptu '{prompt_id}' nie istnieje.")
         active_id = await engine.get_active_prompt_id()
         return PromptDTO(is_active=(instance.id == active_id), **instance.model_dump())
 

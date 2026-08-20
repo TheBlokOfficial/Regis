@@ -23,19 +23,6 @@ export class WorldClient {
     }
   }
 
-  async getWorldPrompt(promptId) {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/world/prompts/${promptId}`);
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error(`[ApiClient] Błąd pobierania profilu promptu '${promptId}':`, error);
-      return null;
-    }
-  }
-
   async createWorldPrompt(promptData) {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/world/prompts`, {
@@ -358,19 +345,6 @@ export class WorldClient {
     } catch (error) {
       console.error('[ApiClient] Błąd importu pokoi z Home Assistant:', error);
       throw error;
-    }
-  }
-
-  async getWorldAreas() {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/world/areas`);
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('[ApiClient] Błąd pobierania listy pokoi:', error);
-      return [];
     }
   }
 

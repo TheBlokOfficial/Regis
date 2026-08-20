@@ -116,7 +116,7 @@ async function handleAddDeclaredDevice(view, entityId) {
     await view.apiClient.addHADeclaredDevice({ entity_id: entityId });
     view.showToast('Dodano urządzenie.', 'success');
     view.searchQuery = '';
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd dodawania urządzenia.', 'error');
   }
@@ -141,7 +141,7 @@ async function handleUpdateDeclaredDevice(view, entityId, patch, successMessage)
   try {
     await view.apiClient.updateHADeclaredDevice(entityId, payload);
     view.showToast(successMessage, 'success');
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd aktualizacji urządzenia.', 'error');
   }
@@ -158,7 +158,7 @@ async function handleRemoveDeclaredDeviceClick(view, entityId) {
   try {
     await view.apiClient.deleteHADeclaredDevice(entityId);
     view.showToast('Usunięto urządzenie z listy.', 'success');
-    await view._loadAndRender();
+    await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd usuwania urządzenia.', 'error');
   }
