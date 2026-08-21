@@ -1,3 +1,4 @@
+import httpx
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from server.agent.llm import LLMMessage
@@ -118,6 +119,44 @@ async def test_openai_compatible_provider_streams_and_applies_extras(base_url, e
                 assert headers.get(key) == value
         else:
             assert "HTTP-Referer" not in headers
+
+
+@pytest.mark.anyio
+async def test_openai_compatible_provider_surfaces_http_error_body_not_stream_consumed_error():
+    """Regresja: `raise_for_status()` rzuca w trakcie strumieniowania — dostęp do
+    `e.response.text` bez wcześniejszego `aread()` maskował prawdziwy błąd API
+    komunikatem httpx "Attempted to access streaming response content, without
+    having called read()." (patrz historia gita, zgłoszone na żywo w UI)."""
+    provider = OpenAICompatibleProvider(base_url="https://api.example.com/v1", api_key="test-key", model="m")
+    messages = [LLMMessage(role="user", content="Hello")]
+
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.aread = AsyncMock()
+    mock_response.text = '{"error": "invalid request: bad tool_call_id"}'
+    mock_response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError("Bad Request", request=MagicMock(), response=mock_response)
+    )
+
+    mock_stream_ctx = MagicMock()
+    mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client = MagicMock()
+    mock_client.stream.return_value = mock_stream_ctx
+
+    mock_async_client_ctx = MagicMock()
+    mock_async_client_ctx.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_async_client_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("httpx.AsyncClient", return_value=mock_async_client_ctx):
+        with pytest.raises(RuntimeError) as exc_info:
+            async for _ in provider.generate_stream(messages):
+                pass
+
+    assert "invalid request: bad tool_call_id" in str(exc_info.value)
+    assert "Attempted to access streaming response content" not in str(exc_info.value)
+    mock_response.aread.assert_awaited_once()
 
 
 def test_llm_factory_creates_provider_with_max_tokens():

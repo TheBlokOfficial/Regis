@@ -181,8 +181,17 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                             arguments = {}
                         yield ToolCallRequest(id=entry["id"], name=entry["name"], arguments=arguments)
         except httpx.HTTPStatusError as e:
-            logger.error(f"Błąd HTTP dostawcy OpenAI-compatible [{self.base_url}] [{e.response.status_code}]: {e.response.text}")
-            raise RuntimeError(f"Błąd API [{self.base_url}] HTTP {e.response.status_code}: {e.response.text}") from e
+            # `raise_for_status()` rzuca w trakcie strumieniowania (`client.stream(...)`) — treść
+            # odpowiedzi trzeba jawnie doczytać (`aread()`) przed dostępem do `.text`, inaczej httpx
+            # rzuca `StreamConsumed`/"Attempted to access streaming response content, without having
+            # called read()" i maskuje prawdziwy błąd API (nawet w logu).
+            try:
+                await e.response.aread()
+                body_text = e.response.text
+            except Exception:
+                body_text = "<nie udało się odczytać treści błędu>"
+            logger.error(f"Błąd HTTP dostawcy OpenAI-compatible [{self.base_url}] [{e.response.status_code}]: {body_text}")
+            raise RuntimeError(f"Błąd API [{self.base_url}] HTTP {e.response.status_code}: {body_text}") from e
         except httpx.ReadTimeout as e:
             logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({timeout_val}s) z [{self.base_url}].")
             raise RuntimeError(f"Timeout strumienia z [{self.base_url}] ({timeout_val}s): {e}") from e
