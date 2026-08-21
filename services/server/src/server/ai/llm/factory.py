@@ -1,7 +1,7 @@
 from shared import get_logger, ProviderMetadataResponse, ProviderTypeSpecDTO, ProviderOptionSpec
 from server.agent.llm import BaseLLMProvider
 from server.ai.llm.models import BackendInstanceConfig, ProviderType
-from server.ai.llm.providers import OllamaProvider, OpenRouterProvider
+from server.ai.llm.providers import GroqProvider, OllamaProvider, OpenRouterProvider
 
 logger = get_logger("regis.ai.llm.factory")
 
@@ -39,6 +39,12 @@ class LLMFactory:
             return OpenRouterProvider(
                 api_key=config.options.get("api_key", ""),
                 model=config.options.get("model", "anthropic/claude-3.5-sonnet"),
+                max_tokens=max_tokens,
+            )
+        elif config.type == ProviderType.GROQ:
+            return GroqProvider(
+                api_key=config.options.get("api_key", ""),
+                model=config.options.get("model", "llama-3.3-70b-versatile"),
                 max_tokens=max_tokens,
             )
         else:
@@ -102,6 +108,36 @@ class LLMFactory:
                             required=True,
                             default_value="",
                             placeholder="sk-or-v1-...",
+                        ),
+                        ProviderOptionSpec(
+                            name="max_tokens",
+                            label="Limit tokenów wyjściowych (max_tokens)",
+                            type="number",
+                            required=False,
+                            default_value="4096",
+                            placeholder="4096",
+                        ),
+                    ],
+                ),
+                ProviderTypeSpecDTO(
+                    type="GROQ",
+                    label="Groq (API)",
+                    options_schema=[
+                        ProviderOptionSpec(
+                            name="model",
+                            label="Model LLM",
+                            type="string",
+                            required=True,
+                            default_value="llama-3.3-70b-versatile",
+                            placeholder="llama-3.3-70b-versatile",
+                        ),
+                        ProviderOptionSpec(
+                            name="api_key",
+                            label="Klucz API (API Key)",
+                            type="password",
+                            required=True,
+                            default_value="",
+                            placeholder="gsk_...",
                         ),
                         ProviderOptionSpec(
                             name="max_tokens",

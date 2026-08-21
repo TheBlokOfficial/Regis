@@ -8,6 +8,7 @@ class ProviderType(str, Enum):
 
     OLLAMA = "OLLAMA"
     OPENROUTER = "OPENROUTER"
+    GROQ = "GROQ"
 
 
 class BackendFileContent(BaseModel):
