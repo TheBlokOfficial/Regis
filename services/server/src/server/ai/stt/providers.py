@@ -2,8 +2,11 @@
 
 `GroqSTTProvider` woła Groq (Whisper przez ich API, `AsyncGroq`) — kontrakt
 zweryfikowany bezpośrednio (dokumentacja + inspekcja zainstalowanego SDK, nie
-zgadywany). `MockSTTProvider` pozostaje dev-providerem (fallback gdy
-`VoiceProvidersConfig.groq_api_key` puste, patrz `ai/stt/factory.py`).
+zgadywany). `MockSTTProvider` to wyłącznie jawny wybór w testach jednostkowych —
+`ai/stt/factory.py` NIE degraduje do niego automatycznie przy pustym kluczu
+(patrz `STTNotConfiguredError`), bo satelita nagrywa realną mowę i podstawienie
+sfabrykowanego tekstu wygenerowałoby prawdziwą turę agenta na podstawie czegoś,
+czego użytkownik nigdy nie powiedział.
 """
 
 from __future__ import annotations

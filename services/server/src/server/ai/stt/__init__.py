@@ -2,7 +2,7 @@
 w `server.voice.stt` — `voice/` trzyma go dokładnie jak Kernel trzyma
 `BaseLLMProvider` (`server.agent.llm`)."""
 
-from server.ai.stt.factory import STTFactory
+from server.ai.stt.factory import STTFactory, STTNotConfiguredError
 from server.ai.stt.models import ActiveSTTBackendConfig, STTInstanceConfig, STTInstanceFileContent, STTProviderType
 from server.ai.stt.providers import GroqSTTProvider, MockSTTProvider
 from server.ai.stt.registry import STTRegistry
@@ -15,6 +15,7 @@ __all__ = [
     "STTFactory",
     "STTInstanceConfig",
     "STTInstanceFileContent",
+    "STTNotConfiguredError",
     "STTProviderType",
     "STTRegistry",
     "STTRouter",

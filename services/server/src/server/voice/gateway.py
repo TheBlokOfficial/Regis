@@ -67,6 +67,9 @@ class VoiceConnection:
     async def send_audio(self, chunk: bytes) -> None:
         await self._websocket.send_bytes(chunk)
 
+    async def send_error(self, detail: str) -> None:
+        await self._websocket.send_text(json.dumps({"type": ServerMessageType.ERROR.value, "detail": detail}))
+
     # --------------------------------------------------------------------------
     # Odpalenie tury kernela — jednokierunkowe, "wyślij i zapomnij"
     # --------------------------------------------------------------------------
@@ -104,7 +107,7 @@ class VoiceConnection:
         self._text_buffer = ""
         detail = event.payload.get("error", "Przerwano generowanie odpowiedzi.")
         logger.warning(f"Błąd/anulowanie tury [sender_id: '{self.sender_id}']: {detail}")
-        await self._websocket.send_text(json.dumps({"type": ServerMessageType.ERROR.value, "detail": str(detail)}))
+        await self.send_error(str(detail))
         self.session.reset_to_listening()
 
     def _subscribe(self, event_bus: EventBus) -> None:

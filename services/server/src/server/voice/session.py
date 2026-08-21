@@ -41,6 +41,8 @@ class SatelliteLink(Protocol):
 
     async def send_audio(self, chunk: bytes) -> None: ...
 
+    async def send_error(self, detail: str) -> None: ...
+
 
 class VoiceSession:
     """Automat stanu jednej rozmowy — jedna instancja per żywe połączenie WS."""
@@ -88,7 +90,15 @@ class VoiceSession:
 
         audio = bytes(self._utterance_buffer)
         self._utterance_buffer.clear()
-        transcript = await self._stt_provider.transcribe(audio)
+        try:
+            transcript = await self._stt_provider.transcribe(audio)
+        except Exception as err:
+            # Surowa treść wyjątku (może zdradzać szczegóły dostawcy) wyłącznie do logów —
+            # ten sam wzorzec sanityzacji co `agent/engine.py::_generate_in_background`.
+            logger.error(f"Transkrypcja STT nie powiodła się [sender_id: '{self.sender_id}']: {err}")
+            await self._link.send_error("STT nieskonfigurowany lub niedostępny — spróbuj ponownie później.")
+            self.reset_to_listening()
+            return
         logger.info(f"Transkrypcja [sender_id: '{self.sender_id}']: '{transcript}'")
         self._on_transcript(transcript)
         # Pozostajemy w PROCESSING — powrót do LISTENING_WAKEWORD następuje dopiero

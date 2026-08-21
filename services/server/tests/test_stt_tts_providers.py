@@ -7,7 +7,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from server.ai.stt import GroqSTTProvider, MockSTTProvider, STTFactory, STTInstanceConfig, STTProviderType, STTRegistry
+from server.ai.stt import (
+    GroqSTTProvider,
+    STTFactory,
+    STTInstanceConfig,
+    STTNotConfiguredError,
+    STTProviderType,
+    STTRegistry,
+)
 from server.ai.tts import ElevenLabsTTSProvider, MockTTSProvider, TTSFactory, TTSInstanceConfig, TTSProviderType, TTSRegistry
 from server.voice.provider_routes import create_voice_providers_router
 
@@ -20,10 +27,10 @@ def test_stt_factory_creates_groq_provider():
     assert isinstance(provider, GroqSTTProvider)
 
 
-def test_stt_factory_degrades_to_mock_when_api_key_empty():
+def test_stt_factory_raises_when_api_key_empty():
     config = STTInstanceConfig(id="stt_test", type=STTProviderType.GROQ, name="Test", options={"api_key": ""})
-    provider = STTFactory.create_provider(config)
-    assert isinstance(provider, MockSTTProvider)
+    with pytest.raises(STTNotConfiguredError):
+        STTFactory.create_provider(config)
 
 
 def test_stt_factory_schemas_include_api_key_and_model():
