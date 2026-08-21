@@ -66,8 +66,14 @@ export class ApiClient {
   sendChatMessage(...args) {
     return this._chat.sendChatMessage(...args);
   }
+  sendChatMessageAsync(...args) {
+    return this._chat.sendChatMessageAsync(...args);
+  }
   streamChatMessage(...args) {
     return this._chat.streamChatMessage(...args);
+  }
+  watchSession(...args) {
+    return this._chat.watchSession(...args);
   }
 
   // --- World (prompty, Home Assistant, pokoje, nadawcy) ---

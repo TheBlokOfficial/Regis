@@ -1,5 +1,7 @@
+import json
 import time
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from shared import (
     ChatMessageDTO,
@@ -84,6 +86,22 @@ def create_sessions_router(agent_engine: AgentEngine) -> APIRouter:
             updated_at=session.updated_at,
             is_generating=is_generating,
         )
+
+    @router.get(
+        "/api/v1/chat/sessions/{session_id}/watch",
+        summary="Obserwuje sesje w czasie rzeczywistym przez SSE - niezaleznie od tego, kto zainicjowal ture (Web/satelita/cron/inna karta)",
+        tags=["Chat & Sessions"],
+    )
+    async def watch_chat_session(session_id: str):
+        """Cienki wrapper wokol `AgentEngine.watch_session()` — polaczenie zyje tak dlugo,
+        jak dlugo klient (typowo karta przegladarki) go nie zamknie; kazda przyszla tura tej
+        sesji, niezaleznie od inicjatora, doreczana jest tym samym strumieniem."""
+
+        async def event_generator():
+            async for event in agent_engine.watch_session(session_id):
+                yield f"data: {json.dumps({**event.payload, 'type': event.type})}\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
 
     @router.delete(
         "/api/v1/chat/sessions/{session_id}",

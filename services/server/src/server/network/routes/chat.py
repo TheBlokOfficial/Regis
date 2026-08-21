@@ -71,6 +71,27 @@ def create_chat_router(agent_engine: AgentEngine) -> APIRouter:
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 
     @router.post(
+        "/api/v1/chat/send",
+        status_code=status.HTTP_202_ACCEPTED,
+        summary="Odpala ture Agenta w tle i od razu wraca (\"wyslij i zapomnij\") - renderowanie na zywo wylacznie przez GET .../watch",
+        tags=["Chat & Sessions"],
+    )
+    async def chat_send(req: SendChatMessageRequest):
+        """Mirror `AgentEngine.start_interaction()` (dotad uzywanego tylko przez satelity
+        glosowe) wystawiony przez REST — Web UI korzysta z niego zamiast blokujacego
+        `/api/v1/chat` albo samo-strumieniujacego `/api/v1/chat/stream`, zeby wyslanie
+        wiadomosci nie roznilo sie architektonicznie od tury zainicjowanej przez satelite:
+        jedynym zrodlem renderowania (dla kazdego inicjatora) jest kanal obserwujacy
+        `GET /api/v1/chat/sessions/{session_id}/watch`."""
+        try:
+            agent_engine.start_interaction(
+                session_id=req.session_id, prompt=req.message, sender_id=req.sender_id
+            )
+        except RuntimeError as err:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(err))
+        return {"success": True, "session_id": req.session_id}
+
+    @router.post(
         "/api/v1/chat/cancel",
         summary="Anuluje aktywne generowanie odpowiedzi dla podanej sesji (Web, Satelita, Cron)",
         tags=["Chat & Sessions"],

@@ -296,4 +296,82 @@ async def test_disconnect_does_not_cancel_background_task():
         assert "Słowo1 Słowo2 Słowo3" in history[1].content
 
 
+def test_chat_send_is_fire_and_forget(test_client):
+    """POST /api/v1/chat/send (uzywany dzis przez Web UI zamiast /chat/stream) odpala
+    ture w tle i wraca natychmiast z 202, bez tresci odpowiedzi - mirror
+    AgentEngine.start_interaction(), z ktorego dotad korzystala tylko satelita glosowa."""
+    client, memory = test_client
+
+    res = client.post(
+        "/api/v1/chat/send",
+        json={"session_id": "session_default", "message": "Wyslij i zapomnij"},
+    )
+    assert res.status_code == 202
+    assert res.json() == {"success": True, "session_id": "session_default"}
+
+    # Odpowiedz przychodzi asynchronicznie - TestClient jest synchroniczny, wiec do czasu
+    # kolejnego zadania petla w tle miala juz szanse dokonczyc (mock LLM jest natychmiastowy).
+    history = client.get("/api/v1/chat/sessions/session_default/history").json()
+    assert any(m["role"] == "user" and m["content"] == "Wyslij i zapomnij" for m in history["messages"])
+
+
+def test_chat_send_rejects_busy_session():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        memory_manager = MemoryManager(data_dir=tmp_path / "sessions")
+        slow_provider = SlowMockLLMProvider()
+        engine = AgentEngine(llm_provider=slow_provider, memory_manager=memory_manager)
+        backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
+        prompt_store = AgentDefaultPromptStore(data_dir=tmp_path)
+        app = create_gateway_app(agent_engine=engine, backend_registry=backend_registry, prompt_store=prompt_store)
+
+        with TestClient(app) as client:
+            first = client.post("/api/v1/chat/send", json={"session_id": "session_default", "message": "Pierwsza"})
+            assert first.status_code == 202
+
+            second = client.post("/api/v1/chat/send", json={"session_id": "session_default", "message": "Druga"})
+            assert second.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_watch_session_forwards_user_message_and_does_not_terminate():
+    """`watch_session()` to pasywna obserwacja uzywana przez Web UI (`GET .../watch`) -
+    w odroznieniu od `interact_stream()` powinna (1) przekazac CHAT_USER_MESSAGE (dotad
+    zadne zdarzenie nie nioslo tresci pytania uzytkownika poza pamiecia sesji) i (2) NIE
+    konczyc sie samoistnie na 'done' - to obserwator (SSE) decyduje, kiedy przestac."""
+    import asyncio
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        memory_manager = MemoryManager(data_dir=tmp_path / "sessions")
+        engine = AgentEngine(llm_provider=MockLLMProvider(), memory_manager=memory_manager)
+
+        watcher = engine.watch_session("session_default")
+        first_task = asyncio.ensure_future(anext(watcher))
+        # Oddajemy sterowanie petli zdarzen, zeby generator zdazyl wykonac synchroniczna
+        # czesc ciala (subskrypcje w EventBus) zanim odpalimy ture - inaczej start_interaction
+        # moglby opublikowac CHAT_USER_MESSAGE, zanim ktokolwiek go subskrybuje.
+        await asyncio.sleep(0)
+        engine.start_interaction(session_id="session_default", prompt="Halo?")
+
+        first = await first_task
+        assert first.type == "user_message"
+        assert first.payload["content"] == "Halo?"
+
+        types = [first.type]
+        async with asyncio.timeout(2.0):
+            while types[-1] != "done":
+                event = await anext(watcher)
+                types.append(event.type)
+
+        assert "chunk" in types
+        assert types[-1] == "done"
+        # Kluczowe: mimo 'done' generator NIE jest zamkniety samoistnie - w odroznieniu od
+        # interact_stream (ktore po 'done' konczy iteracje), watch_session nigdy sam sie nie
+        # konczy — to obserwator (SSE/klient) decyduje, kiedy przestac czytac.
+        assert watcher.ag_frame is not None
+
+        await watcher.aclose()
+
+
 

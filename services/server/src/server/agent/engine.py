@@ -38,7 +38,7 @@ class StreamEvent:
     """Ustrukturyzowany element strumienia `interact_stream` — jeden do jednego
     z rodzajem zdarzenia `EventBus`, gotowy do serializacji SSE przez wywołującego."""
 
-    type: Literal["chunk", "tool_start", "tool_result", "done", "error", "cancelled"]
+    type: Literal["user_message", "chunk", "tool_start", "tool_result", "done", "error", "cancelled"]
     payload: dict[str, Any]
 
 
@@ -161,6 +161,11 @@ class AgentEngine:
 
         # 1. Rejestracja pytania użytkownika w pamięci sesji (I/O na dysku poza event loopem)
         await asyncio.to_thread(self.memory_manager.add_message, session_id=session_id, role="user", content=prompt)
+        # Rozgłoszenie treści wiadomości użytkownika — jedyny sposób, w jaki obserwator
+        # sesji (np. `watch_session()`, Web UI) dowiaduje się o pytaniu, gdy tura została
+        # zainicjowana gdzie indziej (satelita/cron/inna karta przeglądarki): dotąd treść
+        # promptu trafiała wyłącznie do pamięci, nigdy na `EventBus`.
+        await _publish(ServerEventType.CHAT_USER_MESSAGE, {"content": prompt})
 
         self._generation_buffers[session_id] = ""
 
@@ -296,6 +301,65 @@ class AgentEngine:
             self._active_tasks.pop(session_id, None)
             self._generation_buffers.pop(session_id, None)
 
+    def _subscribe_session_events(
+        self, session_id: str, queue: "asyncio.Queue[StreamEvent]"
+    ) -> list[tuple[ServerEventType, Any]]:
+        """Rejestruje w `EventBus` komplet handlerów tłumaczących zdarzenia `CHAT_*`/
+        `TOOL_CALL_*` danej sesji na `StreamEvent` wrzucane do `queue` — współdzielone przez
+        `interact_stream()` (subskrypcja na czas jednej tury) i `watch_session()`
+        (subskrypcja pasywna, bez limitu czasu). Zwraca listę (typ, handler) do późniejszego
+        `unsubscribe` przez wywołującego (finally bloku), gdy przestaje mu być potrzebna.
+        """
+
+        def _step_payload(event: Event[Any]) -> dict[str, Any]:
+            # "type" wewnątrz ToolStepPayload ("tool_call"/"tool_result") jest zbędny tutaj —
+            # StreamEvent.type ("tool_start"/"tool_result") już jednoznacznie opisuje rodzaj
+            # zdarzenia SSE; zostawienie obu kolidowałoby przy spreadzie payloadu w routes/chat.py.
+            return {k: v for k, v in event.payload.items() if k not in ("session_id", "type")}
+
+        async def on_user_message(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(StreamEvent(type="user_message", payload={"content": event.payload.get("content", "")}))
+
+        async def on_chunk(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(StreamEvent(type="chunk", payload={"chunk": event.payload.get("chunk", "")}))
+
+        async def on_tool_start(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(StreamEvent(type="tool_start", payload=_step_payload(event)))
+
+        async def on_tool_result(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(StreamEvent(type="tool_result", payload=_step_payload(event)))
+
+        async def on_done(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(StreamEvent(type="done", payload={}))
+
+        async def on_error(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(
+                    StreamEvent(type="error", payload={"error": event.payload.get("error", "Nieznany błąd generowania.")})
+                )
+
+        async def on_cancelled(event: Event[Any]) -> None:
+            if event.payload.get("session_id") == session_id:
+                await queue.put(StreamEvent(type="cancelled", payload={}))
+
+        subscriptions: list[tuple[ServerEventType, Any]] = [
+            (ServerEventType.CHAT_USER_MESSAGE, on_user_message),
+            (ServerEventType.CHAT_CHUNK, on_chunk),
+            (ServerEventType.TOOL_CALL_START, on_tool_start),
+            (ServerEventType.TOOL_CALL_RESULT, on_tool_result),
+            (ServerEventType.CHAT_DONE, on_done),
+            (ServerEventType.CHAT_ERROR, on_error),
+            (ServerEventType.CHAT_CANCELLED, on_cancelled),
+        ]
+        for event_type, handler in subscriptions:
+            self.event_bus.subscribe(event_type, handler)
+        return subscriptions
+
     async def interact_stream(
         self,
         session_id: str = "session_default",
@@ -328,45 +392,7 @@ class AgentEngine:
         logger.info(f"Strumieniowa interakcja [Sesja: '{session_id}']: '{prompt}'")
 
         queue: asyncio.Queue[StreamEvent] = asyncio.Queue()
-
-        def _step_payload(event: Event[Any]) -> dict[str, Any]:
-            # "type" wewnątrz ToolStepPayload ("tool_call"/"tool_result") jest zbędny tutaj —
-            # StreamEvent.type ("tool_start"/"tool_result") już jednoznacznie opisuje rodzaj
-            # zdarzenia SSE; zostawienie obu kolidowałoby przy spreadzie payloadu w routes/chat.py.
-            return {k: v for k, v in event.payload.items() if k not in ("session_id", "type")}
-
-        async def on_chunk(event: Event[Any]) -> None:
-            if event.payload.get("session_id") == session_id:
-                await queue.put(StreamEvent(type="chunk", payload={"chunk": event.payload.get("chunk", "")}))
-
-        async def on_tool_start(event: Event[Any]) -> None:
-            if event.payload.get("session_id") == session_id:
-                await queue.put(StreamEvent(type="tool_start", payload=_step_payload(event)))
-
-        async def on_tool_result(event: Event[Any]) -> None:
-            if event.payload.get("session_id") == session_id:
-                await queue.put(StreamEvent(type="tool_result", payload=_step_payload(event)))
-
-        async def on_done(event: Event[Any]) -> None:
-            if event.payload.get("session_id") == session_id:
-                await queue.put(StreamEvent(type="done", payload={}))
-
-        async def on_error(event: Event[Any]) -> None:
-            if event.payload.get("session_id") == session_id:
-                await queue.put(
-                    StreamEvent(type="error", payload={"error": event.payload.get("error", "Nieznany błąd generowania.")})
-                )
-
-        async def on_cancelled(event: Event[Any]) -> None:
-            if event.payload.get("session_id") == session_id:
-                await queue.put(StreamEvent(type="cancelled", payload={}))
-
-        self.event_bus.subscribe(ServerEventType.CHAT_CHUNK, on_chunk)
-        self.event_bus.subscribe(ServerEventType.TOOL_CALL_START, on_tool_start)
-        self.event_bus.subscribe(ServerEventType.TOOL_CALL_RESULT, on_tool_result)
-        self.event_bus.subscribe(ServerEventType.CHAT_DONE, on_done)
-        self.event_bus.subscribe(ServerEventType.CHAT_ERROR, on_error)
-        self.event_bus.subscribe(ServerEventType.CHAT_CANCELLED, on_cancelled)
+        subscriptions = self._subscribe_session_events(session_id, queue)
 
         bg_task = asyncio.create_task(
             self._generate_in_background(
@@ -381,7 +407,7 @@ class AgentEngine:
         try:
             while True:
                 stream_event = await queue.get()
-                if stream_event.type in ("chunk", "tool_start", "tool_result"):
+                if stream_event.type in ("user_message", "chunk", "tool_start", "tool_result"):
                     yield stream_event
                 elif stream_event.type == "done":
                     break
@@ -390,12 +416,33 @@ class AgentEngine:
                 elif stream_event.type == "error":
                     raise RuntimeError(stream_event.payload.get("error"))
         finally:
-            self.event_bus.unsubscribe(ServerEventType.CHAT_CHUNK, on_chunk)
-            self.event_bus.unsubscribe(ServerEventType.TOOL_CALL_START, on_tool_start)
-            self.event_bus.unsubscribe(ServerEventType.TOOL_CALL_RESULT, on_tool_result)
-            self.event_bus.unsubscribe(ServerEventType.CHAT_DONE, on_done)
-            self.event_bus.unsubscribe(ServerEventType.CHAT_ERROR, on_error)
-            self.event_bus.unsubscribe(ServerEventType.CHAT_CANCELLED, on_cancelled)
+            for event_type, handler in subscriptions:
+                self.event_bus.unsubscribe(event_type, handler)
+
+    async def watch_session(self, session_id: str) -> AsyncIterator[StreamEvent]:
+        """Pasywna, długożyjąca obserwacja `EventBus` po `session_id` — mirror stałej
+        subskrypcji `VoiceConnection` po `sender_id` w `voice/gateway.py`, tyle że dla
+        dowolnego klienta REST/SSE (typowo Web UI).
+
+        W odróżnieniu od `interact_stream()` NIE odpala żadnej tury i NIE kończy się na
+        `done`/`error`/`cancelled` — po prostu przekazuje każde zdarzenie dalej i wraca po
+        kolejne, aż wywołujący przerwie iterację (np. klient SSE się rozłączy). Dzięki
+        temu widzi KAŻDĄ turę tej sesji w czasie rzeczywistym, niezależnie od tego, kto ją
+        zainicjował (Web UI, satelita, cron, inna karta przeglądarki) — bez tego tylko
+        strumień zainicjowany przez to samo żądanie (`interact_stream`) widział własną
+        turę na żywo, reszta dowiadywała się dopiero z przeładowania historii.
+
+        :param session_id: Identyfikator sesji backendowej do obserwowania.
+        :yields: Każde `StreamEvent` tej sesji, w kolejności wystąpienia, bez końca.
+        """
+        queue: asyncio.Queue[StreamEvent] = asyncio.Queue()
+        subscriptions = self._subscribe_session_events(session_id, queue)
+        try:
+            while True:
+                yield await queue.get()
+        finally:
+            for event_type, handler in subscriptions:
+                self.event_bus.unsubscribe(event_type, handler)
 
     async def interact(
         self,

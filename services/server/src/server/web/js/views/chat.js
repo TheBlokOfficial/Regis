@@ -12,7 +12,6 @@ export class ChatView {
     this.activeSessionId = 'session_default';
     this.sessions = [];
     this.isGenerating = false;
-    this.abortController = null;
     this.currentAssistantMessageEl = null;
     this.currentAssistantTextEl = null;
     this.accumulatedText = '';
@@ -22,13 +21,16 @@ export class ChatView {
     // zdarzeń SSE, bez pełnego przerenderowania na każdy token.
     this.stepRail = new StepRailRenderer();
     this.userHasScrolledUp = false;
-    this.pollInterval = null;
     this._documentClickBound = false;
-    // Watchdog niskiej częstotliwości — łapie tury odpalone spoza tej karty (satelita,
-    // cron, inna karta przeglądarki), które nigdy nie przejdą przez SSE ani fallback-polling
-    // uruchamiany tylko przy ładowaniu strony w trakcie generowania (patrz startPolling niżej).
-    this.watchInterval = null;
-    this.lastKnownUpdatedAt = {};
+    // Kanał obserwujący aktywną sesję w czasie rzeczywistym (GET .../watch, SSE) — jedno
+    // długożyjące połączenie, niezależne od tego, kto zainicjował turę (Web/satelita/cron/
+    // inna karta). Jedyne źródło renderowania wiadomości/streamingu — Web UI nie ma już
+    // żadnej "własnej", uprzywilejowanej ścieżki (patrz handleSendMessage/openWatch).
+    this.watchController = null;
+    // Lekki poll niskiej częstotliwości — WYŁĄCZNIE do wykrycia nowych sesji utworzonych
+    // gdzie indziej (kanał watch jest per-sesja, nie widzi sesji jeszcze nieobecnych w
+    // popoverze). Treść/tokeny nie idą już tą ścieżką.
+    this.sessionListWatchInterval = null;
   }
 
   render() {
@@ -104,8 +106,11 @@ export class ChatView {
     this.bindEvents();
     await this.loadActiveProviderInfo();
     await this.loadSessionsList();
+    // Otwieramy kanał obserwujący PRZED wczytaniem historii, żeby zminimalizować okno,
+    // w którym ewentualny token/zdarzenie mogłyby przepaść między snapshotem a subskrypcją.
+    this.openWatch(this.activeSessionId);
     await this.loadSessionHistory(this.activeSessionId);
-    this.startWatch();
+    this.startSessionListWatch();
   }
 
   mountIcons() {
@@ -216,6 +221,7 @@ export class ChatView {
         if (created && created.session_id) {
           this.activeSessionId = created.session_id;
           await this.loadSessionsList();
+          this.openWatch(this.activeSessionId);
           await this.loadSessionHistory(this.activeSessionId);
           if (popover) {
             popover.classList.add('hidden');
@@ -256,7 +262,6 @@ export class ChatView {
       const res = await this.apiClient.getChatSessions();
       if (res && res.sessions) {
         this.sessions = res.sessions;
-        this.recordKnownState(this.sessions);
 
         const activeSession = this.sessions.find((s) => s.session_id === this.activeSessionId);
         if (!activeSession && this.sessions.length > 0) {
@@ -299,6 +304,7 @@ export class ChatView {
               if (sid !== this.activeSessionId) {
                 this.activeSessionId = sid;
                 await this.loadSessionsList();
+                this.openWatch(this.activeSessionId);
                 await this.loadSessionHistory(this.activeSessionId);
               }
               const popover = document.getElementById('chat-session-popover');
@@ -330,6 +336,7 @@ export class ChatView {
                     this.activeSessionId = 'session_default';
                   }
                   await this.loadSessionsList();
+                  this.openWatch(this.activeSessionId);
                   await this.loadSessionHistory(this.activeSessionId);
                 }
               } catch (err) {
@@ -360,29 +367,20 @@ export class ChatView {
     return `${day}.${month}, ${hours}:${minutes}`;
   }
 
-  recordKnownState(sessions) {
-    sessions.forEach((s) => {
-      this.lastKnownUpdatedAt[s.session_id] = s.updated_at;
-    });
+  startSessionListWatch() {
+    this.stopSessionListWatch();
+    this.sessionListWatchInterval = setInterval(() => this.checkForNewSessions(), 4000);
   }
 
-  startWatch() {
-    this.stopWatch();
-    this.watchInterval = setInterval(() => this.checkForExternalUpdates(), 3000);
-  }
-
-  stopWatch() {
-    if (this.watchInterval) {
-      clearInterval(this.watchInterval);
-      this.watchInterval = null;
+  stopSessionListWatch() {
+    if (this.sessionListWatchInterval) {
+      clearInterval(this.sessionListWatchInterval);
+      this.sessionListWatchInterval = null;
     }
   }
 
-  async checkForExternalUpdates() {
-    // W trakcie własnego strumienia (SSE albo fallback-poll już aktywny) UI jest już
-    // aktualizowane inną ścieżką — unikamy nadpisywania go w połowie renderu.
-    if (!this.apiClient || this.isGenerating) return;
-
+  async checkForNewSessions() {
+    if (!this.apiClient) return;
     try {
       const res = await this.apiClient.getChatSessions();
       if (!res || !res.sessions) return;
@@ -392,79 +390,119 @@ export class ChatView {
       const sessionListChanged =
         previousIds.size !== incomingIds.size || [...incomingIds].some((id) => !previousIds.has(id));
 
-      const activeSummary = res.sessions.find((s) => s.session_id === this.activeSessionId);
-      const activeSessionGenerating = !!(activeSummary && activeSummary.is_generating);
-      const activeSessionUpdated =
-        !!activeSummary && activeSummary.updated_at !== this.lastKnownUpdatedAt[this.activeSessionId];
-
-      this.sessions = res.sessions;
-      this.recordKnownState(res.sessions);
-
       if (sessionListChanged) {
         await this.loadSessionsList();
       }
-
-      if (activeSessionGenerating || activeSessionUpdated) {
-        // Tura zainicjowana poza tą kartą (satelita/cron/inna karta przeglądarki) — jej SSE
-        // nigdy tu nie dotrze, więc dołączamy się do niej pełnym przeładowaniem historii
-        // (uruchomi fallback-polling z startPolling, jeśli wciąż trwa generowanie).
-        await this.loadSessionHistory(this.activeSessionId);
-      }
     } catch (err) {
-      console.error('[ChatView] Błąd sprawdzania aktualizacji zewnętrznych:', err);
+      console.error('[ChatView] Błąd sprawdzania nowych sesji:', err);
     }
   }
 
-  stopPolling() {
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = null;
+  // --------------------------------------------------------------------------------------
+  // Kanał obserwujący (GET .../watch, SSE) — jedyne źródło renderowania treści/streamingu.
+  // Otwierany raz per aktywna sesja (init/przełączenie sesji), niezależnie od tego, kto
+  // odpalił turę: satelita/cron/Web UI/inna karta wyglądają dla tego kodu identycznie.
+  // --------------------------------------------------------------------------------------
+
+  openWatch(sessionId) {
+    this.closeWatch();
+    const controller = new AbortController();
+    this.watchController = controller;
+    this._runWatchLoop(sessionId, controller);
+  }
+
+  closeWatch() {
+    if (this.watchController) {
+      this.watchController.abort();
+      this.watchController = null;
     }
   }
 
-  startPolling(sessionId) {
-    this.stopPolling();
-    this.pollInterval = setInterval(async () => {
-      if (this.activeSessionId !== sessionId || !this.isGenerating) {
-        this.stopPolling();
-        return;
-      }
-
+  async _runWatchLoop(sessionId, controller) {
+    while (!controller.signal.aborted) {
       try {
-        const res = await this.apiClient.getChatHistory(sessionId);
-        if (!res || this.activeSessionId !== sessionId) {
-          this.stopPolling();
-          return;
-        }
-
-        const messages = res.messages || [];
-        const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-
-        if (lastMsg && lastMsg.role === 'assistant') {
-          this.accumulatedText = lastMsg.content || '';
-          // Fallback pollingu (SSE nieaktywne, np. po odświeżeniu strony w trakcie generowania)
-          // nie ma dostępu do kroków pośrednich w toku — pokazuje tylko narastający tekst,
-          // całe drzewko kroków pojawi się dopiero po zakończeniu tury (metadata.steps
-          // trafi do historii). Świadomy gap, patrz docs/manifest.md.
-          if (this.currentAssistantTextEl) {
-            const cursor = res.is_generating ? '<span class="streaming-cursor"></span>' : '';
-            this.currentAssistantTextEl.innerHTML = this.stepRail.renderAssistantHistoryHtml(this.accumulatedText, []) + cursor;
-          }
-          this.scrollToBottom();
-        }
-
-        if (!res.is_generating) {
-          this.stopPolling();
-          this.finishStreaming();
-        }
+        await this.apiClient.watchSession(
+          sessionId,
+          {
+            onUserMessage: (content) => this._onWatchUserMessage(sessionId, content),
+            onChunk: (chunk) => this._onWatchChunk(sessionId, chunk),
+            onToolStart: (evt) => this._onWatchToolStart(sessionId, evt),
+            onToolResult: (evt) => this._onWatchToolResult(sessionId, evt),
+            onDone: () => this._onWatchDone(sessionId),
+            onError: (err) => this._onWatchError(sessionId, err),
+            onCancelled: () => this._onWatchCancelled(sessionId),
+          },
+          controller.signal
+        );
       } catch (err) {
-        console.error('[ChatView] Błąd w pollingu historii:', err);
+        if (controller.signal.aborted) return;
+        console.error('[ChatView] Kanał obserwujący przerwany, ponawiam za chwilę:', err);
       }
-    }, 1500);
+      if (controller.signal.aborted) return;
+      // Połączenie zakończyło się z jakiegoś powodu (restart serwera, sieć) — krótka
+      // przerwa i reconnect na tę samą sesję, zamiast zostawiać kartę bez żywego kanału.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  _onWatchUserMessage(sessionId, content) {
+    if (sessionId !== this.activeSessionId) return;
+    const emptyState = document.getElementById('chat-empty-state');
+    if (emptyState) emptyState.remove();
+
+    this.appendMessageElement('user', content, Date.now() / 1000);
+    this.userHasScrolledUp = false;
+    this.scrollToBottom(true);
+
+    this.setGeneratingState(true);
+    this.accumulatedText = '';
+    this.currentAssistantMessageEl = this.appendMessageElement('assistant', '', Date.now() / 1000, true);
+    this.currentAssistantTextEl = this.currentAssistantMessageEl.querySelector('.message-text');
+    if (this.currentAssistantTextEl) this.currentAssistantTextEl.innerHTML = '';
+    this.stepRail.reset(this.currentAssistantTextEl);
+  }
+
+  _onWatchChunk(sessionId, chunk) {
+    if (sessionId !== this.activeSessionId) return;
+    this.accumulatedText += chunk;
+    this.stepRail.appendStreamingText(chunk);
+    this.scrollToBottom();
+  }
+
+  _onWatchToolStart(sessionId, evt) {
+    if (sessionId !== this.activeSessionId) return;
+    this.stepRail.appendStepNode(evt);
+    this.scrollToBottom();
+  }
+
+  _onWatchToolResult(sessionId, evt) {
+    if (sessionId !== this.activeSessionId) return;
+    this.stepRail.updateStepNode(evt);
+    this.scrollToBottom();
+  }
+
+  _onWatchDone(sessionId) {
+    if (sessionId !== this.activeSessionId) return;
+    this.stepRail.finalizeCurrentTextRun();
+    this.stepRail.closeCurrentRail();
+    this.setGeneratingState(false);
+    this.loadSessionsList();
+  }
+
+  _onWatchError(sessionId, error) {
+    if (sessionId !== this.activeSessionId) return;
+    console.error('[ChatView] Błąd generowania:', error);
+    this.stepRail.appendStreamingText(`\n\n[Błąd: ${error.message}]`);
+    this._onWatchDone(sessionId);
+  }
+
+  _onWatchCancelled(sessionId) {
+    if (sessionId !== this.activeSessionId) return;
+    this.stepRail.appendStreamingText('\n\n[Przerwano]');
+    this._onWatchDone(sessionId);
   }
 
   async loadSessionHistory(sessionId) {
-    this.stopPolling();
     this.userHasScrolledUp = false;
     const container = document.getElementById('chat-messages-container');
     if (!container || !this.apiClient) return;
@@ -481,12 +519,7 @@ export class ChatView {
             <div class="empty-state-desc">Jestem Agentem Regis OS. O co chcesz zapytać?</div>
           </div>
         `;
-        if (res && res.is_generating) {
-          this.setGeneratingState(true);
-          this.startPolling(sessionId);
-        } else {
-          this.setGeneratingState(false);
-        }
+        this.setGeneratingState(!!(res && res.is_generating));
         return;
       }
 
@@ -515,7 +548,13 @@ export class ChatView {
         this.currentAssistantMessageEl = lastAssistantRow;
         this.currentAssistantTextEl = lastAssistantRow ? lastAssistantRow.querySelector('.message-text') : null;
         this.accumulatedText = lastAssistantContent;
-        this.startPolling(sessionId);
+        // Usuwamy statyczny kursor replayu — dalsze tokeny dokłada już kanał obserwujący
+        // (appendStreamingText), który zarządza własnym kursorem na końcu bieżącego przebiegu.
+        this.currentAssistantTextEl?.querySelector('.streaming-cursor')?.remove();
+        this.stepRail.reset(this.currentAssistantTextEl);
+        // Kroki narzędzi SPRZED tego przeładowania nie są tu widoczne (metadata.steps trafia
+        // do historii dopiero po zakończeniu tury) — te, które nastąpią OD TERAZ, kanał
+        // obserwujący doda już na żywo (patrz docs/manifest.md).
       } else {
         this.setGeneratingState(false);
       }
@@ -536,98 +575,26 @@ export class ChatView {
     const message = textarea.value.trim();
     if (!message) return;
 
-    this.stopPolling();
-
-    // Usunięcie empty state jeśli istnieje
-    const emptyState = document.getElementById('chat-empty-state');
-    if (emptyState) emptyState.remove();
-
-    // 1. Dodanie wiadomości użytkownika do interfejsu
-    this.appendMessageElement('user', message, Date.now() / 1000);
     textarea.value = '';
     textarea.style.height = 'auto';
 
-    this.userHasScrolledUp = false;
-    this.scrollToBottom(true);
-
-    // 2. Przygotowanie stanu strumieniowania odpowiedzi Agenta
-    this.setGeneratingState(true);
-    this.accumulatedText = '';
-    this.currentAssistantMessageEl = this.appendMessageElement('assistant', '', Date.now() / 1000, true);
-    this.currentAssistantTextEl = this.currentAssistantMessageEl.querySelector('.message-text');
-    // Zawartość budowana jest przyrostowo (appendStreamingText/appendStepNode), nie przez
-    // jednorazowy formatMessageText — startujemy od pustego kontenera.
-    if (this.currentAssistantTextEl) this.currentAssistantTextEl.innerHTML = '';
-    this.stepRail.reset(this.currentAssistantTextEl);
-
-    this.abortController = new AbortController();
-
-    // Zapamiętujemy sesję, dla której ten strumień faktycznie został rozpoczęty —
-    // użytkownik może przełączyć się na inną konwersację zanim strumień się zakończy,
-    // a callbacki poniżej nie mogą wtedy nadpisywać stanu UI aktywnej w danej chwili sesji.
-    const streamSessionId = this.activeSessionId;
-
-    // 3. Strumieniowanie via SSE — tekst i kroki tool-callingu przychodzą w faktycznej
-    // kolejności chronologicznej, więc dokładamy je do DOM w tej samej kolejności zamiast
-    // rekonstruować przeplot po text_offset (to potrzebne tylko przy replayu z historii).
-    await this.apiClient.streamChatMessage(
-      streamSessionId,
-      message,
-      {
-        onChunk: (chunk) => {
-          if (this.activeSessionId !== streamSessionId) return;
-          this.accumulatedText += chunk;
-          this.stepRail.appendStreamingText(chunk);
-          this.scrollToBottom();
-        },
-        onToolStart: (evt) => {
-          if (this.activeSessionId !== streamSessionId) return;
-          this.stepRail.appendStepNode(evt);
-          this.scrollToBottom();
-        },
-        onToolResult: (evt) => {
-          if (this.activeSessionId !== streamSessionId) return;
-          this.stepRail.updateStepNode(evt);
-          this.scrollToBottom();
-        },
-        onError: (error) => {
-          console.error('[ChatView] Błąd strumieniowania:', error);
-          if (this.activeSessionId === streamSessionId) {
-            this.accumulatedText += `\n\n[Błąd: ${error.message}]`;
-            this.stepRail.appendStreamingText(`\n\n[Błąd: ${error.message}]`);
-          }
-          this.finishStreaming(streamSessionId);
-        },
-        onComplete: () => {
-          this.finishStreaming(streamSessionId);
-        },
-      },
-      this.abortController.signal,
-      getSenderId()
-    );
-  }
-
-  finishStreaming(streamSessionId = this.activeSessionId) {
-    // Strumień mógł dobiec końca dla sesji, z której użytkownik już się przełączył —
-    // wtedy nie dotykamy stanu UI aktualnie wyświetlanej sesji, jedynie odświeżamy listę.
-    if (this.activeSessionId !== streamSessionId) {
-      this.loadSessionsList();
-      return;
+    // "Wyślij i zapomnij" — mirror `AgentEngine.start_interaction()`, ten sam kontrakt co
+    // satelita głosowa. Renderowanie (bąbelek usera, potem odpowiedź agenta) przychodzi
+    // wyłącznie przez już otwarty kanał obserwujący (patrz _onWatchUserMessage/_onWatchChunk
+    // powyżej) — dokładnie tak samo, jakby tę turę odpaliła satelita/cron/inna karta.
+    try {
+      await this.apiClient.sendChatMessageAsync(this.activeSessionId, message, getSenderId());
+    } catch (err) {
+      console.error('[ChatView] Błąd wysyłania wiadomości:', err);
+      textarea.value = message;
     }
-    this.stopPolling();
-    this.stepRail.finalizeCurrentTextRun();
-    this.stepRail.closeCurrentRail();
-    this.setGeneratingState(false);
-    this.loadSessionsList();
   }
 
   async stopGeneration() {
-    this.stopPolling();
-    if (this.abortController) {
-      this.abortController.abort();
-    }
+    // Anulowanie NIE zamyka kanału obserwującego — zdarzenie `cancelled`, które opublikuje
+    // backend, dotrze przez ten sam, zawsze otwarty kanał (_onWatchCancelled) i sfinalizuje
+    // UI dokładnie tak samo, jak zrobiłaby to dowolna inna przyczyna zakończenia tury.
     await this.apiClient.cancelChatSession(this.activeSessionId);
-    this.finishStreaming();
   }
 
   setGeneratingState(isGenerating) {

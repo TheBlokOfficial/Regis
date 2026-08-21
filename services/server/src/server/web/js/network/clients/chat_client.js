@@ -102,6 +102,93 @@ export class ChatClient {
     }
   }
 
+  /**
+   * "Wyślij i zapomnij" — mirror `AgentEngine.start_interaction()`, ten sam kontrakt, z
+   * którego korzysta satelita głosowa: odpala turę w tle i od razu wraca (202), bez
+   * czekania na odpowiedź. Renderowanie (własnej wiadomości i odpowiedzi) idzie wyłącznie
+   * przez `watchSession()` — Web UI świadomie nie różni się już architektonicznie od
+   * satelity/crona jako inicjator tury.
+   */
+  async sendChatMessageAsync(sessionId = 'session_default', message = '', senderId = null) {
+    const response = await fetch(`${this.baseUrl}/api/v1/chat/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, message, sender_id: senderId }),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+    }
+    return await response.json();
+  }
+
+  /**
+   * Długożyjący kanał SSE obserwujący sesję (`GET .../watch`) — w odróżnieniu od
+   * `streamChatMessage` NIE wysyła żadnej wiadomości i NIE kończy się na `[DONE]`/błędzie
+   * pojedynczej tury: leci dalej, aż wywołujący przerwie `signal` (AbortController).
+   * Zwraca się (bez rzucania), gdy strumień serwera się zakończy z jakiegokolwiek powodu —
+   * wywołujący decyduje, czy i kiedy ponowić połączenie.
+   */
+  async watchSession(
+    sessionId,
+    { onUserMessage = null, onChunk = null, onToolStart = null, onToolResult = null, onDone = null, onError = null, onCancelled = null } = {},
+    signal = null
+  ) {
+    const response = await fetch(`${this.baseUrl}/api/v1/chat/sessions/${sessionId}/watch`, { signal });
+    if (!response.ok) {
+      throw new Error(`HTTP Error: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const rawData = trimmed.replace(/^data:\s*/, '');
+        try {
+          const parsed = JSON.parse(rawData);
+          switch (parsed.type) {
+            case 'user_message':
+              if (onUserMessage) onUserMessage(parsed.content);
+              break;
+            case 'chunk':
+              if (onChunk) onChunk(parsed.chunk);
+              break;
+            case 'tool_start':
+              if (onToolStart) onToolStart(parsed);
+              break;
+            case 'tool_result':
+              if (onToolResult) onToolResult(parsed);
+              break;
+            case 'done':
+              if (onDone) onDone();
+              break;
+            case 'error':
+              if (onError) onError(new Error(parsed.error));
+              break;
+            case 'cancelled':
+              if (onCancelled) onCancelled();
+              break;
+            default:
+              console.warn('[ApiClient] Nieznany typ ramki kanału obserwującego:', parsed);
+          }
+        } catch (e) {
+          console.warn('[ApiClient] Błąd parsowania ramki kanału obserwującego:', rawData, e);
+        }
+      }
+    }
+  }
+
   async streamChatMessage(
     sessionId = 'session_default',
     message = '',
