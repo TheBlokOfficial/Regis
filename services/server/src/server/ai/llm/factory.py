@@ -1,7 +1,7 @@
 from shared import get_logger, ProviderMetadataResponse, ProviderTypeSpecDTO, ProviderOptionSpec
 from server.agent.llm import BaseLLMProvider
 from server.ai.llm.models import BackendInstanceConfig, ProviderType
-from server.ai.llm.providers import GroqProvider, OllamaProvider, OpenRouterProvider
+from server.ai.llm.providers import OllamaProvider, OpenAICompatibleProvider
 
 logger = get_logger("regis.ai.llm.factory")
 
@@ -36,13 +36,20 @@ class LLMFactory:
                 max_tokens=max_tokens,
             )
         elif config.type == ProviderType.OPENROUTER:
-            return OpenRouterProvider(
+            return OpenAICompatibleProvider(
+                base_url="https://openrouter.ai/api/v1",
                 api_key=config.options.get("api_key", ""),
                 model=config.options.get("model", "anthropic/claude-3.5-sonnet"),
                 max_tokens=max_tokens,
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/TheBlokOfficial/Regis",
+                    "X-Title": "Regis OS",
+                },
+                extra_payload={"reasoning": {"effort": "none"}},
             )
         elif config.type == ProviderType.GROQ:
-            return GroqProvider(
+            return OpenAICompatibleProvider(
+                base_url="https://api.groq.com/openai/v1",
                 api_key=config.options.get("api_key", ""),
                 model=config.options.get("model", "llama-3.3-70b-versatile"),
                 max_tokens=max_tokens,

@@ -3,9 +3,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from server.agent.llm import LLMMessage
 from server.ai.llm.models import BackendInstanceConfig, ProviderType
 from server.ai.llm.factory import LLMFactory
-from server.ai.llm.providers.groq import GroqProvider
 from server.ai.llm.providers.ollama import OllamaProvider
-from server.ai.llm.providers.openrouter import OpenRouterProvider
+from server.ai.llm.providers.openai_compatible import OpenAICompatibleProvider
 
 
 @pytest.mark.anyio
@@ -14,22 +13,22 @@ async def test_ollama_provider_max_tokens_num_predict():
     assert provider.max_tokens == 8192
 
     messages = [LLMMessage(role="user", content="Hello")]
-    
+
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    
+
     async def mock_aiter_lines():
         yield '{"message": {"content": "World"}}'
 
     mock_response.aiter_lines = mock_aiter_lines
-    
+
     mock_stream_ctx = MagicMock()
     mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
     mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
-    
+
     mock_client = MagicMock()
     mock_client.stream.return_value = mock_stream_ctx
-    
+
     mock_async_client_ctx = MagicMock()
     mock_async_client_ctx.__aenter__ = AsyncMock(return_value=mock_client)
     mock_async_client_ctx.__aexit__ = AsyncMock(return_value=None)
@@ -37,7 +36,7 @@ async def test_ollama_provider_max_tokens_num_predict():
     with patch("httpx.AsyncClient", return_value=mock_async_client_ctx):
         chunks = [chunk async for chunk in provider.generate_stream(messages)]
         assert "".join(chunks) == "World"
-        
+
         # Sprawdzamy czy w wysłanym payloadzie w options znajduje się num_predict = 8192
         mock_client.stream.assert_called_once()
         call_kwargs = mock_client.stream.call_args.kwargs
@@ -46,49 +45,32 @@ async def test_ollama_provider_max_tokens_num_predict():
         assert json_payload["options"].get("num_predict") == 8192
 
 
+# Dwa realne przypadki tego samego OpenAICompatibleProvider — OpenRouter dokłada
+# nagłówki HTTP-Referer/X-Title i pole payloadu "reasoning", Groq nie dokłada nic.
 @pytest.mark.anyio
-async def test_openrouter_provider_max_tokens():
-    provider = OpenRouterProvider(api_key="test-key", model="claude-3.5", max_tokens=2048)
+@pytest.mark.parametrize(
+    "base_url,extra_headers,extra_payload",
+    [
+        (
+            "https://openrouter.ai/api/v1",
+            {"HTTP-Referer": "https://github.com/TheBlokOfficial/Regis", "X-Title": "Regis OS"},
+            {"reasoning": {"effort": "none"}},
+        ),
+        ("https://api.groq.com/openai/v1", None, None),
+    ],
+    ids=["openrouter", "groq"],
+)
+async def test_openai_compatible_provider_streams_and_applies_extras(base_url, extra_headers, extra_payload):
+    provider = OpenAICompatibleProvider(
+        base_url=base_url,
+        api_key="test-key",
+        model="test-model",
+        max_tokens=2048,
+        extra_headers=extra_headers,
+        extra_payload=extra_payload,
+    )
     assert provider.max_tokens == 2048
-
-    messages = [LLMMessage(role="user", content="Hello")]
-    
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
-    
-    async def mock_aiter_lines():
-        yield 'data: {"choices": [{"delta": {"content": "Hi"}}]}'
-        yield 'data: [DONE]'
-
-    mock_response.aiter_lines = mock_aiter_lines
-    
-    mock_stream_ctx = MagicMock()
-    mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_stream_ctx.__aexit__ = AsyncMock(return_value=None)
-
-    mock_client = MagicMock()
-    mock_client.stream.return_value = mock_stream_ctx
-    
-    mock_async_client_ctx = MagicMock()
-    mock_async_client_ctx.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_async_client_ctx.__aexit__ = AsyncMock(return_value=None)
-
-    with patch("httpx.AsyncClient", return_value=mock_async_client_ctx):
-        chunks = [chunk async for chunk in provider.generate_stream(messages)]
-        assert "".join(chunks) == "Hi"
-        
-        # Sprawdzamy czy w wysłanym payloadzie znajduje się max_tokens = 2048
-        mock_client.stream.assert_called_once()
-        call_kwargs = mock_client.stream.call_args.kwargs
-        json_payload = call_kwargs.get("json", {})
-        assert json_payload.get("max_tokens") == 2048
-
-
-@pytest.mark.anyio
-async def test_groq_provider_max_tokens():
-    provider = GroqProvider(api_key="test-key", model="llama-3.3-70b-versatile", max_tokens=1024)
-    assert provider.max_tokens == 1024
-    assert provider.base_url == "https://api.groq.com/openai/v1"
+    assert provider.base_url == base_url
 
     messages = [LLMMessage(role="user", content="Hello")]
 
@@ -118,13 +100,24 @@ async def test_groq_provider_max_tokens():
 
         mock_client.stream.assert_called_once()
         call_args = mock_client.stream.call_args
-        assert call_args.args[1] == "https://api.groq.com/openai/v1/chat/completions"
+        assert call_args.args[1] == f"{base_url}/chat/completions"
+
         json_payload = call_args.kwargs.get("json", {})
-        assert json_payload.get("max_tokens") == 1024
-        assert "reasoning" not in json_payload
+        assert json_payload.get("max_tokens") == 2048
         headers = call_args.kwargs.get("headers", {})
-        assert "HTTP-Referer" not in headers
         assert headers.get("Authorization") == "Bearer test-key"
+
+        if extra_payload:
+            for key, value in extra_payload.items():
+                assert json_payload.get(key) == value
+        else:
+            assert "reasoning" not in json_payload
+
+        if extra_headers:
+            for key, value in extra_headers.items():
+                assert headers.get(key) == value
+        else:
+            assert "HTTP-Referer" not in headers
 
 
 def test_llm_factory_creates_provider_with_max_tokens():
@@ -145,8 +138,9 @@ def test_llm_factory_creates_provider_with_max_tokens():
         options={"api_key": "test_key", "model": "gpt-4o", "max_tokens": 16384},
     )
     provider_openrouter = LLMFactory.create_provider(config_openrouter)
-    assert isinstance(provider_openrouter, OpenRouterProvider)
+    assert isinstance(provider_openrouter, OpenAICompatibleProvider)
     assert provider_openrouter.max_tokens == 16384
+    assert provider_openrouter.base_url == "https://openrouter.ai/api/v1"
 
     config_groq = BackendInstanceConfig(
         id="groq_test",
@@ -155,8 +149,9 @@ def test_llm_factory_creates_provider_with_max_tokens():
         options={"api_key": "test_key", "model": "llama-3.3-70b-versatile", "max_tokens": 8192},
     )
     provider_groq = LLMFactory.create_provider(config_groq)
-    assert isinstance(provider_groq, GroqProvider)
+    assert isinstance(provider_groq, OpenAICompatibleProvider)
     assert provider_groq.max_tokens == 8192
+    assert provider_groq.base_url == "https://api.groq.com/openai/v1"
 
 
 def test_llm_factory_schemas_include_max_tokens():

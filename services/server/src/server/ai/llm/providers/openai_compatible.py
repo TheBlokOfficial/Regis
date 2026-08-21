@@ -5,12 +5,11 @@ from shared import get_logger
 from server.config import load_settings
 from server.agent.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition
 
-logger = get_logger("regis.ai.llm.providers.groq")
+logger = get_logger("regis.ai.llm.providers.openai_compatible")
 
 
 def _messages_to_openai_payload(messages: list[LLMMessage]) -> list[dict[str, Any]]:
-    """Mapuje LLMMessage na format wiadomości OpenAI-compatible (w tym role 'tool' i tool_calls).
-    Identyczne z `openrouter.py` — Groq to również OpenAI-compatible REST API."""
+    """Mapuje LLMMessage na format wiadomości OpenAI-compatible (w tym role 'tool' i tool_calls)."""
     payload_messages: list[dict[str, Any]] = []
     for m in messages:
         entry: dict[str, Any] = {"role": m.role, "content": m.content}
@@ -44,25 +43,32 @@ def _tools_to_openai_payload(tools: list[ToolDefinition]) -> list[dict[str, Any]
     ]
 
 
-class GroqProvider(BaseLLMProvider):
-    """Dostawca LLM dla usługi Groq (REST API ze strumieniowaniem SSE,
-    OpenAI-compatible — endpoint i format zweryfikowane bezpośrednio w
-    dokumentacji Groq, nie zgadywane). W odróżnieniu od `OpenRouterProvider`
-    bez pola `reasoning`/nagłówków `HTTP-Referer`/`X-Title` — to rozszerzenia
-    specyficzne dla OpenRouter, nieudokumentowane w API Groq."""
-
-    BASE_URL = "https://api.groq.com/openai/v1"
+class OpenAICompatibleProvider(BaseLLMProvider):
+    """Dostawca LLM dla dowolnego REST API zgodnego z formatem OpenAI Chat
+    Completions (REST + strumieniowanie SSE) — scalenie dawnych, niemal
+    identycznych `OpenRouterProvider`/`GroqProvider` (różniły się wyłącznie
+    `base_url`, domyślnym modelem i garścią rozszerzeń specyficznych dla
+    OpenRouter). `extra_headers`/`extra_payload` pozwalają dostawcy na
+    konkretny typ (patrz `ai/llm/factory.py::LLMFactory.create_provider`)
+    dołożyć własne, niestandardowe rozszerzenia bez tworzenia osobnej klasy —
+    np. OpenRouter dokłada nagłówki `HTTP-Referer`/`X-Title` i pole payloadu
+    `reasoning`, których Groq nie rozumie."""
 
     def __init__(
         self,
+        base_url: str,
         api_key: str = "",
-        model: str = "llama-3.3-70b-versatile",
+        model: str = "",
         max_tokens: int | None = None,
+        extra_headers: dict[str, str] | None = None,
+        extra_payload: dict[str, Any] | None = None,
     ) -> None:
+        self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self._model = model
         self._max_tokens = max_tokens
-        self.base_url = self.BASE_URL
+        self._extra_headers = extra_headers or {}
+        self._extra_payload = extra_payload or {}
 
     @property
     def model(self) -> str:
@@ -82,12 +88,14 @@ class GroqProvider(BaseLLMProvider):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            **self._extra_headers,
         }
 
         payload: dict[str, Any] = {
             "model": kwargs.get("model", self._model),
             "messages": _messages_to_openai_payload(messages),
             "stream": True,
+            **self._extra_payload,
         }
 
         if tools:
@@ -100,7 +108,7 @@ class GroqProvider(BaseLLMProvider):
         if "temperature" in kwargs:
             payload["temperature"] = kwargs["temperature"]
 
-        logger.debug(f"Strumieniowanie z Groq [{url}] (model: '{payload['model']}')...")
+        logger.debug(f"Strumieniowanie z [{url}] (model: '{payload['model']}')...")
 
         timeout_val = load_settings().llm_timeout
         httpx_timeout = httpx.Timeout(timeout_val, connect=5.0)
@@ -173,18 +181,18 @@ class GroqProvider(BaseLLMProvider):
                             arguments = {}
                         yield ToolCallRequest(id=entry["id"], name=entry["name"], arguments=arguments)
         except httpx.HTTPStatusError as e:
-            logger.error(f"Błąd HTTP Groq API [{e.response.status_code}]: {e.response.text}")
-            raise RuntimeError(f"Błąd Groq API HTTP {e.response.status_code}: {e.response.text}") from e
+            logger.error(f"Błąd HTTP dostawcy OpenAI-compatible [{self.base_url}] [{e.response.status_code}]: {e.response.text}")
+            raise RuntimeError(f"Błąd API [{self.base_url}] HTTP {e.response.status_code}: {e.response.text}") from e
         except httpx.ReadTimeout as e:
-            logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({timeout_val}s) z Groq.")
-            raise RuntimeError(f"Timeout strumienia z Groq ({timeout_val}s): {e}") from e
+            logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({timeout_val}s) z [{self.base_url}].")
+            raise RuntimeError(f"Timeout strumienia z [{self.base_url}] ({timeout_val}s): {e}") from e
         except Exception as e:
-            logger.error(f"Błąd podczas strumieniowania odpowiedzi przez GroqProvider: {e}")
+            logger.error(f"Błąd podczas strumieniowania odpowiedzi przez OpenAICompatibleProvider [{self.base_url}]: {e}")
             raise
 
     async def check_health(self) -> bool:
-        """Sprawdza dostępność dostawcy Groq (weryfikacja czy podano klucz API)."""
+        """Sprawdza dostępność dostawcy (weryfikacja czy podano klucz API)."""
         if not self.api_key:
-            logger.debug("Healthcheck Groq: brak skonfigurowanego klucza API.")
+            logger.debug(f"Healthcheck [{self.base_url}]: brak skonfigurowanego klucza API.")
             return False
         return True
