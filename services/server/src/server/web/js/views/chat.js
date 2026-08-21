@@ -24,6 +24,11 @@ export class ChatView {
     this.userHasScrolledUp = false;
     this.pollInterval = null;
     this._documentClickBound = false;
+    // Watchdog niskiej częstotliwości — łapie tury odpalone spoza tej karty (satelita,
+    // cron, inna karta przeglądarki), które nigdy nie przejdą przez SSE ani fallback-polling
+    // uruchamiany tylko przy ładowaniu strony w trakcie generowania (patrz startPolling niżej).
+    this.watchInterval = null;
+    this.lastKnownUpdatedAt = {};
   }
 
   render() {
@@ -100,6 +105,7 @@ export class ChatView {
     await this.loadActiveProviderInfo();
     await this.loadSessionsList();
     await this.loadSessionHistory(this.activeSessionId);
+    this.startWatch();
   }
 
   mountIcons() {
@@ -250,6 +256,7 @@ export class ChatView {
       const res = await this.apiClient.getChatSessions();
       if (res && res.sessions) {
         this.sessions = res.sessions;
+        this.recordKnownState(this.sessions);
 
         const activeSession = this.sessions.find((s) => s.session_id === this.activeSessionId);
         if (!activeSession && this.sessions.length > 0) {
@@ -351,6 +358,61 @@ export class ChatView {
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     return `${day}.${month}, ${hours}:${minutes}`;
+  }
+
+  recordKnownState(sessions) {
+    sessions.forEach((s) => {
+      this.lastKnownUpdatedAt[s.session_id] = s.updated_at;
+    });
+  }
+
+  startWatch() {
+    this.stopWatch();
+    this.watchInterval = setInterval(() => this.checkForExternalUpdates(), 3000);
+  }
+
+  stopWatch() {
+    if (this.watchInterval) {
+      clearInterval(this.watchInterval);
+      this.watchInterval = null;
+    }
+  }
+
+  async checkForExternalUpdates() {
+    // W trakcie własnego strumienia (SSE albo fallback-poll już aktywny) UI jest już
+    // aktualizowane inną ścieżką — unikamy nadpisywania go w połowie renderu.
+    if (!this.apiClient || this.isGenerating) return;
+
+    try {
+      const res = await this.apiClient.getChatSessions();
+      if (!res || !res.sessions) return;
+
+      const previousIds = new Set(this.sessions.map((s) => s.session_id));
+      const incomingIds = new Set(res.sessions.map((s) => s.session_id));
+      const sessionListChanged =
+        previousIds.size !== incomingIds.size || [...incomingIds].some((id) => !previousIds.has(id));
+
+      const activeSummary = res.sessions.find((s) => s.session_id === this.activeSessionId);
+      const activeSessionGenerating = !!(activeSummary && activeSummary.is_generating);
+      const activeSessionUpdated =
+        !!activeSummary && activeSummary.updated_at !== this.lastKnownUpdatedAt[this.activeSessionId];
+
+      this.sessions = res.sessions;
+      this.recordKnownState(res.sessions);
+
+      if (sessionListChanged) {
+        await this.loadSessionsList();
+      }
+
+      if (activeSessionGenerating || activeSessionUpdated) {
+        // Tura zainicjowana poza tą kartą (satelita/cron/inna karta przeglądarki) — jej SSE
+        // nigdy tu nie dotrze, więc dołączamy się do niej pełnym przeładowaniem historii
+        // (uruchomi fallback-polling z startPolling, jeśli wciąż trwa generowanie).
+        await this.loadSessionHistory(this.activeSessionId);
+      }
+    } catch (err) {
+      console.error('[ChatView] Błąd sprawdzania aktualizacji zewnętrznych:', err);
+    }
   }
 
   stopPolling() {
