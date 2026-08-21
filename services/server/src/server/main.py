@@ -22,7 +22,14 @@ from server.world import WorldEngine
 #    (data/logs/regis.log, gitignorowane jak reszta data/). Plik trzyma pełny techniczny
 #    szczegół błędów (np. treść odpowiedzi API dostawcy LLM), których UI świadomie nie
 #    pokazuje wprost użytkownikowi (patrz agent/engine.py, obsługa błędów tury).
-setup_logging(level="INFO", log_file=get_service_root(__file__) / "data" / "logs" / "regis.log")
+# Wczytanie configu musi poprzedzić setup_logging — `Settings.debug` (dotąd martwe pole)
+# steruje poziomem: true = DEBUG, m.in. score wake-worda przy każdym inference
+# (`voice/wakeword.py::OnnxWakeWordDetector.process()`), false (domyślnie) = INFO.
+_startup_settings = load_settings()
+setup_logging(
+    level="DEBUG" if _startup_settings.debug else "INFO",
+    log_file=get_service_root(__file__) / "data" / "logs" / "regis.log",
+)
 logger = get_logger("regis.main")
 
 

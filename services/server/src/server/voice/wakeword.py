@@ -100,7 +100,13 @@ class OnnxWakeWordDetector:
 
         scores = self._model.predict(self._buffer)
         score = scores.get(self._model_name, 0.0)
-        return score >= self._threshold
+        detected = score >= self._threshold
+        # DEBUG (nie INFO) — inference co ~320ms podczas całego nasłuchu zalałoby konsolę
+        # przy normalnym poziomie logowania. Włącz przez `Settings.debug=true` w config.json,
+        # żeby na żywo widzieć bliskie niedomiary (false negative) i co realnie przebiło próg
+        # (false positive) — dotąd `score` było liczone i odrzucane bez śladu w logach.
+        logger.debug(f"Wake-word score: {score:.3f} [próg: {self._threshold}]{' -> WYKRYTO' if detected else ''}")
+        return detected
 
     def reset(self) -> None:
         self._buffer = np.zeros(0, dtype=np.int16)

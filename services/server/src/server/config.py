@@ -10,7 +10,10 @@ class Settings(BaseModel):
     version: str = Field(default="0.1.0", description="Wersja aplikacji")
     host: str = Field(default="0.0.0.0", description="Adres nasłuchiwania HTTP/WebSocket")
     port: int = Field(default=8000, description="Port serwera HTTP/WebSocket")
-    debug: bool = Field(default=False, description="Tryb debugowania")
+    debug: bool = Field(
+        default=False,
+        description="Podnosi poziom logowania konsoli/pliku do DEBUG (np. score wake-worda przy każdym inference, patrz voice/wakeword.py). Domyślnie INFO.",
+    )
     llm_timeout: float = Field(default=30.0, description="Globalny limit czasu zapytań do LLM w sekundach")
     llm_default_max_tokens: int = Field(default=4096, description="Domyślna maksymalna liczba tokenów wyjściowych dla modeli LLM")
     max_history_messages: int = Field(default=40, description="Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM")
