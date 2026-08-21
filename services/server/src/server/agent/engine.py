@@ -288,11 +288,20 @@ class AgentEngine:
             user_facing_error = "Wystąpił błąd podczas generowania odpowiedzi. Spróbuj ponownie za chwilę."
             # Utrwalamy odpowiedź błędu sparowaną z pytaniem użytkownika, by historia
             # nigdy nie zostawiała nieodpowiedzianej wiadomości użytkownika w kontekście.
+            # KLUCZOWE: doklejamy komunikat błędu do JUŻ ZGROMADZONEGO bufora tekstu
+            # (mirror gałęzi CancelledError wyżej), nie zastępujemy go całkowicie — kroki
+            # narzędzi w `steps` mają `text_offset` liczony względem tego bufora; podmiana
+            # na zupełnie inny, krótszy string powodowała przycięcie offsetu do końca tekstu
+            # przy replayu z historii, przez co krok narzędzia renderował się PO komunikacie
+            # błędu zamiast przed nim (kolejność odwrócona względem faktycznego przebiegu).
+            partial_text = self._generation_buffers.get(session_id, "")
+            error_marker = f"[Błąd generowania odpowiedzi: {user_facing_error}]"
+            persisted_content = f"{partial_text}\n\n{error_marker}" if partial_text.strip() else error_marker
             await asyncio.to_thread(
                 self.memory_manager.add_message,
                 session_id=session_id,
                 role="assistant",
-                content=f"[Błąd generowania odpowiedzi: {user_facing_error}]",
+                content=persisted_content,
                 metadata={"is_error": True, "steps": steps} if steps else {"is_error": True},
             )
             await _publish(ServerEventType.CHAT_ERROR, {"error": user_facing_error}, terminal=True)

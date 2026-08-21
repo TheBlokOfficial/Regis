@@ -5,7 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.agent import AgentEngine
-from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse
+from server.agent.context_provider import ContextBuild
+from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse, ToolCallRequest, ToolDefinition, ToolResult
 from server.ai.llm.registry import BackendRegistry
 from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
@@ -372,6 +373,81 @@ async def test_watch_session_forwards_user_message_and_does_not_terminate():
         assert watcher.ag_frame is not None
 
         await watcher.aclose()
+
+
+class SingleToolWorld:
+    """Minimalny `WorldInterface` z jednym zawsze-dostępnym narzędziem — używany
+    wyłącznie do odtworzenia scenariusza regresyjnego niżej (błąd PO co najmniej
+    jednym wywołaniu narzędzia)."""
+
+    async def build(self, sender_id=None, voice_mode=False) -> ContextBuild:
+        del sender_id, voice_mode
+        tool_def = ToolDefinition(name="noop_tool", description="test", parameters={"type": "object", "properties": {}})
+
+        async def _dispatch(name: str, arguments: dict) -> ToolResult:
+            del name, arguments
+            return ToolResult(is_error=False, content="ok")
+
+        return ContextBuild(tool_definitions=[tool_def], system_prompt=None, dispatch=_dispatch)
+
+
+class TextThenToolThenFailingProvider(BaseLLMProvider):
+    """Emituje trochę tekstu, potem wywołanie narzędzia; NASTĘPNE wywołanie (po
+    otrzymaniu wyniku narzędzia) rzuca wyjątek — odtwarza dokładnie scenariusz buga:
+    bufor tekstu jest niepusty w momencie błędu."""
+
+    def __init__(self) -> None:
+        self._call_count = 0
+
+    async def generate(self, messages):
+        raise NotImplementedError
+
+    async def generate_stream(self, messages, tools=None, **kwargs):
+        self._call_count += 1
+        if self._call_count == 1:
+            yield "Analizuję sytuację. "
+            yield ToolCallRequest(id="call_1", name="noop_tool", arguments={})
+        else:
+            raise RuntimeError("Błąd API dostawcy - szczegół techniczny")
+
+    async def check_health(self):
+        return True
+
+
+@pytest.mark.anyio
+async def test_error_after_tool_call_preserves_partial_text_prefix():
+    """Regresja: błąd występujący PO co najmniej jednym wywołaniu narzędzia musi
+    zachować już-wygenerowany tekst jako prefiks utrwalonej treści (mirror gałęzi
+    CancelledError) — inaczej `text_offset` zapisanych kroków wskazuje w pustkę po
+    całkowitej podmianie treści na komunikat błędu, co przy replayu z historii
+    (`chat.js::buildSegments`) odwracało kolejność: krok narzędzia renderował się PO
+    komunikacie błędu zamiast przed nim (zaobserwowane na żywo przez użytkownika)."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        memory_manager = MemoryManager(data_dir=tmp_path / "sessions")
+        provider = TextThenToolThenFailingProvider()
+        engine = AgentEngine(llm_provider=provider, memory_manager=memory_manager, world=SingleToolWorld())
+
+        # Wołamy `_generate_in_background` bezpośrednio (nie `interact_stream`/
+        # `start_interaction`) — to jedyna jednostka kodu istotna dla tej regresji
+        # (zachowanie gałęzi `except Exception`), a ominięcie fire-and-forget
+        # `asyncio.create_task` unika sztucznego "Task exception was never retrieved"
+        # (anyio traktuje nieodebrany wyjątek zadania w tle jako błąd testu, niezależnie
+        # od tego, że produkcyjnie jest on i tak w pełni obsłużony przez CHAT_ERROR/logi).
+        with pytest.raises(RuntimeError):
+            await engine._generate_in_background(session_id="session_default", prompt="Test")
+
+        history = memory_manager.get_history("session_default")
+        assert history[1].role == "assistant"
+        content = history[1].content
+        assert content.startswith("Analizuję sytuację. ")
+        assert "Wystąpił błąd" in content
+
+        tool_call_step = next(s for s in history[1].metadata["steps"] if s["type"] == "tool_call")
+        # Offset musi nadal wskazywać na koniec RZECZYWIŚCIE wygenerowanego tekstu, nie na
+        # końcowy (przycięty) offset zupełnie innej, podmienionej treści błędu.
+        assert tool_call_step["text_offset"] == len("Analizuję sytuację. ")
+        assert content[: tool_call_step["text_offset"]] == "Analizuję sytuację. "
 
 
 
