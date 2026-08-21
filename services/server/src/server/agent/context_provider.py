@@ -16,7 +16,7 @@ przy sklejaniu dwóch fragmentów.
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Protocol
 
-from server.agent.backend import ToolDefinition, ToolResult
+from server.agent.llm import ToolDefinition, ToolResult
 
 ToolDispatch = Callable[[str, dict[str, Any]], Awaitable[ToolResult]]
 

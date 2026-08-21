@@ -49,14 +49,24 @@ Rozłączny z `WorldEngine` (patrz sekcja 3) — zna wyłącznie opaque `sender_
 nigdy configu World. Wake-word to realny model `.onnx` (`OnnxWakeWordDetector`,
 `Settings.wakeword_model_path`/`wakeword_threshold`, `server/config.py`), STT/TTS
 to Groq (`GroqSTTProvider`) i ElevenLabs (`ElevenLabsTTSProvider`) — oba
-konfigurowalne w Web UI (zakładka **Głos**, `GET/PUT /api/v1/voice/providers/config`,
-`services/server/data/voice/config.json`). Puste klucze API/brak pliku modelu =
+konfigurowalne dziś przez Web UI (zakładka **Głos**, shim
+`GET/PUT /api/v1/voice/providers/config`). Pod spodem: pełny rejestr wielu
+nazwanych instancji per typ (`STTRegistry`/`TTSRegistry`,
+`services/server/data/{stt,tts}_backends/*.json`, mirror `BackendRegistry`
+LLM) i REST CRUD `.../voice/{stt,tts}/providers*` — przygotowane pod przyszłe
+lokalne backendy STT/TTS, UI dla tego CRUD jeszcze nie istnieje (dziś tylko
+LLM ma taki panel, `agent_config.js`). Puste klucze API/brak pliku modelu =
 łagodna degradacja do dev-providerów (`MockSTTProvider`/`MockTTSProvider`,
 `ThresholdEnergyWakeWordDetector`) — wystarczają do przetestowania całego
 protokołu WS end-to-end bez żadnych kluczy (patrz
-`services/server/scripts/voice_satellite_sim.py`). **Ograniczenie**: zmiana
-klucza/modelu w Web UI wymaga restartu serwera, żeby zacząć obowiązywać —
-providery STT/TTS/wake-word są budowane raz przy starcie (`main.py`).
+`services/server/scripts/voice_satellite_sim.py`). `voice/` nie trzyma tych
+konkretów bezpośrednio, tylko singletony-routery `STTRouter`/`TTSRouter`
+(`server/ai/stt`/`server/ai/tts`, patrz `docs/manifest.md` sekcja 3.5) — zmiana
+klucza/modelu STT/TTS przez `PUT /api/v1/voice/providers/config` działa **od
+razu, bez restartu serwera**. **Ograniczenie pozostaje wyłącznie dla
+wake-word**: detektor jest budowany raz przy starcie (`main.py`,
+`_build_wakeword_detector_factory`) — zmiana `Settings.wakeword_model_path`
+nadal wymaga restartu.
 
 ### Prompty systemowe — World jest jedynym autorem, gdy podłączony
 - **Profile promptu Świata** (`services/server/data/world/prompts/*.json`, `WorldPromptStore`): do 3 przełączalnych profili tożsamości, aktywny wskazuje `data/world/active_prompt.json`. `WorldEngine.build()` doklejają aktywny profil (może być pusty — domyślnie "Profil 1") do dynamicznych faktów (czas/pokój/urządzenia) i zwraca **kompletny, gotowy prompt** tej tury — kernel niczego nie skleja.
@@ -149,7 +159,10 @@ python -m uv run --package server python -m server.main
 | | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py` |
 | | `GET /api/v1/voice/status` | Status pipeline'u głosowego (nazwy klas aktywnych providerów STT/TTS/wake-word), tylko do odczytu |
-| | `GET/PUT /api/v1/voice/providers/config` | Config dostawców STT/TTS (Groq/ElevenLabs) — klucze API zamaskowane na odczyt; zmiana wymaga restartu serwera |
+| | `GET/PUT /api/v1/voice/providers/config` | Shim kompatybilności dla `voice_config.js` (płaski config Groq+ElevenLabs, klucze zamaskowane na odczyt) — operuje na *aktywnej* instancji STT i *aktywnej* instancji TTS; zmiana działa od razu (bez restartu) |
+| | `GET /api/v1/voice/stt/providers/schemas` `.../tts/providers/schemas` | Specyfikacje parametrów konfiguracji dostawców STT/TTS |
+| | `GET/POST/PUT /api/v1/voice/stt/providers[/active]` `.../tts/providers[/active]` | Lista, tworzenie i przełączanie aktywnej instancji STT/TTS — pełny CRUD, mirror `/api/v1/llm/providers*` (przygotowane pod przyszłe lokalne backendy STT/TTS) |
+| | `DELETE /api/v1/voice/stt/providers/{id}` `.../tts/providers/{id}` | Usunięcie instancji STT/TTS z dysku |
 | | `GET /api/v1/voice/connected` | `sender_id` z aktualnie żywym połączeniem WS — pozwala Web UI (Świat → Nadawcy) pokazać podłączone, ale jeszcze niezarejestrowane satelity |
 
 > **Świadome założenie**: `WS /ws/voice/{sender_id}` nie ma żadnego uwierzytelniania

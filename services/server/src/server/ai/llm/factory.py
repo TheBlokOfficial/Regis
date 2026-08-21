@@ -1,8 +1,9 @@
 from shared import get_logger, ProviderMetadataResponse, ProviderTypeSpecDTO, ProviderOptionSpec
-from server.agent.backend.models import BackendInstanceConfig, ProviderType
-from server.agent.backend.providers import BaseLLMProvider, OllamaProvider, OpenRouterProvider
+from server.agent.llm import BaseLLMProvider
+from server.ai.llm.models import BackendInstanceConfig, ProviderType
+from server.ai.llm.providers import OllamaProvider, OpenRouterProvider
 
-logger = get_logger("regis.agent.backends.factory")
+logger = get_logger("regis.ai.llm.factory")
 
 
 class LLMFactory:

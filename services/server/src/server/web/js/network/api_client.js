@@ -157,4 +157,34 @@ export class ApiClient {
   updateVoiceProvidersConfig(...args) {
     return this._voice.updateVoiceProvidersConfig(...args);
   }
+  getSttProviderSchemas(...args) {
+    return this._voice.getSttProviderSchemas(...args);
+  }
+  getSttProviders(...args) {
+    return this._voice.getSttProviders(...args);
+  }
+  setActiveSttProvider(...args) {
+    return this._voice.setActiveSttProvider(...args);
+  }
+  createSttProvider(...args) {
+    return this._voice.createSttProvider(...args);
+  }
+  deleteSttProvider(...args) {
+    return this._voice.deleteSttProvider(...args);
+  }
+  getTtsProviderSchemas(...args) {
+    return this._voice.getTtsProviderSchemas(...args);
+  }
+  getTtsProviders(...args) {
+    return this._voice.getTtsProviders(...args);
+  }
+  setActiveTtsProvider(...args) {
+    return this._voice.setActiveTtsProvider(...args);
+  }
+  createTtsProvider(...args) {
+    return this._voice.createTtsProvider(...args);
+  }
+  deleteTtsProvider(...args) {
+    return this._voice.deleteTtsProvider(...args);
+  }
 }

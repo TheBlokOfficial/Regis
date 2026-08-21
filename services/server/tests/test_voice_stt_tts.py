@@ -8,7 +8,7 @@ import wave
 
 from shared import CHANNELS, SAMPLE_RATE_HZ, SAMPLE_WIDTH_BYTES
 
-from server.voice.stt import _pcm_to_wav
+from server.ai.stt.providers import _pcm_to_wav
 
 
 def test_pcm_to_wav_round_trip() -> None:

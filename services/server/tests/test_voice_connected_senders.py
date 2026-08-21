@@ -12,8 +12,8 @@ from shared import EventBus
 
 from server.voice.gateway import create_voice_router
 from server.voice.routes import create_voice_status_router
-from server.voice.stt import MockSTTProvider
-from server.voice.tts import MockTTSProvider
+from server.ai.stt import MockSTTProvider
+from server.ai.tts import MockTTSProvider
 from server.voice.wakeword import ThresholdEnergyWakeWordDetector
 
 

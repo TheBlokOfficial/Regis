@@ -13,7 +13,7 @@ import pytest
 from shared import ServerMessageType
 
 from server.agent import AgentEngine
-from server.agent.backend import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
+from server.agent.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
 from server.agent.context_provider import ContextBuild
 from server.agent.memory import MemoryManager
 from server.events import ServerEventType

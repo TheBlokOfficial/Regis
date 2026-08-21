@@ -3,19 +3,19 @@
 Montowany osobno od WS gatewaya (`gateway.py`, prefiks `/ws`), pod stałym
 prefiksem `/api/v1/voice`, analogicznie do `/api/v1/world`.
 
-`GET /status` — wyłącznie odczyt (nazwy klas aktywnych providerów). Config
-`GET/PUT /providers/config` (Groq/ElevenLabs) — dodany, gdy pojawił się
-konkretny, realny provider w ręku (wcześniej ta zakładka była świadomym
-placeholderem, YAGNI). **Ważne**: providery STT/TTS są budowane raz przy
-starcie serwera (`main.py`) i wstrzykiwane do `VoiceConnection` jako gotowe
-instancje — zmiana klucza/modelu przez `PUT` zapisuje się na dysk, ale zaczyna
-obowiązywać dopiero po restarcie serwera (ten sam kompromis co reszta configu
-bez hot-reloadu w tym projekcie, patrz `docs/onboarding.md` sekcja 4).
+`GET /status` — wyłącznie odczyt (nazwy klas aktywnych providerów, przez
+`get_active_provider_class_name()` — dla `STTRouter`/`TTSRouter` rozwiązuje
+aktualny konkret na żywo, patrz `server.ai.stt`/`server.ai.tts`).
 
 `GET /connected` — `sender_id` z aktualnie żywym połączeniem WS
 (`connected_sender_ids`, wypełniany przez `gateway.py`, wstrzykiwany z
 `main.py` jako współdzielony `set`) — pozwala Web UI (panel Nadawcy, Świat)
 pokazać satelity podłączone, ale jeszcze niezarejestrowane w `World`.
+
+CRUD dostawców STT/TTS (`GET/POST/PUT/DELETE /stt/providers*`, `.../tts/providers*`)
+i shim kompatybilności `GET/PUT /providers/config` żyją osobno, w
+`voice/provider_routes.py` (mirror podziału `network/routes/health.py` vs
+`network/routes/providers.py` po stronie LLM).
 """
 
 from __future__ import annotations
@@ -23,33 +23,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from server.voice.config import (
-    VoiceProvidersConfig,
-    load_voice_providers_config,
-    save_voice_providers_config,
-)
-from server.voice.dto import UpdateVoiceProvidersConfigRequest, VoiceProvidersConfigDTO
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider
-
-
-def _mask_key(key: str) -> str:
-    """Maskuje klucz API do ostatnich 4 widocznych znaków (mirror `_mask_token`
-    w `world/routes.py` — brak wspólnego miejsca na tak małą funkcję, YAGNI)."""
-    if not key:
-        return key
-    visible = key[-4:] if len(key) > 4 else ""
-    return f"{'•' * (len(key) - len(visible))}{visible}"
-
-
-def _to_config_dto(config: VoiceProvidersConfig) -> VoiceProvidersConfigDTO:
-    return VoiceProvidersConfigDTO(
-        groq_api_key=_mask_key(config.groq_api_key),
-        groq_stt_model=config.groq_stt_model,
-        elevenlabs_api_key=_mask_key(config.elevenlabs_api_key),
-        elevenlabs_voice_id=config.elevenlabs_voice_id,
-        elevenlabs_model_id=config.elevenlabs_model_id,
-    )
 
 
 class VoiceStatusDTO(BaseModel):
@@ -82,8 +57,8 @@ def create_voice_status_router(
 
     @router.get("/status", response_model=VoiceStatusDTO, tags=["Voice"])
     async def get_status() -> VoiceStatusDTO:
-        stt_name = type(stt_provider).__name__
-        tts_name = type(tts_provider).__name__
+        stt_name = await stt_provider.get_active_provider_class_name()
+        tts_name = await tts_provider.get_active_provider_class_name()
         return VoiceStatusDTO(
             stt_provider=stt_name,
             tts_provider=tts_name,
@@ -94,24 +69,5 @@ def create_voice_status_router(
     @router.get("/connected", response_model=ConnectedSendersDTO, tags=["Voice"])
     async def get_connected() -> ConnectedSendersDTO:
         return ConnectedSendersDTO(sender_ids=sorted(connected_sender_ids))
-
-    @router.get("/providers/config", response_model=VoiceProvidersConfigDTO, tags=["Voice"])
-    async def get_providers_config() -> VoiceProvidersConfigDTO:
-        return _to_config_dto(await load_voice_providers_config())
-
-    @router.put("/providers/config", response_model=VoiceProvidersConfigDTO, tags=["Voice"])
-    async def update_providers_config(req: UpdateVoiceProvidersConfigRequest) -> VoiceProvidersConfigDTO:
-        current = await load_voice_providers_config()
-        updated = current.model_copy(
-            update={
-                "groq_api_key": req.groq_api_key if req.groq_api_key else current.groq_api_key,
-                "groq_stt_model": req.groq_stt_model,
-                "elevenlabs_api_key": req.elevenlabs_api_key if req.elevenlabs_api_key else current.elevenlabs_api_key,
-                "elevenlabs_voice_id": req.elevenlabs_voice_id,
-                "elevenlabs_model_id": req.elevenlabs_model_id,
-            }
-        )
-        await save_voice_providers_config(updated)
-        return _to_config_dto(updated)
 
     return router

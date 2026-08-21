@@ -2,11 +2,13 @@ import { Icons } from '../icons.js';
 import { confirmModal } from '../modal_confirm.js';
 import { AgentConfigView } from './agent_config.js';
 import { ExtensionsView } from './extensions.js';
+import { ProvidersView } from './providers_config.js';
 import { VoiceConfigView } from './voice_config.js';
 
 /**
- * Kontener sekcji Ustawień — poziome zakładki (pills): Agent / Świat / Głos.
- * Zastępuje dawny płaski sidebar (Kernel/Świat/Głos/Prompty jako osobne top-level taby).
+ * Kontener sekcji Ustawień — poziome zakładki (pills): Agent / Dostawcy /
+ * Świat / Głos. Zastępuje dawny płaski sidebar (Kernel/Świat/Głos/Prompty
+ * jako osobne top-level taby).
  */
 export class SettingsView {
   constructor() {
@@ -14,6 +16,7 @@ export class SettingsView {
     this.activeSection = null;
     this.sections = {
       agent: new AgentConfigView(),
+      providers: new ProvidersView(),
       world: new ExtensionsView(),
       voice: new VoiceConfigView(),
     };
@@ -25,6 +28,7 @@ export class SettingsView {
         <div class="settings-shell-header">
           <nav class="pill-tabs" id="settings-pill-tabs">
             <button class="pill-tab" data-section="agent">${Icons.Activity()} Agent</button>
+            <button class="pill-tab" data-section="providers">${Icons.Server()} Dostawcy</button>
             <button class="pill-tab" data-section="world">${Icons.Puzzle()} Świat</button>
             <button class="pill-tab" data-section="voice">${Icons.Radio()} Głos</button>
           </nav>

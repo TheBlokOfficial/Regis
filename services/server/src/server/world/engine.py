@@ -19,7 +19,7 @@ from typing import Any, Callable, Optional
 
 from shared import ConfigStore, get_logger, get_service_root, sanitize_identifier
 
-from server.agent.backend import ToolDefinition, ToolResult
+from server.agent.llm import ToolDefinition, ToolResult
 from server.agent.context_provider import ContextBuild
 from server.world.client import HomeAssistantClient
 from server.world.models import (

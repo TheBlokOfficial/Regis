@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from shared import ConfigStore, get_service_root, get_logger, sanitize_identifier
 
-from server.agent.backend.factory import LLMFactory
-from server.agent.backend.models import ActiveBackendConfig, BackendFileContent, BackendInstanceConfig, ProviderType
-from server.agent.backend.providers import BaseLLMProvider
+from server.agent.llm import BaseLLMProvider
+from server.ai.llm.factory import LLMFactory
+from server.ai.llm.models import ActiveBackendConfig, BackendFileContent, BackendInstanceConfig, ProviderType
 
-logger = get_logger("regis.agent.backends.registry")
+logger = get_logger("regis.ai.llm.registry")
 
 
 class BackendRegistry:

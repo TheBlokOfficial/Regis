@@ -3,9 +3,9 @@ from typing import Any, AsyncIterator
 import httpx
 from shared import get_logger
 from server.config import load_settings
-from server.agent.backend.providers.base import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition
+from server.agent.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition
 
-logger = get_logger("regis.agent.providers.openrouter")
+logger = get_logger("regis.ai.llm.providers.openrouter")
 
 
 def _messages_to_openai_payload(messages: list[LLMMessage]) -> list[dict[str, Any]]:

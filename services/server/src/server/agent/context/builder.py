@@ -1,5 +1,5 @@
 from shared import ChatMessageDTO, get_logger
-from server.agent.backend import LLMMessage
+from server.agent.llm import LLMMessage
 
 logger = get_logger("regis.agent.context")
 

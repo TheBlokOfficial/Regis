@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from server.agent.backend import ToolDefinition, ToolResult
+from server.agent.llm import ToolDefinition, ToolResult
 from server.world.client import HomeAssistantClient
 from server.world.models import Device, DeviceGroup
 from server.world.registry import DeviceRegistry

@@ -2,7 +2,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import AsyncIterator, Any, Literal, TypedDict
 from shared import ChatResponseDTO, Event, EventBus, get_logger
-from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse, OllamaProvider, ToolCallRequest
+from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse, ToolCallRequest
+from server.ai.llm import OllamaProvider
 from server.agent.context import ContextBuilder
 from server.agent.context_provider import NullWorldInterface, WorldInterface
 from server.agent.memory import MemoryManager

@@ -5,7 +5,7 @@ from typing import Any, AsyncIterator, List
 import pytest
 
 from server.agent import AgentEngine
-from server.agent.backend import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
+from server.agent.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
 from server.agent.context.builder import ContextBuilder
 from server.agent.context_provider import NullWorldInterface
 from server.agent.memory import MemoryManager

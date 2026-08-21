@@ -2,7 +2,7 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
 from server.agent import AgentEngine
-from server.agent.backend import BackendRegistry
+from server.ai.llm import BackendRegistry
 from server.agent.prompts import AgentDefaultPromptStore
 from server.network.routes import create_api_router
 from server.world import WorldEngine
@@ -16,6 +16,7 @@ def create_gateway_app(
     world_engine: WorldEngine | None = None,
     voice_router: APIRouter | None = None,
     voice_status_router: APIRouter | None = None,
+    voice_providers_router: APIRouter | None = None,
 ) -> FastAPI:
     """Tworzy i konfiguruje bramkę sieciową FastAPI z wbudowaną konsolą WWW i punktami końcowymi."""
     app = FastAPI(
@@ -46,6 +47,8 @@ def create_gateway_app(
         app.include_router(voice_router, prefix="/ws")
     if voice_status_router is not None:
         app.include_router(voice_status_router, prefix="/api/v1/voice")
+    if voice_providers_router is not None:
+        app.include_router(voice_providers_router, prefix="/api/v1/voice")
 
     # Wbudowana obsługa interfejsu Web Console (server/web)
     web_dir = (Path(__file__).parent.parent / "web").resolve()

@@ -1,7 +1,8 @@
-"""Testy configu dostawców STT/TTS (`server/voice/config.py`) i endpointów REST
-`GET/PUT /api/v1/voice/providers/config` (`server/voice/routes.py`) — maskowanie
-kluczy API na odczyt, "puste pole = zachowaj obecny klucz" na zapis (mirror wzorca
-`HomeAssistantConfig`/`world/routes.py`)."""
+"""Testy configu dostawców STT/TTS (`server/voice/config.py`, legacy) i shimu
+kompatybilności `GET/PUT /api/v1/voice/providers/config`
+(`server/voice/provider_routes.py`), zbudowanego nad `STTRegistry`/`TTSRegistry`
+— maskowanie kluczy API na odczyt, "puste pole = zachowaj obecny klucz" na
+zapis (mirror wzorca `HomeAssistantConfig`/`world/routes.py`)."""
 
 from __future__ import annotations
 
@@ -9,10 +10,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from server.ai.stt import STTRegistry
+from server.ai.tts import TTSRegistry
 from server.voice.config import VoiceProvidersConfig, load_voice_providers_config, save_voice_providers_config
-from server.voice.routes import create_voice_status_router
-from server.voice.stt import MockSTTProvider
-from server.voice.tts import MockTTSProvider
+from server.voice.provider_routes import create_voice_providers_router
 
 
 @pytest.fixture
@@ -23,14 +24,12 @@ def voice_config_path(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def client(voice_config_path):
+def client(tmp_path):
     app = FastAPI()
     app.include_router(
-        create_voice_status_router(
-            stt_provider=MockSTTProvider(),
-            tts_provider=MockTTSProvider(),
-            wakeword_detector_class_name="ThresholdEnergyWakeWordDetector",
-            connected_sender_ids=set(),
+        create_voice_providers_router(
+            stt_registry=STTRegistry(data_dir=tmp_path),
+            tts_registry=TTSRegistry(data_dir=tmp_path),
         ),
         prefix="/api/v1/voice",
     )

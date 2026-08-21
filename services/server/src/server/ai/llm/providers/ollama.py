@@ -5,9 +5,9 @@ import httpx
 from shared import get_logger
 
 from server.config import load_settings
-from server.agent.backend.providers.base import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition
+from server.agent.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition
 
-logger = get_logger("regis.agent.providers.ollama")
+logger = get_logger("regis.ai.llm.providers.ollama")
 
 
 def _messages_to_ollama_payload(messages: list[LLMMessage]) -> list[dict[str, Any]]:

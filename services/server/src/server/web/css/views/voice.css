@@ -1,63 +1,13 @@
 /* ==========================================================================
-   WIDOK GŁOS — STT (Groq)/TTS (ElevenLabs) mają realne formularze configu
-   (`.form-card`, `forms.css`) od podłączenia realnych dostawców chmurowych.
-   Satelity: lista podłączonych-ale-niezarejestrowanych (monitorowanie żywego
-   WS to domena voice, nie world) + odnośnik do właściwej rejestracji w
-   Świecie. Pole klucza API to ten sam wzorzec co Home Assistant
-   (`extensions.css`, `.ha-token-*`/`.ha-list*`), tylko pod własną nazwą klasy
-   — sekcje mają się nie znać nawzajem, nawet w CSS.
+   WIDOK GŁOS — wyłącznie Satelity (config dostawców STT/TTS przeniesiony do
+   zakładki Dostawcy, `css/views/providers.css`). Lista
+   podłączonych-ale-niezarejestrowanych (monitorowanie żywego WS to domena
+   voice, nie world) + odnośnik do właściwej rejestracji w Świecie.
    ========================================================================== */
 .voice-placeholder-text {
   color: var(--text-secondary);
   font-size: 0.95rem;
   line-height: 1.6;
-}
-
-.voice-token-field-wrap {
-  position: relative;
-}
-
-.voice-token-field-wrap .form-control {
-  width: 100%;
-  padding-right: 40px;
-}
-
-.voice-token-toggle-eye {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.voice-token-toggle-eye:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-surface-hover);
-}
-
-.voice-token-toggle-eye svg.icon-svg {
-  width: 16px;
-  height: 16px;
-}
-
-.voice-token-hint {
-  margin-top: 8px;
-  margin-bottom: 0;
-}
-
-.voice-restart-hint {
-  margin-top: -8px;
-  margin-bottom: 20px;
 }
 
 .voice-pending-satellites {

@@ -93,18 +93,49 @@ server/
 |  - MemoryManager (Session storage)       |  |  - ConfigStore          |
 |  - ContextBuilder                        |  |  - Contracts (DTOs)     |
 |  - WorldInterface (Protocol)             |  |  - Logging              |
+|  - BaseLLMProvider (Protocol, llm.py)    |  |                         |
 +------------------------------------------+  +-------------------------+
         |                        |                        ^
         v                        v                        |
 +------------------------+  +------------------------------------------+
-| WARSTWA DOSTAWCÓW LLM  |  |  WORLDENGINE — jedyny silnik świata      |
-| agent/backend          |  |  services/server/src/server/world        |
-| - BackendRegistry      |  |  - HomeAssistantClient, Device,          |
-| - BaseLLMProvider      |  |    DeviceGroup, rejestr satelit          |
-|   (Ollama, OpenRouter) |  |  - woła własne backendy wprost, bez      |
-+------------------------+  |    protokołu między nimi                 |
-                             +------------------------------------------+
+| KONKRETY AI            |  |  WORLDENGINE — jedyny silnik świata      |
+| services/server/src/   |  |  services/server/src/server/world        |
+|   server/ai            |  |  - HomeAssistantClient, Device,          |
+| - ai/llm (BackendRegi- |  |    DeviceGroup, rejestr satelit          |
+|   stry, Ollama, Open-  |  |  - woła własne backendy wprost, bez      |
+|   Router)              |  |    protokołu między nimi                 |
+| - ai/stt, ai/tts       |  +------------------------------------------+
+|   (Groq, ElevenLabs)   |
++------------------------+
 ```
+
+Sąsiad `agent/`/`world/`, budowany od zera 2026-08-21: trzyma wyłącznie
+**konkretne** implementacje i logikę wyboru dostawcy AI (LLM/STT/TTS).
+Protokoły (`BaseLLMProvider`, `BaseSTTProvider`, `BaseTTSProvider`) zostają
+we właściwych domenach (`agent/llm.py`, `voice/stt.py`, `voice/tts.py`) —
+dokładnie ten sam podział co `WorldInterface` (zostaje w `agent/`) vs
+`WorldEngine` (konkretna implementacja, sąsiedni `world/`).
+
+**Singleton-router per moduł (`LLMRouter`/`STTRouter`/`TTSRouter`)** — `agent/`
+i `voice/` nie trzymają referencji do zamrożonego konkretu, tylko do
+stabilnego routera należącego do `ai/*`, który implementuje odpowiedni
+protokół i **przy każdym wywołaniu** sam rozwiązuje aktualnie aktywny konkret
+(cache'owany, przebudowywany tylko gdy zmieni się aktywne ID/config — patrz
+`ai/llm/router.py`, `ai/stt/router.py`, `ai/tts/router.py`). `main.py`
+konstruuje router raz i wstrzykuje go dokładnie jak wcześniej wstrzykiwał
+konkret (`self.llm_provider.generate_stream(...)`,
+`self._stt_provider.transcribe(...)`, `self._tts_provider.synthesize(...)` —
+bez zmian po stronie wywołującej). Dzięki temu zmiana aktywnego backendu LLM
+(`PUT /api/v1/llm/providers/active`) i configu STT/TTS
+(`PUT /api/v1/voice/providers/config`) działa **natychmiast, bez restartu
+serwera** — REST-y już nie mutują `agent_engine`/`voice` z zewnątrz (wcześniej
+`network/routes/providers.py` robił `agent_engine.llm_provider = ...`, co było
+złamaniem hermetyzacji; STT/TTS nie miały tej mutacji wcale, stąd wymóg
+restartu przed tą zmianą). `BaseSTTProvider`/`BaseTTSProvider` mają wspólną,
+nieabstrakcyjną metodę `get_active_provider_class_name()` (domyślnie zwraca
+własną klasę, `STTRouter`/`TTSRouter` nadpisują, zwracając nazwę rozwiązanego
+konkretu) — używana przez `GET /api/v1/voice/status` do raportowania
+Mock/real bez ujawniania szczegółów routingu.
 
 ### Zasada kierunku zależności (fundament architektury)
 
@@ -178,10 +209,12 @@ pokoi ani nie blokuje na nich akcji.
 - **`ContextBuilder` (`context/builder.py`)**: Komponuje ostateczny prompt dla LLM, łącząc instrukcje systemowe z historią sesji. Przycina historię do `max_history_messages` najnowszych wiadomości (domyślnie 40, konfigurowalne w `settings.json`), by uniknąć przekroczenia limitu kontekstu modelu w długich konwersacjach. Przycinanie działa na podstawie liczby wiadomości, nie realnego zliczania tokenów. Parametr `tools_available` warunkowo dokleja jedno neutralne zdanie o dostępności narzędzi — nigdy nie wymienia ich nazw ani pochodzenia. Parametr `system_prompt` (już gotowy string — wkład World albo fallback kernela) jest wklejany wprost jako treść systemowa, bez żadnego dalszego sklejania czy formatowania po stronie kernela.
 - **`AgentDefaultPromptStore` (`prompts/store.py`)**: Jedna wartość (`data/agent_default_prompt.json`), bez CRUD — fallback używany **wyłącznie** gdy `ContextBuild.system_prompt is None` (brak World albo `NullWorldInterface`, np. testy headless / przenośność kernela). Przy pierwszym uruchomieniu bez pliku próbuje best-effort migracji z dawnego legacy `data/prompts/*.json`+`active_prompt.json`; w przeciwnym razie zasiewa `DEFAULT_SYSTEM_PROMPT`. Właściwy, edytowalny CRUD tożsamości (do 3 przełączalnych profili) żyje dziś w `world/prompts.py` — World jest jedynym autorem promptu, gdy jest podłączony (patrz sekcja 3.4, sekcja 5).
 
-### 3.3 Warstwa Dostawców LLM (`services/server/src/server/agent/backend`)
-- **`BaseLLMProvider` (`providers/base.py`)**: Interfejs abstrakcyjny definiujący metodę `generate_stream(messages, tools)`, która yielduje `str` (fragment tekstu) **albo** `ToolCallRequest` (kompletne żądanie wywołania narzędzia). Cała złożoność formatu API konkretnego dostawcy (OpenRouter: akumulacja fragmentarycznych `delta.tool_calls` z SSE; Ollama: kompletne `tool_calls` w jednym komunikacie) jest ukryta wewnątrz providera — kernel operuje wyłącznie na abstrakcyjnych typach. Oba dostępne backendy wspierają tool calling.
-- **`ToolDefinition` / `ToolCallRequest` / `ToolResult` (`providers/base.py`)**: Typy definiujące, **czym jest narzędzie** w całym systemie.
-- **`BackendRegistry` (`registry.py`)**: Dynamiczny rejestr dostawców modeli z możliwością płynnego przełączania aktywnego backendu (np. z lokalnego `OllamaProvider` na chmurowy `OpenRouterProvider`).
+### 3.3 Protokół LLM (`services/server/src/server/agent/llm.py`) i konkrety (`server/ai/llm`)
+- **`BaseLLMProvider` (`agent/llm.py`)**: Interfejs abstrakcyjny definiujący metodę `generate_stream(messages, tools)`, która yielduje `str` (fragment tekstu) **albo** `ToolCallRequest` (kompletne żądanie wywołania narzędzia). Cała złożoność formatu API konkretnego dostawcy (OpenRouter: akumulacja fragmentarycznych `delta.tool_calls` z SSE; Ollama: kompletne `tool_calls` w jednym komunikacie) jest ukryta wewnątrz providera — kernel operuje wyłącznie na abstrakcyjnych typach. Zostaje w `agent/` (kernel jest jego właścicielem, tak jak `WorldInterface`), mimo że oba konkretne backendy mieszkają w sąsiednim `server/ai/llm/` — patrz sekcja "Konkrety AI" wyżej.
+- **`ToolDefinition` / `ToolCallRequest` / `ToolResult` (`agent/llm.py`)**: Typy definiujące, **czym jest narzędzie** w całym systemie.
+- **`OllamaProvider` / `OpenRouterProvider` (`ai/llm/providers/`)**: Konkretne implementacje `BaseLLMProvider`. Oba wspierają tool calling.
+- **`LLMFactory` (`ai/llm/factory.py`)**: Tworzy instancję providera z `BackendInstanceConfig` (Single Source of Truth dla schematów opcji konfiguracyjnych, `get_all_schemas()`).
+- **`BackendRegistry` (`ai/llm/registry.py`)**: Dynamiczny rejestr dostawców modeli (pliki JSON w `data/backends/`) z możliwością płynnego przełączania aktywnego backendu (np. z lokalnego `OllamaProvider` na chmurowy `OpenRouterProvider`).
 
 ### 3.4 WorldEngine (`services/server/src/server/world`)
 
@@ -218,11 +251,17 @@ publiczny kontrakt `AgentEngine` — dokładnie ten sam, z którego korzysta
   zainicjowało bieżącą turę — to właśnie ta ciągłość pozwala na przekierowanie
   odpowiedzi do innego `sender_id` (patrz `speak_in_room` wyżej i akapit
   o `ToolResult.redirect_sender_id` niżej).
-- **`ToolResult.redirect_sender_id`** (`agent/backend/providers/base.py`): mechaniczne pole — kernel nie interpretuje jego znaczenia, tylko zmienia `effective_session_id` używany do publikacji `CHAT_CHUNK`/`TOOL_CALL_START`/`TOOL_CALL_RESULT` na resztę tury (`agent/engine.py`, `_generate_in_background`). `CHAT_DONE`/`CHAT_ERROR`/`CHAT_CANCELLED` są **dodatkowo zawsze publikowane też pod oryginalnym `session_id`** (dual-cast), nawet po przekierowaniu — gwarantuje to, że `interact_stream()` (subskrybowany wyłącznie po oryginalnym `session_id`, używany też wewnętrznie przez `interact()`) zawsze poprawnie się kończy, zamiast zawiesić się w oczekiwaniu na zdarzenie, które nigdy nie nadejdzie pod starym tagiem. Historia rozmowy (`MemoryManager`) zawsze zapisywana pod oryginalnym `session_id` — przekierowanie zmienia wyłącznie dostawę, nigdy właściciela konwersacji.
+- **`ToolResult.redirect_sender_id`** (`agent/llm.py`): mechaniczne pole — kernel nie interpretuje jego znaczenia, tylko zmienia `effective_session_id` używany do publikacji `CHAT_CHUNK`/`TOOL_CALL_START`/`TOOL_CALL_RESULT` na resztę tury (`agent/engine.py`, `_generate_in_background`). `CHAT_DONE`/`CHAT_ERROR`/`CHAT_CANCELLED` są **dodatkowo zawsze publikowane też pod oryginalnym `session_id`** (dual-cast), nawet po przekierowaniu — gwarantuje to, że `interact_stream()` (subskrybowany wyłącznie po oryginalnym `session_id`, używany też wewnętrznie przez `interact()`) zawsze poprawnie się kończy, zamiast zawiesić się w oczekiwaniu na zdarzenie, które nigdy nie nadejdzie pod starym tagiem. Historia rozmowy (`MemoryManager`) zawsze zapisywana pod oryginalnym `session_id` — przekierowanie zmienia wyłącznie dostawę, nigdy właściciela konwersacji.
 - **`VoiceSession`** (`voice/session.py`): czysty automat stanu treści (`LISTENING_WAKEWORD` → `RECORDING_UTTERANCE` → `PROCESSING` → `SPEAKING` → z powrotem), zero wiedzy o WebSocket/EventBus — testowalny w izolacji (`tests/test_voice_pipeline.py`). `reset_to_listening()` to awaryjny powrót do nasłuchu wołany przez gateway po `CHAT_ERROR`/`CHAT_CANCELLED`, żeby sesja nigdy nie utknęła w `PROCESSING`/`SPEAKING` na zawsze.
 - **Protokół WS** (`shared/voice_protocol.py` — **od tej sesji w `packages/shared`, nie w `server/voice/`**: kontrakt ramek, współdzielony przez dwie niezależne usługi, `server` i `desktop_satellite`, patrz sekcja 3.6): ramki binarne = surowe PCM16 mono (bez kodeka) w obie strony; ramki tekstowe JSON = control-plane (`hello`/`utterance_end`/`playback_done` od satelity, `wake_detected`/`play_stop_tone`/`tts_start`/`tts_end`/`error` od serwera). Dźwięki wake/stop-tone są lokalne (wypalone w firmware satelity/generowane przez klienta desktopowego), nigdy strumieniowane z serwera.
 - **VAD po stronie satelity**: to satelita (nie serwer) decyduje o końcu wypowiedzi (min. 1.5s ciszy) i wysyła `utterance_end` — świadoma decyzja architektoniczna (satelita i tak musi wiedzieć, kiedy przestać nagrywać/streamować, żeby nie wysyłać ciszy w nieskończoność).
-- **STT/TTS** (`voice/stt.py`, `voice/tts.py`): `BaseSTTProvider`/`BaseTTSProvider` to mirror `BaseLLMProvider` (`agent/backend/providers/base.py`). **Realni dostawcy chmurowi od tej sesji**: `GroqSTTProvider` (`AsyncGroq.audio.transcriptions.create()`, modele `whisper-large-v3-turbo`/`whisper-large-v3`, `language="pl"` — surowe PCM16 owijane w minimalny nagłówek WAV, `_pcm_to_wav()`, bo Groq przyjmuje pliki audio, nie goły strumień) i `ElevenLabsTTSProvider` (`AsyncElevenLabs.text_to_speech.convert()`, `output_format="pcm_16000"` — **dokładnie** nasz format przewodowy, zero resamplingu; `model_id="eleven_multilingual_v2"`, jedyny model jawnie potwierdzony jako wspierający polski). Config (`voice/config.py`, `VoiceProvidersConfig`, plik `data/voice/config.json`) edytowalny w Web UI (zakładka **Głos**, `voice_config.js`) — `GET/PUT /api/v1/voice/providers/config` (`voice/routes.py`), klucze API zamaskowane na odczyt, ten sam wzorzec co Home Assistant. Puste klucze = łagodna degradacja do `MockSTTProvider`/`MockTTSProvider` (`main.py`, `_build_stt_provider`/`_build_tts_provider`) — bez osobnego przełącznika `enabled`. **Ograniczenie**: providery budowane są raz przy starcie serwera — zmiana klucza/modelu przez `PUT` zapisuje się na dysk, ale zaczyna obowiązywać dopiero po restarcie (brak hot-reloadu, spójne z resztą configu w tym projekcie).
+- **STT/TTS** — protokół (`voice/stt.py`::`BaseSTTProvider`, `voice/tts.py`::`BaseTTSProvider`) to mirror `BaseLLMProvider` (`agent/llm.py`), zostaje w `voice/`. Od 2026-08-21 (sesja: parytet CRUD z LLM) `server/ai/stt`/`server/ai/tts` mają **pełny rejestr wielu nazwanych instancji**, mirror `ai/llm/registry.py`::`BackendRegistry` — `STTRegistry`/`TTSRegistry` (pliki `data/stt_backends/*.json`+`data/active_stt_backend.json`, `data/tts_backends/*.json`+`data/active_tts_backend.json`), `STTFactory`/`TTSFactory` (`create_provider`+`get_all_schemas()`, Single Source of Truth schematów, mirror `LLMFactory`). Konkrety: `GroqSTTProvider` (`ai/stt/providers.py`, `AsyncGroq.audio.transcriptions.create()`, modele `whisper-large-v3-turbo`/`whisper-large-v3`, `language="pl"` — surowe PCM16 owijane w minimalny nagłówek WAV, `_pcm_to_wav()`, bo Groq przyjmuje pliki audio, nie goły strumień) i `ElevenLabsTTSProvider` (`ai/tts/providers.py`, `AsyncElevenLabs.text_to_speech.convert()`, `output_format="pcm_16000"` — **dokładnie** nasz format przewodowy, zero resamplingu; `model_id="eleven_multilingual_v2"`, jedyny model jawnie potwierdzony jako wspierający polski). Puste `api_key` w opcjach instancji = łagodna degradacja do `MockSTTProvider`/`MockTTSProvider` (per-instancja, w `STTFactory.create_provider`/`TTSFactory.create_provider`) — bez osobnego przełącznika `enabled`.
+
+  REST: `voice/provider_routes.py`::`create_voice_providers_router` — pełny CRUD mirror `network/routes/providers.py` (LLM): `GET .../stt/providers/schemas`, `GET/POST/PUT .../stt/providers[/active]`, `DELETE .../stt/providers/{id}` i analogicznie `.../tts/providers*`. Powód: użytkownik planuje lokalne rozwiązania STT/TTS obok Groq/ElevenLabs — konkretny drugi kandydat w ręku, warunek YAGNI-out spełniony (w odróżnieniu od wcześniejszej sesji, gdzie jeden realny dostawca każdego typu uzasadniał tylko płaski, jednosslotowy config). Ten sam plik trzyma **shim kompatybilności** `GET/PUT /api/v1/voice/providers/config` — dzisiejszy, płaski kontrakt `voice_config.js` (bez zmian we froncie w tej sesji — UI świadomie odłożone), zbudowany nad *aktywną* instancją STT + *aktywną* instancją TTS (`STTRegistry.update_instance`/`TTSRegistry.update_instance`, nadpisuje `options` w miejscu, bez zmiany ID). Pierwsze uruchomienie po tej zmianie: best-effort migracja z legacy `data/voice/config.json` (`VoiceProvidersConfig`) do jednej domyślnej instancji per typ (`stt_groq_default`/`tts_elevenlabs_default`) — istniejące klucze API użytkownika nie giną.
+
+  `voice/` trzyma nie te konkrety wprost, tylko `STTRouter`/`TTSRouter` (`ai/stt/router.py`/`ai/tts/router.py`, patrz wyżej "Singleton-router per moduł") — cache klucz to `(active_id, options)`, **nie sam `active_id`**: w odróżnieniu od LLM (gdzie REST nigdy nie edytuje pól istniejącej instancji, tylko create/switch/delete), shim kompatybilności edytuje `options` aktywnej instancji w miejscu, więc sam niezmieniony `active_id` nie gwarantuje niezmienionej konfiguracji (błąd znaleziony i naprawiony w tej samej sesji testem regresyjnym, `tests/test_ai_routers.py`). Efekt: zmiana aktywnego dostawcy/klucza/modelu STT/TTS (przez shim albo nowy CRUD) działa **od razu, bez restartu serwera**.
+
+  **Świadomie NIE zbudowano** wspólnej, generycznej klasy rejestru w `packages/shared` współdzielonej przez LLM/STT/TTS — mimo że to już trzecie niemal identyczne miejsce (`BackendRegistry`/`STTRegistry`/`TTSRegistry`). Prawdziwa konsolidacja DRY ma sens dopiero gdy wzorzec się ustabilizuje po dodaniu realnego drugiego typu STT/TTS (Boy Scout Rule przy kolejnej zmianie, nie spekulacyjnie z góry).
 - **`wakeword.py`**: `OnnxWakeWordDetector` — realny detektor oparty o wytrenowany model `.onnx` (biblioteka `livekit-wakeword`, ekstrakcja cech mel-spektrogram+embedding wbudowana w pakiet — tylko `numpy`+`onnxruntime` jako zależności runtime, bez `torch`). Kroczący bufor ~2s audio, inference co ~320ms (stride), próg pewności z `Settings.wakeword_threshold`. Koszt inference zmierzony empirycznie: ~20ms/wywołanie na CPU — przy tej skali projektu (jednoosobowy, kilka satelit) zostawione jako wywołanie synchroniczne w `WakeWordDetector.process()` (bez `run_in_executor`); do rewizji, gdyby liczba jednoczesnych satelit realnie wzrosła. `ThresholdEnergyWakeWordDetector` (sekwencja głośnych ramek, nie prawdziwe rozpoznawanie słowa) to dziś **fallback** — używany, gdy `Settings.wakeword_model_path` puste albo plik nie istnieje (`main.py`, `_build_wakeword_detector_factory`, łagodna degradacja jak przy braku configu Home Assistant), oraz w testach automatu stanu (`test_voice_pipeline.py`).
 - **Brak uwierzytelniania WS**: `WS /ws/voice/{sender_id}` nie weryfikuje w żaden sposób tożsamości łączącego się klienta — spójne z resztą systemu (opaque `sender_id` bez auth), świadome założenie modelu zaufanej sieci lokalnej, do rewizji dopiero przy realnej potrzebie (np. wystawienie serwera poza LAN).
 - **`connected_sender_ids`** (od tej sesji, `main.py`+`gateway.py`+`routes.py`): zwykły, współdzielony `set[str]` (bez locka — jeden wątek asyncio) wypełniany przez `voice_endpoint()` (`add` po `websocket.accept()`, `discard` w `finally`), czytany przez `GET /api/v1/voice/connected` (`routes.py`). Mechaniczny fakt "kto ma żywe połączenie WS teraz" — zero wiedzy o rejestracji/pokoju (to należy do `World`). **Monitorowanie tego stanu w Web UI żyje w zakładce Głos** (`voice_config.js`, sekcja "Satelity"), **nie Świat** — pierwsza wersja umieściła listę oczekujących w panelu Nadawcy (`extensions/ha/satellites_panel.js`), co dawało zakładce Świat drugą odpowiedzialność nienależącą do niej ani koncepcyjnie, ani pod maską (poprawione tego samego dnia po informacji zwrotnej).

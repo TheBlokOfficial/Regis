@@ -10,7 +10,7 @@ from typing import Any, Callable
 import httpx
 from shared import get_logger
 
-from server.agent.backend import ToolResult
+from server.agent.llm import ToolResult
 from server.world.models import Device
 
 logger = get_logger("regis.world")

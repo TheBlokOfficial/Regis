@@ -7,9 +7,7 @@ from shared import (
     ProviderMetadataResponse,
     SelectLLMProviderRequest,
 )
-from server.agent import AgentEngine
-from server.agent.backend import BackendRegistry, ProviderType
-from server.agent.backend.factory import LLMFactory
+from server.ai.llm import BackendRegistry, LLMFactory, ProviderType
 
 
 def _mask_secret_options(provider_type: str, options: dict[str, Any]) -> dict[str, Any]:
@@ -40,7 +38,6 @@ def _mask_secret_options(provider_type: str, options: dict[str, Any]) -> dict[st
 
 def create_providers_router(
     backend_registry: BackendRegistry,
-    agent_engine: AgentEngine,
 ) -> APIRouter:
     """Tworzy router dla punktów końcowych konfiguracji dostawców LLM."""
     router = APIRouter()
@@ -94,7 +91,6 @@ def create_providers_router(
             )
 
         await backend_registry.set_active_backend_id(req.provider_id)
-        agent_engine.llm_provider = await backend_registry.get_active_provider()
 
         return await get_llm_providers()
 

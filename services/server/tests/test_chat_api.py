@@ -5,8 +5,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.agent import AgentEngine
-from server.agent.backend import BaseLLMProvider, LLMMessage, LLMResponse
-from server.agent.backend.registry import BackendRegistry
+from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse
+from server.ai.llm.registry import BackendRegistry
 from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
 from server.network.gateway import create_gateway_app

@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from server.agent.backend.models import BackendInstanceConfig, ProviderType
-from server.agent.backend.factory import LLMFactory
-from server.agent.backend.providers.base import LLMMessage
-from server.agent.backend.providers.ollama import OllamaProvider
-from server.agent.backend.providers.openrouter import OpenRouterProvider
+from server.agent.llm import LLMMessage
+from server.ai.llm.models import BackendInstanceConfig, ProviderType
+from server.ai.llm.factory import LLMFactory
+from server.ai.llm.providers.ollama import OllamaProvider
+from server.ai.llm.providers.openrouter import OpenRouterProvider
 
 
 @pytest.mark.anyio
