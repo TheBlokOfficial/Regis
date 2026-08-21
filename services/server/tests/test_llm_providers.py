@@ -1,4 +1,3 @@
-import httpx
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from server.agent.llm import LLMMessage
@@ -76,7 +75,7 @@ async def test_openai_compatible_provider_streams_and_applies_extras(base_url, e
     messages = [LLMMessage(role="user", content="Hello")]
 
     mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
+    mock_response.is_error = False
 
     async def mock_aiter_lines():
         yield 'data: {"choices": [{"delta": {"content": "Hi"}}]}'
@@ -123,20 +122,18 @@ async def test_openai_compatible_provider_streams_and_applies_extras(base_url, e
 
 @pytest.mark.anyio
 async def test_openai_compatible_provider_surfaces_http_error_body_not_stream_consumed_error():
-    """Regresja: `raise_for_status()` rzuca w trakcie strumieniowania — dostęp do
-    `e.response.text` bez wcześniejszego `aread()` maskował prawdziwy błąd API
-    komunikatem httpx "Attempted to access streaming response content, without
-    having called read()." (patrz historia gita, zgłoszone na żywo w UI)."""
+    """Regresja: treść błędu HTTP musi być odczytana (`aread()`) wewnątrz
+    `async with client.stream(...)`, zanim ten blok się zakończy — po jego
+    zakończeniu httpx zamyka połączenie i odczyt nie jest już możliwy (pierwsza
+    wersja fixa robiła to poza blokiem, dalej gubiąc treść błędu; zgłoszone na
+    żywo w UI, HTTP 429 z Groq)."""
     provider = OpenAICompatibleProvider(base_url="https://api.example.com/v1", api_key="test-key", model="m")
     messages = [LLMMessage(role="user", content="Hello")]
 
     mock_response = MagicMock()
-    mock_response.status_code = 400
-    mock_response.aread = AsyncMock()
-    mock_response.text = '{"error": "invalid request: bad tool_call_id"}'
-    mock_response.raise_for_status = MagicMock(
-        side_effect=httpx.HTTPStatusError("Bad Request", request=MagicMock(), response=mock_response)
-    )
+    mock_response.status_code = 429
+    mock_response.is_error = True
+    mock_response.aread = AsyncMock(return_value=b'{"error": "rate limit exceeded"}')
 
     mock_stream_ctx = MagicMock()
     mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_response)
@@ -154,7 +151,8 @@ async def test_openai_compatible_provider_surfaces_http_error_body_not_stream_co
             async for _ in provider.generate_stream(messages):
                 pass
 
-    assert "invalid request: bad tool_call_id" in str(exc_info.value)
+    assert "rate limit exceeded" in str(exc_info.value)
+    assert "429" in str(exc_info.value)
     assert "Attempted to access streaming response content" not in str(exc_info.value)
     mock_response.aread.assert_awaited_once()
 

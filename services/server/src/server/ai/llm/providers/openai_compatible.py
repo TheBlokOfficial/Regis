@@ -120,7 +120,18 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             pending_tool_calls: dict[int, dict[str, Any]] = {}
             async with httpx.AsyncClient(timeout=httpx_timeout) as client:
                 async with client.stream("POST", url, json=payload, headers=headers) as response:
-                    response.raise_for_status()
+                    if response.is_error:
+                        # Treść trzeba doczytać TU, w środku `async with client.stream(...)` — po
+                        # wyjściu z tego bloku httpx zamyka połączenie i dalszy odczyt jest już
+                        # niemożliwy (stąd poprzednia wersja tego kodu gubiła treść błędu API).
+                        body_bytes = await response.aread()
+                        body_text = body_bytes.decode("utf-8", errors="replace")
+                        logger.error(
+                            f"Błąd HTTP dostawcy OpenAI-compatible [{self.base_url}] "
+                            f"[{response.status_code}]: {body_text}"
+                        )
+                        raise RuntimeError(f"Błąd API [{self.base_url}] HTTP {response.status_code}: {body_text}")
+
                     async for line in response.aiter_lines():
                         line = line.strip()
                         if not line or not line.startswith("data: "):
@@ -180,21 +191,12 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                             logger.error(f"Nie udało się zdekodować argumentów narzędzia: {entry['arguments']}")
                             arguments = {}
                         yield ToolCallRequest(id=entry["id"], name=entry["name"], arguments=arguments)
-        except httpx.HTTPStatusError as e:
-            # `raise_for_status()` rzuca w trakcie strumieniowania (`client.stream(...)`) — treść
-            # odpowiedzi trzeba jawnie doczytać (`aread()`) przed dostępem do `.text`, inaczej httpx
-            # rzuca `StreamConsumed`/"Attempted to access streaming response content, without having
-            # called read()" i maskuje prawdziwy błąd API (nawet w logu).
-            try:
-                await e.response.aread()
-                body_text = e.response.text
-            except Exception:
-                body_text = "<nie udało się odczytać treści błędu>"
-            logger.error(f"Błąd HTTP dostawcy OpenAI-compatible [{self.base_url}] [{e.response.status_code}]: {body_text}")
-            raise RuntimeError(f"Błąd API [{self.base_url}] HTTP {e.response.status_code}: {body_text}") from e
         except httpx.ReadTimeout as e:
             logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({timeout_val}s) z [{self.base_url}].")
             raise RuntimeError(f"Timeout strumienia z [{self.base_url}] ({timeout_val}s): {e}") from e
+        except RuntimeError:
+            # Już zalogowane wyżej (błąd HTTP z treścią odpowiedzi) — nie duplikować logu.
+            raise
         except Exception as e:
             logger.error(f"Błąd podczas strumieniowania odpowiedzi przez OpenAICompatibleProvider [{self.base_url}]: {e}")
             raise
