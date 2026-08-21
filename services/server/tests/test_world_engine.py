@@ -100,6 +100,60 @@ async def test_executor_group_aggregates_partial_failure():
     assert "1/2" in result.content
 
 
+@pytest.mark.anyio
+async def test_executor_array_entity_id_invokes_all_without_predefined_group():
+    """Ad-hoc tablica entity_id — bez żadnej zapisanej grupy, model sam składa zestaw."""
+    client = FakeHomeAssistantClient()
+    device_registry = DeviceRegistry(_make_devices())
+    executor = HomeAssistantToolExecutor(device_registry, client)
+
+    result = await executor.execute(
+        "turn_off", {"entity_id": ["light.bathroom", "light.bathroom_mirror"]}
+    )
+
+    assert result.is_error is False
+    assert "2/2" in result.content
+    assert set(client.invocations) == {
+        ("light.bathroom", "turn_off"),
+        ("light.bathroom_mirror", "turn_off"),
+    }
+
+
+@pytest.mark.anyio
+async def test_executor_array_mixes_device_and_group_ref():
+    """Tablica może mieszać pojedyncze entity_id i group_id naraz — grupa się rozwija."""
+    client = FakeHomeAssistantClient()
+    kitchen = Device(id="light.kitchen", name="Kuchnia", kind="light", capabilities=dict(_CORE_CAPS))
+    device_registry = DeviceRegistry(_make_devices() + [kitchen], [_make_group()])
+    executor = HomeAssistantToolExecutor(device_registry, client)
+
+    result = await executor.execute("turn_off", {"entity_id": ["grp_bathroom", "light.kitchen"]})
+
+    assert result.is_error is False
+    assert "3/3" in result.content
+    assert set(client.invocations) == {
+        ("light.bathroom", "turn_off"),
+        ("light.bathroom_mirror", "turn_off"),
+        ("light.kitchen", "turn_off"),
+    }
+
+
+@pytest.mark.anyio
+async def test_executor_array_with_unknown_entity_id_reports_partial_failure():
+    client = FakeHomeAssistantClient()
+    device_registry = DeviceRegistry(_make_devices())
+    executor = HomeAssistantToolExecutor(device_registry, client)
+
+    result = await executor.execute(
+        "turn_off", {"entity_id": ["light.bathroom", "light.nieistniejace"]}
+    )
+
+    assert result.is_error is False
+    assert "1/2" in result.content
+    assert "nieznana encja" in result.content
+    assert client.invocations == [("light.bathroom", "turn_off")]
+
+
 def test_decode_light_infers_brightness_and_color_from_color_modes():
     from server.world.client import _decode_light
 
