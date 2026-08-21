@@ -274,17 +274,23 @@ class AgentEngine:
             await _publish(ServerEventType.CHAT_CANCELLED, {}, terminal=True)
             raise
         except Exception as err:
+            # Pełny techniczny szczegół (np. surowa treść odpowiedzi API dostawcy LLM —
+            # bywa w niej wewnętrzne ID organizacji/konta, zaobserwowane na żywo w błędzie
+            # 429 Groq) trafia WYŁĄCZNIE do logów (konsola + data/logs/regis.log). Treść
+            # widoczna dla użytkownika (pamięć + zdarzenie CHAT_ERROR, doręczane też do
+            # satelit głosowych jako komunikat kontrolny) jest świadomie ogólna.
             logger.error(f"Błąd podczas generowania odpowiedzi dla sesji '{session_id}': {err}")
+            user_facing_error = "Wystąpił błąd podczas generowania odpowiedzi. Spróbuj ponownie za chwilę."
             # Utrwalamy odpowiedź błędu sparowaną z pytaniem użytkownika, by historia
             # nigdy nie zostawiała nieodpowiedzianej wiadomości użytkownika w kontekście.
             await asyncio.to_thread(
                 self.memory_manager.add_message,
                 session_id=session_id,
                 role="assistant",
-                content=f"[Błąd generowania odpowiedzi: {err}]",
+                content=f"[Błąd generowania odpowiedzi: {user_facing_error}]",
                 metadata={"is_error": True, "steps": steps} if steps else {"is_error": True},
             )
-            await _publish(ServerEventType.CHAT_ERROR, {"error": str(err)}, terminal=True)
+            await _publish(ServerEventType.CHAT_ERROR, {"error": user_facing_error}, terminal=True)
             raise
         finally:
             self._active_tasks.pop(session_id, None)

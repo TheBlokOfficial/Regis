@@ -216,6 +216,49 @@ async def test_async_background_generation_and_status():
             assert res_hist_done.json()["is_generating"] is False
 
 
+class FailingLLMProvider(BaseLLMProvider):
+    """Rzuca wyjątek niosący 'wrażliwy' szczegół techniczny — symuluje surową odpowiedź
+    błędu API dostawcy (np. treść HTTP 429 z wewnętrznym ID organizacji), która nie
+    powinna nigdy trafić do treści widocznej dla użytkownika."""
+
+    async def generate(self, messages: List[LLMMessage]) -> LLMResponse:
+        raise RuntimeError("nie powinno być wołane w tym teście")
+
+    async def generate_stream(self, messages: List[LLMMessage], tools=None, **kwargs) -> AsyncIterator[str]:
+        raise RuntimeError(
+            "Błąd API [https://api.groq.com/openai/v1] HTTP 429: "
+            '{"error":{"message":"...","org":"org_supertajne_konto_id"}}'
+        )
+        yield  # pragma: no cover - nieosiągalne, ale czyni z tego async generator
+
+    async def check_health(self) -> bool:
+        return True
+
+
+@pytest.mark.anyio
+async def test_llm_error_does_not_leak_raw_detail_to_user_facing_content():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        memory_manager = MemoryManager(data_dir=tmp_path / "sessions")
+        engine = AgentEngine(llm_provider=FailingLLMProvider(), memory_manager=memory_manager)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            async for _ in engine.interact_stream(session_id="session_default", prompt="Zgaś światła"):
+                pass
+
+        # Wyjątek widziany przez wywołującego (HTTP stream/sync, WS głosowy) jest już ogólny.
+        assert "org_supertajne_konto_id" not in str(exc_info.value)
+        assert "Wystąpił błąd" in str(exc_info.value)
+
+        # Historia sesji (to, co widzi użytkownik w Chat UI) też nie zawiera surowego szczegółu.
+        history = memory_manager.get_history("session_default")
+        assert len(history) == 2
+        assert history[1].role == "assistant"
+        assert history[1].metadata.get("is_error") is True
+        assert "org_supertajne_konto_id" not in history[1].content
+        assert "Wystąpił błąd" in history[1].content
+
+
 @pytest.mark.anyio
 async def test_disconnect_does_not_cancel_background_task():
     import asyncio

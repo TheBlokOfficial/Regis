@@ -18,8 +18,11 @@ from server.voice.routes import create_voice_status_router
 from server.voice.wakeword import OnnxWakeWordDetector, ThresholdEnergyWakeWordDetector, WakeWordDetector
 from server.world import WorldEngine
 
-# 1. Konfiguracja jednolitych, minimalistycznych logów
-setup_logging(level="INFO")
+# 1. Konfiguracja jednolitych, minimalistycznych logów — konsola + plik z rotacją
+#    (data/logs/regis.log, gitignorowane jak reszta data/). Plik trzyma pełny techniczny
+#    szczegół błędów (np. treść odpowiedzi API dostawcy LLM), których UI świadomie nie
+#    pokazuje wprost użytkownikowi (patrz agent/engine.py, obsługa błędów tury).
+setup_logging(level="INFO", log_file=get_service_root(__file__) / "data" / "logs" / "regis.log")
 logger = get_logger("regis.main")
 
 

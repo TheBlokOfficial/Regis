@@ -1,5 +1,7 @@
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 
 class MinimalColorFormatter(logging.Formatter):
@@ -44,8 +46,25 @@ class MinimalColorFormatter(logging.Formatter):
         return f"{time_str} {level_str} {name_str} {message}"
 
 
-def setup_logging(level: str = "INFO") -> None:
-    """Inicjalizuje spójne, minimalistyczne logowanie dla całej aplikacji."""
+class PlainFileFormatter(logging.Formatter):
+    """Mirror `MinimalColorFormatter`, bez kodów ANSI (nieczytelne w pliku tekstowym)
+    i z pełną datą (plik przetrwa między uruchomieniami, sama godzina nie wystarczy)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        asctime = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
+        display_name = "uvicorn" if record.name == "uvicorn.error" else record.name
+        return f"[{asctime}] [{record.levelname:<7s}] [{display_name}] {record.getMessage()}"
+
+
+def setup_logging(level: str = "INFO", log_file: Path | str | None = None) -> None:
+    """Inicjalizuje spójne, minimalistyczne logowanie dla całej aplikacji.
+
+    :param level: Minimalny poziom logowania (np. "INFO", "DEBUG").
+    :param log_file: Opcjonalna ścieżka pliku logu (rotacja przy 5 MB, 3 kopie zapasowe) —
+        pozwala odtworzyć pełny techniczny szczegół błędu (np. treść odpowiedzi API
+        dostawcy LLM) bez pokazywania go użytkownikowi w UI, gdzie widoczny jest tylko
+        ogólny komunikat (patrz `agent/engine.py`, obsługa błędów tury).
+    """
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
     root_logger = logging.getLogger()
@@ -64,6 +83,13 @@ def setup_logging(level: str = "INFO") -> None:
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(MinimalColorFormatter())
     root_logger.addHandler(stream_handler)
+
+    if log_file is not None:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = RotatingFileHandler(log_path, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+        file_handler.setFormatter(PlainFileFormatter())
+        root_logger.addHandler(file_handler)
 
     # Przekierowanie logów Uvicorna do naszego root handlera
     for uvicorn_logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
