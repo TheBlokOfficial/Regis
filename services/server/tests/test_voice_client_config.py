@@ -25,6 +25,7 @@ def _make_client(tmp_path: Path) -> tuple[TestClient, ConfigStore[Settings]]:
         config_store=config_store,
         sender_states={},
         event_bus=EventBus(),
+        pending_capabilities={},
     )
     app.include_router(router, prefix="/api/v1/voice")
     return TestClient(app), config_store

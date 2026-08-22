@@ -5,6 +5,7 @@ from server.agent import AgentEngine
 from server.ai.llm import BackendRegistry
 from server.agent.prompts import AgentDefaultPromptStore
 from server.network.routes import create_api_router
+from server.network.routes.chat import RegistrationCheck
 from server.world import WorldEngine
 from server.world.routes import create_world_router
 
@@ -17,6 +18,7 @@ def create_gateway_app(
     voice_router: APIRouter | None = None,
     voice_status_router: APIRouter | None = None,
     voice_providers_router: APIRouter | None = None,
+    is_registered: RegistrationCheck | None = None,
 ) -> FastAPI:
     """Tworzy i konfiguruje bramkę sieciową FastAPI z wbudowaną konsolą WWW i punktami końcowymi."""
     app = FastAPI(
@@ -30,6 +32,7 @@ def create_gateway_app(
         agent_engine=agent_engine,
         backend_registry=backend_registry,
         prompt_store=prompt_store,
+        is_registered=is_registered,
     )
     app.include_router(api_router)
 

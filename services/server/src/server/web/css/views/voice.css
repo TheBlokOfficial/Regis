@@ -113,6 +113,13 @@
   border-color: var(--accent-success);
 }
 
+/* Klient zarejestrowany zanim capabilities istniały — stan wymagający działania
+   użytkownika (ponownej rejestracji), nie błąd systemu: bursztyn, nie czerwień. */
+.voice-client-online-badge.is-unknown {
+  color: var(--accent-warning);
+  border-color: var(--accent-warning);
+}
+
 /* Stan sesji na żywo jest tą realnie użyteczną informacją w karcie — wyraźniej
    niż identyfikator (który jest w rzędzie nad nim). */
 .voice-client-card-meta {

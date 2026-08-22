@@ -65,7 +65,14 @@ def _to_declared_dto(
 
 def _to_sender_dto(sender_id: str, profile: SenderProfile, rooms_by_id: dict[str, RoomInstanceConfig]) -> SenderProfileDTO:
     room = rooms_by_id.get(profile.room_id) if profile.room_id else None
-    return SenderProfileDTO(sender_id=sender_id, room_id=profile.room_id, room_name=room.name if room is not None else None)
+    return SenderProfileDTO(
+        sender_id=sender_id,
+        room_id=profile.room_id,
+        room_name=room.name if room is not None else None,
+        # Posortowane — `frozenset` nie ma kolejności, a UI renderuje to wprost;
+        # bez sortowania kolejność potrafiłaby się zmieniać między odpowiedziami.
+        capabilities=sorted(profile.capabilities),
+    )
 
 
 def create_world_router(engine: WorldEngine) -> APIRouter:
@@ -215,7 +222,18 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
 
     @router.post("/senders", response_model=SenderProfileDTO, status_code=status.HTTP_201_CREATED, tags=["World"])
     async def register_sender(req: RegisterSenderRequest) -> SenderProfileDTO:
-        profile = SenderProfile(room_id=req.room_id)
+        # Upsert służy dwóm scenariuszom o różnej wiedzy: rejestracji z zakładki
+        # Klienci (zna capabilities z handshake) i zmianie pokoju z zakładki Świat
+        # (nie zna ich w ogóle). Puste `capabilities` znaczy więc "zachowaj obecne",
+        # nigdy "wyczyść" — ten sam wzorzec co puste pole tokenu w konfiguracji HA,
+        # bez którego picker pokoju kasowałby capabilities przy każdej zmianie.
+        existing = (await engine.get_senders()).entries.get(req.sender_id)
+        capabilities = (
+            frozenset(req.capabilities)
+            if req.capabilities
+            else (existing.capabilities if existing is not None else frozenset())
+        )
+        profile = SenderProfile(room_id=req.room_id, capabilities=capabilities)
         await engine.register_sender(req.sender_id, profile)
         rooms_by_id = await engine.list_rooms()
         return _to_sender_dto(req.sender_id, profile, rooms_by_id)

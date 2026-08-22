@@ -20,6 +20,9 @@ export class VoiceClient {
     }
   }
 
+  /** Zwraca `[{sender_id, capabilities}]` — capabilities pochodzą z handshake WS i są
+   * potrzebne przy rejestracji, żeby zapisać w World realne możliwości klienta zamiast
+   * zgadywać jego typ po stronie UI. */
   async getConnectedSenders() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/voice/connected`);
@@ -27,7 +30,7 @@ export class VoiceClient {
         throw new Error(`HTTP Error: ${response.status}`);
       }
       const data = await response.json();
-      return data?.sender_ids || [];
+      return data?.senders || [];
     } catch (error) {
       console.error('[ApiClient] Błąd pobierania podłączonych satelit:', error);
       return [];

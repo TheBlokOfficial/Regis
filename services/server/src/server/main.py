@@ -112,6 +112,20 @@ async def main() -> None:
     # GET /api/v1/voice/clients/status (hydratacja dashboardu "Klienci"); dalsze zmiany
     # dochodzą już tylko przez GET /api/v1/voice/clients/watch (SSE, VoiceEventType).
     sender_states: dict[str, str] = {}
+    # Możliwości zadeklarowane w handshake (mic/speaker), zanim klient zostanie
+    # zatwierdzony — Web UI czyta je z GET /api/v1/voice/connected, żeby rejestracja
+    # zapisała w World prawdziwe capabilities zamiast zgadywać typ klienta.
+    pending_capabilities: dict[str, list[str]] = {}
+
+    async def is_registered(sender_id: str) -> bool:
+        """Jedyne miejsce, w którym "kto jest zatwierdzonym klientem" jest wiązane z
+        konkretną implementacją. Wstrzykiwane w obie bramki wejściowe (WS i REST) tym
+        samym wzorcem co `connected_sender_ids` — dzięki temu ani `voice/`, ani
+        `network/routes/` nie importują `world/`, a mimo to obaj klienci przechodzą
+        przez tę samą, jedną bramkę rejestracji."""
+        senders = await world_engine.get_senders()
+        return sender_id in senders.entries
+
     stt_registry = STTRegistry()
     tts_registry = TTSRegistry()
     voice_stt_provider = STTRouter(stt_registry)
@@ -125,6 +139,8 @@ async def main() -> None:
         connected_sender_ids=connected_sender_ids,
         settings_loader=load_settings,
         sender_states=sender_states,
+        pending_capabilities=pending_capabilities,
+        is_registered=is_registered,
     )
     voice_status_router = create_voice_status_router(
         stt_provider=voice_stt_provider,
@@ -134,6 +150,7 @@ async def main() -> None:
         config_store=config_store,
         sender_states=sender_states,
         event_bus=event_bus,
+        pending_capabilities=pending_capabilities,
     )
     voice_providers_router = create_voice_providers_router(stt_registry=stt_registry, tts_registry=tts_registry)
 
@@ -148,6 +165,7 @@ async def main() -> None:
         voice_router=voice_router,
         voice_status_router=voice_status_router,
         voice_providers_router=voice_providers_router,
+        is_registered=is_registered,
     )
 
     # 8. Start serwera uvicorn

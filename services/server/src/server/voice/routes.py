@@ -45,12 +45,26 @@ class VoiceStatusDTO(BaseModel):
     )
 
 
+class ConnectedSenderDTO(BaseModel):
+    """Jedno żywe połączenie WS wraz z możliwościami zadeklarowanymi w handshake."""
+
+    sender_id: str = Field(..., description="Opaque identyfikator nadawcy")
+    capabilities: list[str] = Field(
+        default_factory=list, description="Możliwości z handshake (np. mic, speaker) — surowe, niezwalidowane"
+    )
+
+
 class ConnectedSendersDTO(BaseModel):
-    """`sender_id` z aktualnie żywym połączeniem WS — mechaniczny fakt (`gateway.py`),
-    zero wiedzy o rejestracji/pokoju (to należy do `World`). Pozwala Web UI (panel
-    Nadawcy, Świat) pokazać podłączone, ale jeszcze niezarejestrowane satelity."""
+    """Klienci z aktualnie żywym połączeniem WS — mechaniczny fakt (`gateway.py`),
+    zero wiedzy o rejestracji/pokoju (to należy do `World`). Pozwala Web UI pokazać
+    podłączone, ale jeszcze niezatwierdzone satelity i zarejestrować je z ICH
+    prawdziwymi capabilities zamiast zgadywanymi.
+
+    `sender_ids` zostaje obok `senders` jako pole zgodnościowe dla istniejących
+    konsumentów (ta sama lista, tylko same identyfikatory)."""
 
     sender_ids: list[str] = Field(..., description="Posortowana lista sender_id z żywym połączeniem WS")
+    senders: list[ConnectedSenderDTO] = Field(default_factory=list, description="To samo, wzbogacone o capabilities")
 
 
 class VoiceClientConfigDTO(BaseModel):
@@ -80,6 +94,7 @@ def create_voice_status_router(
     config_store: ConfigStore[Settings],
     sender_states: dict[str, str],
     event_bus: EventBus,
+    pending_capabilities: dict[str, list[str]],
 ) -> APIRouter:
     """Tworzy router statusu — providerzy/nazwa detektora wstrzykiwane z `main.py`."""
     router = APIRouter()
@@ -97,7 +112,13 @@ def create_voice_status_router(
 
     @router.get("/connected", response_model=ConnectedSendersDTO, tags=["Voice"])
     async def get_connected() -> ConnectedSendersDTO:
-        return ConnectedSendersDTO(sender_ids=sorted(connected_sender_ids))
+        ordered = sorted(connected_sender_ids)
+        return ConnectedSendersDTO(
+            sender_ids=ordered,
+            senders=[
+                ConnectedSenderDTO(sender_id=sid, capabilities=pending_capabilities.get(sid, [])) for sid in ordered
+            ],
+        )
 
     @router.get("/client-config", response_model=VoiceClientConfigDTO, tags=["Voice"])
     async def get_client_config() -> VoiceClientConfigDTO:

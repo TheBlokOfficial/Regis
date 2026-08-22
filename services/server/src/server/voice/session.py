@@ -28,6 +28,10 @@ logger = get_logger("regis.voice.session")
 
 EventPublisher = Callable[[VoiceEventType, dict[str, Any]], Awaitable[None]]
 
+RegistrationCheck = Callable[[str], Awaitable[bool]]
+"""Czy ten `sender_id` jest zatwierdzonym klientem — wstrzykiwane (patrz `gateway.py`),
+nigdy sprawdzane tu bezpośrednio: automat stanu nie wie, gdzie mieszka rejestr."""
+
 
 class SessionState(Enum):
     LISTENING_WAKEWORD = auto()
@@ -59,6 +63,7 @@ class VoiceSession:
         tts_provider: BaseTTSProvider,
         on_transcript: Callable[[str], None],
         publish_event: EventPublisher,
+        is_registered: RegistrationCheck | None = None,
     ) -> None:
         self.sender_id = sender_id
         self.state = SessionState.LISTENING_WAKEWORD
@@ -68,6 +73,7 @@ class VoiceSession:
         self._tts_provider = tts_provider
         self._on_transcript = on_transcript
         self._publish_event = publish_event
+        self._is_registered = is_registered
         self._utterance_buffer = bytearray()
 
     async def _set_state(self, state: SessionState) -> None:
@@ -106,6 +112,17 @@ class VoiceSession:
             return
         await self._link.send_control(ServerMessageType.PLAY_STOP_TONE)
         await self._set_state(SessionState.PROCESSING)
+
+        # Bramka rejestracji — połączyć się wolno każdemu (żeby dało się zobaczyć klienta
+        # na liście "Oczekujący" i go zatwierdzić), ale turę odpala dopiero zatwierdzony.
+        # Sprawdzane TUTAJ, nie przy handshake: nagranie już powstało, więc odmowa jest
+        # czytelna dla użytkownika (usłyszy komunikat), a nie objawia się cichym brakiem
+        # reakcji na wake-word.
+        if self._is_registered is not None and not await self._is_registered(self.sender_id):
+            logger.warning(f"Odrzucono turę niezarejestrowanego klienta [sender_id: '{self.sender_id}'].")
+            await self._link.send_error("Ten klient nie jest jeszcze zarejestrowany — zatwierdź go w zakładce Klienci.")
+            await self.reset_to_listening()
+            return
 
         audio = bytes(self._utterance_buffer)
         self._utterance_buffer.clear()

@@ -23,6 +23,7 @@ from server.agent.llm import ToolDefinition, ToolResult
 from server.agent.context_provider import ContextBuild
 from server.world.client import HomeAssistantClient
 from server.world.models import (
+    ClientCapability,
     DeclaredDeviceEntry,
     DeclaredDevicesFileContent,
     Device,
@@ -388,13 +389,18 @@ class WorldEngine:
         logger.info(f"Usunięto przypisanie nadawcy [{sender_id}].")
         return True
 
-    async def _find_sender_by_room(self, room: str) -> tuple[str | None, list[str]]:
-        """Odwraca `SenderProfile` po nazwie pokoju, w dwóch krokach: nazwa -> `Room.id`
-        (dopasowanie po `Room.name`, bez rozróżniania wielkości liter), potem `Room.id` ->
-        `sender_id` (dopasowanie po `SenderProfile.room_id`).
+    async def _find_speaker_by_room(self, room: str) -> tuple[str | None, list[str]]:
+        """Szuka w podanym pokoju nadawcy zdolnego **odtworzyć mowę**, w dwóch krokach:
+        nazwa -> `Room.id` (dopasowanie po `Room.name`, bez rozróżniania wielkości
+        liter), potem `Room.id` -> `sender_id` (po `SenderProfile.room_id`).
+
+        Kandydaci bez `ClientCapability.SPEAKER` są odrzucani — przekierowanie mowy na
+        klienta czysto tekstowego (np. kartę przeglądarki przypisaną do tego pokoju)
+        nie miałoby jak się odtworzyć, a wcześniej przechodziło bez żadnego sygnału.
 
         :return: `(sender_id, [])` przy jednoznacznym dopasowaniu, w przeciwnym razie
-            `(None, kandydaci)` — pusta lista kandydatów oznacza brak dopasowania nazwy pokoju.
+            `(None, kandydaci)` — pusta lista kandydatów oznacza brak pasującego pokoju
+            albo brak w nim czegokolwiek z głośnikiem.
         """
         needle = room.strip().lower()
         rooms = await self.list_rooms()
@@ -404,7 +410,9 @@ class WorldEngine:
 
         senders = await self.get_senders()
         matches = [
-            sid for sid, profile in senders.entries.items() if profile.room_id in matching_room_ids
+            sid
+            for sid, profile in senders.entries.items()
+            if profile.room_id in matching_room_ids and ClientCapability.SPEAKER in profile.capabilities
         ]
         if len(matches) == 1:
             return matches[0], []
@@ -450,7 +458,7 @@ class WorldEngine:
     # WorldInterface — budowanie wkładu na czas jednej interakcji agenta
     # --------------------------------------------------------------------------
 
-    async def build(self, sender_id: str | None = None, voice_mode: bool = False) -> ContextBuild:
+    async def build(self, sender_id: str | None = None) -> ContextBuild:
         # World jest jedynym autorem promptu tej tury: profil tożsamości (jeśli
         # niepusty) jest doklejany PRZED faktami, całość jednym, spójnym autorem —
         # nigdy sklejane z osobno wybranym promptem kernela.
@@ -462,19 +470,17 @@ class WorldEngine:
         now_value = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         context_parts.append(f"Aktualna data i godzina: {now_value}.")
 
-        # 1. Przypisanie do pokoju — niezależnie od dostępności Home Assistant.
-        #    `voice_mode` to efemeryczny parametr wywołania (dostarczony przez gateway
-        #    server.voice, który jako jedyny wie to z całą pewnością) — nigdy trwały stan.
+        # 1. Profil nadawcy: gdzie stoi i co potrafi. Modalność wyprowadzana jest tu,
+        #    z trwałych `capabilities` klienta — nie przenoszona przez kernel jako flaga
+        #    wywołania (dawne `voice_mode`), bo "ten klient ma głośnik" to fakt o rzeczy
+        #    w świecie, dokładnie jak `Device.capabilities`.
         rooms_by_id = await self.list_rooms()
         profile: SenderProfile | None = None
         if sender_id is not None:
             senders = await self.get_senders()
             profile = senders.entries.get(sender_id)
-        if voice_mode:
-            context_parts.append(
-                "Nadawca komunikuje się głosem — odpowiadaj krótkimi zdaniami, "
-                "unikaj Markdown i list, dobierz treść pod syntezę mowy."
-            )
+        if profile is not None:
+            context_parts.append(_render_delivery_framing(profile.capabilities))
         current_room = rooms_by_id.get(profile.room_id) if (profile and profile.room_id) else None
         if current_room is not None:
             context_parts.append(f"Nadawca znajduje się w lokalizacji: {current_room.name}.")
@@ -537,15 +543,25 @@ class WorldEngine:
                 return ToolResult(content=now_value)
             if name == _SPEAK_IN_ROOM_TOOL:
                 room = str(arguments.get("room", ""))
-                target_sender_id, candidates = await self._find_sender_by_room(room)
+                target_sender_id, candidates = await self._find_speaker_by_room(room)
                 if target_sender_id is None:
                     if candidates:
                         return ToolResult(
                             is_error=True,
-                            content=f"W pokoju '{room}' jest zarejestrowanych wielu odbiorców — nie można jednoznacznie wybrać.",
+                            content=f"W pokoju '{room}' jest zarejestrowanych wielu odbiorników — nie można jednoznacznie wybrać.",
                         )
-                    return ToolResult(is_error=True, content=f"Brak zarejestrowanego odbiornika w pokoju '{room}'.")
-                return ToolResult(content=f"Przełączono dalszą odpowiedź na pokój '{room}'.", redirect_sender_id=target_sender_id)
+                    return ToolResult(is_error=True, content=f"Brak odbiornika z głośnikiem w pokoju '{room}'.")
+                # Treść wyniku niesie NOWE ramowanie dostawy — cel zmienił się w połowie
+                # tury, a prompt systemowy powstał przed jej startem i już tego nie
+                # nadgoni. Wyniki narzędzi wracają do modelu w pętli ReAct, więc to
+                # naturalny kanał na tę korektę; nie trzeba do tego osobnego mechanizmu.
+                return ToolResult(
+                    content=(
+                        f"Przełączono dalszą odpowiedź na pokój '{room}'. "
+                        f"{_render_delivery_framing(frozenset({ClientCapability.SPEAKER}))}"
+                    ),
+                    redirect_sender_id=target_sender_id,
+                )
             if executor is not None:
                 try:
                     return await executor.execute(name, arguments)
@@ -603,3 +619,20 @@ def _format_capabilities(device: Device) -> str:
     for tool_name, features in sorted(device.capabilities.items()):
         labels.append(f"{tool_name}[{', '.join(sorted(features))}]" if features else tool_name)
     return ", ".join(labels) if labels else "brak"
+
+
+def _render_delivery_framing(capabilities: frozenset[ClientCapability]) -> str:
+    """Jedno zdanie mówiące modelowi, JAK dotrze jego odpowiedź — o **wyjściu**, nie o
+    wejściu. Rozstrzyga `SPEAKER`: to, że coś przyszło głosem, nie znaczy jeszcze, że
+    odpowiedź zostanie odczytana (i odwrotnie — `speak_in_room` potrafi przełączyć
+    tekstową turę na głośnik).
+
+    Wspólne dla startu tury (`WorldEngine.build`) i dla korekty po przekierowaniu
+    (wynik `speak_in_room`), żeby oba miejsca nie rozjechały się w sformułowaniu.
+    """
+    if ClientCapability.SPEAKER in capabilities:
+        return (
+            "Twoja odpowiedź zostanie odczytana na głos (synteza mowy) — odpowiadaj "
+            "krótkimi zdaniami, unikaj Markdown i list, dobierz treść pod słuchanie."
+        )
+    return "Twoja odpowiedź zostanie wyświetlona jako tekst — Markdown jest dozwolony."

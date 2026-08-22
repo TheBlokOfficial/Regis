@@ -27,6 +27,7 @@ def _make_client(tmp_path: Path, sender_states: dict[str, str], event_bus: Event
         config_store=ConfigStore(Settings, tmp_path / "settings.json"),
         sender_states=sender_states,
         event_bus=event_bus,
+        pending_capabilities={},
     )
     app.include_router(router, prefix="/api/v1/voice")
     return TestClient(app)

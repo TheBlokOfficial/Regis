@@ -42,7 +42,7 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 ### Parametry `WorldEngine` (`services/server/data/world/config.json`, zarządzane przez `WorldEngine`):
 - **`base_url`** / **`access_token`**: Adres serwera Home Assistant i długoterminowy token dostępu (Long-Lived Access Token) — pola jawne, nie schema-driven (Home Assistant jest jedynym, znanym z góry backendem silnika). Home Assistant jest traktowany jako **jeden, globalny zasób (singleton)** — jeden `base_url`/`access_token`, bez wielości nazwanych połączeń. Puste pola oznaczają brak konfiguracji — `WorldEngine` degraduje się łagodnie (encje/narzędzia HA po prostu nie są dostarczane w danej turze), bez osobnego przełącznika `enabled`.
 
-Grupy urządzeń przechowywane są w `services/server/data/world/groups/*.json`. **Pokoje** (`Room` — pełnoprawny byt World, niezależny od Home Assistant Areas, patrz `docs/manifest.md` sekcja 5) — w `rooms/*.json`, ten sam wzorzec pliku-na-instancję co grupy. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name`/`room_id` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Przypisania nadawców do pokoi (`sender_id -> room_id`, **bez** kanału komunikacji ani tożsamości urządzenia — to wiedza `server/voice/`, nie World) — w `senders.json`.
+Grupy urządzeń przechowywane są w `services/server/data/world/groups/*.json`. **Pokoje** (`Room` — pełnoprawny byt World, niezależny od Home Assistant Areas, patrz `docs/manifest.md` sekcja 5) — w `rooms/*.json`, ten sam wzorzec pliku-na-instancję co grupy. Zadeklarowana lista urządzeń widocznych dla agenta (**opt-in** — `display_name`/`room_id` per `entity_id`) — w `declared_devices.json`; brak wpisu oznacza niewidoczność, niezależnie od tego, czy encja istnieje po stronie HA. Zarejestrowani klienci (`sender_id -> {room_id, capabilities}`) — w `senders.json`. `capabilities` (`mic`/`speaker`/`text`) to trwały fakt o kliencie, symetryczny do `Device.capabilities`: World wyprowadza z nich ramowanie odpowiedzi (czy zostanie odczytana na głos) i odrzuca `speak_in_room` celujący w klienta bez głośnika. Pochodzą z handshake WS albo z rejestracji w UI — nigdy nie są wpisywane ręcznie (patrz `docs/manifest.md` sekcja 5, "Modalność to capability klienta").
 
 ### `server/voice/` — pipeline głosowy satelit
 
@@ -139,7 +139,10 @@ python -m uv run --package server python -m server.main
 | | `DELETE /api/v1/llm/providers/{id}` | Usunięcie konfiguracji dostawcy LLM z dysku |
 | **Chat Engine** | `POST /api/v1/chat` | Synchroniczna odpowiedź Agenta w jednym zapytaniu |
 | | `POST /api/v1/chat/stream` | Strumieniowanie tokenów w czasie rzeczywistym (SSE) |
+| | `POST /api/v1/chat/send` | "Wyślij i zapomnij" (202) — używane przez Web UI; renderowanie idzie przez `.../watch` |
 | | `POST /api/v1/chat/cancel` | Anulowanie aktywnego generowania dla podanej sesji |
+
+Wszystkie trzy wejścia odpalające turę (`/chat`, `/chat/stream`, `/chat/send`) przechodzą przez **bramkę rejestracji**: podany `sender_id` musi być zarejestrowanym klientem, inaczej `403`. Żądanie bez `sender_id` (headless: skrypt, cron) bramki nie dotyczy. Satelity głosowe mają symetryczną bramkę w `VoiceSession` — patrz `docs/manifest.md` sekcja 5, "Bramka rejestracji".
 | **Sessions** | `GET /api/v1/chat/sessions` | Pobranie podsumowań wszystkich zapisanych sesji |
 | | `POST /api/v1/chat/sessions` | Utworzenie nowej sesji konwersacji |
 | | `GET /api/v1/chat/sessions/{id}/history` | Pełna historia i metadane wybranej sesji |
@@ -158,7 +161,7 @@ python -m uv run --package server python -m server.main
 | **World (pokoje)** | `GET/POST /api/v1/world/rooms` | Lista i tworzenie pokoi — pełnoprawny byt World, niezależny od HA Areas |
 | | `PUT/DELETE /api/v1/world/rooms/{id}` | Zmiana nazwy i usunięcie pokoju (bez cascade delete przypisań) |
 | | `POST /api/v1/world/rooms/import-from-ha` | Jednorazowy import pokoju per unikalna HA Area — nie ciągła synchronizacja |
-| **World (nadawcy)** | `GET/POST /api/v1/world/senders` | Lista i rejestracja przypisania nadawcy do pokoju (`sender_id -> room_id`) |
+| **World (nadawcy)** | `GET/POST /api/v1/world/senders` | Lista i rejestracja klienta (`sender_id -> room_id` + `capabilities`). POST to upsert; **puste `capabilities` zachowują obecne**, nigdy nie czyszczą (zakładka Świat zmienia sam pokój i ich nie zna) |
 | | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py` |
 | | `GET /api/v1/voice/status` | Status pipeline'u głosowego (nazwy klas aktywnych providerów STT/TTS/wake-word), tylko do odczytu |

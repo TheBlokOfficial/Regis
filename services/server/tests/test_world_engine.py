@@ -11,7 +11,7 @@ from server.agent.context_provider import NullWorldInterface
 from server.agent.memory import MemoryManager
 from server.world.client import HomeAssistantClient
 from server.world.engine import WorldEngine
-from server.world.models import Device, DeviceGroup, HomeAssistantConfig, SenderProfile
+from server.world.models import ClientCapability, Device, DeviceGroup, HomeAssistantConfig, SenderProfile
 from server.world.registry import DeviceRegistry
 from server.world.tools import HomeAssistantToolExecutor
 
@@ -164,7 +164,7 @@ def test_decode_light_infers_brightness_and_color_from_color_modes():
 
 
 # --------------------------------------------------------------------------
-# WorldEngine.build() — pokój/voice_mode niezależne od dostępności Home Assistant
+# WorldEngine.build() — pokój/capabilities niezależne od dostępności Home Assistant
 # --------------------------------------------------------------------------
 
 
@@ -203,15 +203,17 @@ async def test_build_without_config_still_returns_time_tool_and_no_error():
 
 
 @pytest.mark.anyio
-async def test_build_voice_mode_and_room_framing_survives_missing_ha_config():
+async def test_build_speaker_framing_and_room_survive_missing_ha_config():
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
         room = await engine.create_room(name="Salon")
-        await engine.register_sender("sat_1", SenderProfile(room_id=room.id))
+        await engine.register_sender(
+            "sat_1", SenderProfile(room_id=room.id, capabilities=frozenset({ClientCapability.SPEAKER}))
+        )
 
-        context_build = await engine.build(sender_id="sat_1", voice_mode=True)
+        context_build = await engine.build(sender_id="sat_1")
 
-        assert "głos" in context_build.system_prompt
+        assert "na głos" in context_build.system_prompt
         assert "Salon" in context_build.system_prompt
         # Brak konfiguracji HA nie dodaje narzędzi domowych, ale nie psuje frazowania.
         assert [t.name for t in context_build.tool_definitions] == ["get_time", "speak_in_room"]
@@ -228,15 +230,34 @@ async def test_build_unregistered_sender_id_has_no_room_framing():
 
 
 @pytest.mark.anyio
-async def test_build_voice_mode_is_independent_of_room_registration():
-    """`voice_mode` to parametr wywołania dostarczany przez gateway (server.voice), nie
-    trwały stan World — musi zadziałać nawet bez zarejestrowanego przypisania do pokoju."""
+async def test_build_speaker_framing_is_independent_of_room_registration():
+    """Ramowanie dostawy zależy wyłącznie od `capabilities` klienta — przypisanie do
+    pokoju jest osobną, opcjonalną informacją i jego brak nie może go wyłączyć."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+        await engine.register_sender(
+            "sat_no_room", SenderProfile(capabilities=frozenset({ClientCapability.SPEAKER}))
+        )
 
-        context_build = await engine.build(sender_id="unknown_sender", voice_mode=True)
+        context_build = await engine.build(sender_id="sat_no_room")
 
-        assert "głos" in context_build.system_prompt
+        assert "na głos" in context_build.system_prompt
+        assert "Nadawca znajduje się" not in context_build.system_prompt
+
+
+@pytest.mark.anyio
+async def test_build_text_client_gets_text_framing_not_voice():
+    """Klient bez głośnika musi dostać ramowanie tekstowe — dawna flaga `voice_mode`
+    opisywała wejście, a decydowała o wyjściu, przez co karta przeglądarki potrafiła
+    dostać instrukcję "unikaj Markdown"."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+        await engine.register_sender("web_1", SenderProfile(capabilities=frozenset({ClientCapability.TEXT})))
+
+        context_build = await engine.build(sender_id="web_1")
+
+        assert "wyświetlona jako tekst" in context_build.system_prompt
+        assert "na głos" not in context_build.system_prompt
 
 
 @pytest.mark.anyio
@@ -308,13 +329,37 @@ async def test_speak_in_room_resolves_room_to_sender_id():
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
         room = await engine.create_room(name="Kuchnia")
-        await engine.register_sender("snd_kuchnia", SenderProfile(room_id=room.id))
+        await engine.register_sender(
+            "snd_kuchnia", SenderProfile(room_id=room.id, capabilities=frozenset({ClientCapability.SPEAKER}))
+        )
 
         context_build = await engine.build()
         result = await context_build.dispatch("speak_in_room", {"room": "Kuchnia"})
 
         assert result.is_error is False
         assert result.redirect_sender_id == "snd_kuchnia"
+        # Wynik niesie NOWE ramowanie dostawy — prompt systemowy powstał przed turą i
+        # nie wie o przekierowaniu; pętla ReAct oddaje modelowi treść wyniku narzędzia.
+        assert "na głos" in result.content
+
+
+@pytest.mark.anyio
+async def test_speak_in_room_skips_client_without_speaker():
+    """Klient bez głośnika (np. karta przeglądarki przypisana do pokoju) nie jest
+    kandydatem na odbiornik mowy — wcześniej przekierowanie przechodziło i odpowiedź
+    znikała bez żadnego sygnału."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine = WorldEngine(data_dir=Path(tmp_dir) / "world")
+        room = await engine.create_room(name="Kuchnia")
+        await engine.register_sender(
+            "web_kuchnia", SenderProfile(room_id=room.id, capabilities=frozenset({ClientCapability.TEXT}))
+        )
+
+        context_build = await engine.build()
+        result = await context_build.dispatch("speak_in_room", {"room": "Kuchnia"})
+
+        assert result.is_error is True
+        assert result.redirect_sender_id is None
 
 
 @pytest.mark.anyio

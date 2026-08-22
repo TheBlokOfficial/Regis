@@ -1,12 +1,19 @@
 """Model domenowy i konfiguracyjny silnika świata.
 
 `Device`/`DeviceGroup`/`Room`/`SenderProfile` są pojęciami należącymi
-wyłącznie do tego silnika, nie do kernela. World nie ma pojęcia "satelity" —
-zna wyłącznie opaque `sender_id` i mapuje go na swój wewnętrzny `Room`. Kanał
-komunikacji (głos/tekst) i tożsamość fizycznego urządzenia (satelita ESP32,
-Web UI, ...) to wiedza `server.voice`, nigdy World — World dostaje tę
-informację jako efemeryczny parametr wywołania
-(`WorldEngine.build(voice_mode=...)`), nigdy jako trwały stan.
+wyłącznie do tego silnika, nie do kernela. World nie zna konkretnego typu
+urządzenia ("satelita ESP32", "karta przeglądarki") ani transportu, którym
+klient przyszedł — zna opaque `sender_id`, jego `Room` i jego `capabilities`
+(co ta rzecz potrafi: mikrofon/głośnik/tekst).
+
+**Rewizja wcześniejszej decyzji**: modalność (głos/tekst) była tu dawniej
+świadomie nieobecna i przenoszona przez kernel jako efemeryczny parametr
+wywołania `WorldEngine.build(voice_mode=...)`. Okazało się to niespójne z tym,
+jak system realnie działa: flaga opisywała wejście, a decydowała o framingu
+wyjścia, którego cel potrafi się zmienić w połowie tury (`speak_in_room`).
+`ClientCapability` modeluje to poprawnie — jako trwały fakt o rzeczy w świecie,
+symetrycznie do `Device.capabilities` — i pozwala kernelowi przestać cokolwiek
+o kanale wiedzieć (patrz `agent/context_provider.py`).
 
 `Room` jest pełnoprawnym, niezależnym od Home Assistant bytem World — nie
 surowym `area_id` HA. HA renamując/usuwając swoją Area nie może po cichu
@@ -18,6 +25,7 @@ prawdą. Jedyne źródło prawdy o przypisaniu do pokoju to
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
@@ -120,17 +128,44 @@ class DeclaredDevicesFileContent(BaseModel):
     entries: dict[str, DeclaredDeviceEntry] = Field(default_factory=dict)
 
 
-class SenderProfile(BaseModel):
-    """Przypisanie jednego opaque `sender_id` do `Room` — jedyna wiedza World o nadawcy.
+class ClientCapability(str, Enum):
+    """Co dany klient fizycznie potrafi — mirror `Device.capabilities` (ta sama
+    idea: trwały fakt o rzeczy w świecie, nie o bieżącym wywołaniu).
 
-    Wyłącznie `room_id` (odsyłacz do `Room`, katalog World) — etykieta pokoju
-    do promptu liczona jest w `WorldEngine.build()` z katalogu `Room`, nigdy
-    przechowywana tutaj (eliminuje ryzyko rozjazdu, ten sam wzorzec co
-    usunięcie dawnego pola `channel`). Zero wiedzy o kanale komunikacji ani
-    o typie fizycznego urządzenia — to kompetencja `server.voice`.
+    Świadomie NIE ma tu pola `kind` ("satelita"/"przeglądarka") — typ klienta jest
+    w całości wyprowadzalny z tego zbioru (ikona i etykieta w UI, framing promptu),
+    a drugie, redundantne źródło prawdy prędzej czy później rozjechałoby się z tym.
+    """
+
+    MIC = "mic"
+    """Klient potrafi nagrywać mowę — wiadomości od niego przychodzą głosem."""
+
+    SPEAKER = "speaker"
+    """Klient potrafi odtworzyć audio — odpowiedź do niego zostanie zsyntetyzowana (TTS)."""
+
+    TEXT = "text"
+    """Klient wyświetla tekst — odpowiedź trafia do historii czatu, nie do syntezy."""
+
+
+class SenderProfile(BaseModel):
+    """Jeden opaque `sender_id`: gdzie stoi (`room_id`) i co potrafi (`capabilities`).
+
+    `room_id` to odsyłacz do `Room` (katalog World) — etykieta pokoju do promptu
+    liczona jest w `WorldEngine.build()` z katalogu, nigdy przechowywana tutaj
+    (eliminuje ryzyko rozjazdu, ten sam wzorzec co usunięcie dawnego pola `channel`).
+
+    `capabilities` zastąpiło dawną, przenoszoną przez kernel flagę `voice_mode`:
+    modalność wejścia (`MIC` → przyszło głosem) i wyjścia (`SPEAKER` → odpowiedź
+    zostanie zsyntetyzowana) są **trwałym faktem o kliencie**, a nie parametrem
+    pojedynczego wywołania, więc World wyprowadza je sobie sam. Dzięki temu
+    `WorldInterface.build()` potrzebuje wyłącznie `sender_id`, a kernel nie musi
+    przenosić przez siebie wiedzy o kanale (patrz `agent/context_provider.py`).
     """
 
     room_id: str | None = Field(default=None, description="Odsyłacz do Room — jedyne źródło prawdy o lokalizacji nadawcy")
+    capabilities: frozenset[ClientCapability] = Field(
+        default_factory=frozenset, description="Co klient potrafi — mic/speaker/text"
+    )
 
 
 class SenderProfilesFileContent(BaseModel):

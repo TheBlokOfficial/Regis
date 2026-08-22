@@ -380,8 +380,8 @@ class SingleToolWorld:
     wyłącznie do odtworzenia scenariusza regresyjnego niżej (błąd PO co najmniej
     jednym wywołaniu narzędzia)."""
 
-    async def build(self, sender_id=None, voice_mode=False) -> ContextBuild:
-        del sender_id, voice_mode
+    async def build(self, sender_id=None) -> ContextBuild:
+        del sender_id
         tool_def = ToolDefinition(name="noop_tool", description="test", parameters={"type": "object", "properties": {}})
 
         async def _dispatch(name: str, arguments: dict) -> ToolResult:

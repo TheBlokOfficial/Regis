@@ -123,7 +123,6 @@ class AgentEngine:
         session_id: str,
         prompt: str,
         sender_id: str | None = None,
-        voice_mode: bool = False,
     ) -> None:
         """Wykonywane w tle zadanie generowania odpowiedzi LLM dla sesji.
 
@@ -138,26 +137,35 @@ class AgentEngine:
         (zdarzenia `ServerEventType.CHAT_*`) — nie ma tu bezpośredniej znajomości
         odbiorców (SSE, WebSockets satelitów w `server.voice` itd.).
 
-        Zdarzenia treści (`CHAT_CHUNK`/`TOOL_CALL_START`/`TOOL_CALL_RESULT`) publikowane
-        są pod `effective_session_id` — domyślnie równym `session_id`, ale mogącym
-        się zmienić w trakcie tury, jeśli któreś narzędzie zwróci
-        `ToolResult.redirect_sender_id` (np. `WorldEngine.speak_in_room`) — kernel
-        mechanicznie zmienia tag dostawy, nie znając powodu przekierowania.
-        `CHAT_DONE`/`CHAT_ERROR`/`CHAT_CANCELLED` są dodatkowo zawsze publikowane
-        też pod oryginalnym `session_id` (nawet po przekierowaniu), żeby
-        wewnętrzna pętla `interact_stream()` — subskrybowana wyłącznie po
-        oryginalnym `session_id` — zawsze poprawnie się zakończyła.
-        """
-        effective_session_id = session_id
+        Każde zdarzenie niesie DWA niezależne identyfikatory, celowo rozdzielone:
 
-        async def _publish(event_type: ServerEventType, payload_extra: dict[str, Any], terminal: bool = False) -> None:
+        * `session_id` — tożsamość sesji/pamięci. **Nigdy się nie zmienia** w trakcie
+          tury; obserwatorzy sesji (`watch_session`, `interact_stream`, Web UI)
+          filtrują wyłącznie po nim.
+        * `target_client_id` — adres dostawy. Startuje jako `sender_id` i może się
+          zmienić w trakcie tury, gdy narzędzie zwróci `ToolResult.redirect_sender_id`
+          (np. `WorldEngine.speak_in_room`); odbiorcy fizyczni (gniazdo satelity w
+          `server.voice`) filtrują wyłącznie po nim. Kernel mechanicznie przestawia
+          adres, nie znając powodu przekierowania.
+
+        Wcześniej obie role pełniło jedno pole `session_id`, co działało tylko dzięki
+        temu, że dla satelit `session_id == sender_id`; przekierowanie na klienta, u
+        którego te wartości się różnią (np. przeglądarka: sesja czatu vs `sender_id`
+        z localStorage), publikowało zdarzenia pod tagiem, którego nikt nie słuchał —
+        odpowiedź znikała bez błędu. Rozdzielenie usuwa też potrzebę dawnego
+        dual-castu zdarzeń terminalnych (istniał wyłącznie po to, by `interact_stream`
+        nie zawisł, gdy tag dostawy uciekł).
+        """
+        target_client_id = sender_id if sender_id is not None else session_id
+
+        async def _publish(event_type: ServerEventType, payload_extra: dict[str, Any]) -> None:
             await self.event_bus.publish(
-                Event(type=event_type, payload={"session_id": effective_session_id, **payload_extra}, sender="agent_engine")
-            )
-            if terminal and effective_session_id != session_id:
-                await self.event_bus.publish(
-                    Event(type=event_type, payload={"session_id": session_id, **payload_extra}, sender="agent_engine")
+                Event(
+                    type=event_type,
+                    payload={"session_id": session_id, "target_client_id": target_client_id, **payload_extra},
+                    sender="agent_engine",
                 )
+            )
 
         # 1. Rejestracja pytania użytkownika w pamięci sesji (I/O na dysku poza event loopem)
         await asyncio.to_thread(self.memory_manager.add_message, session_id=session_id, role="user", content=prompt)
@@ -176,7 +184,7 @@ class AgentEngine:
             #    — nigdy cache'owana między turami. Jeśli World dostarcza `system_prompt`,
             #    jest to KOMPLETNY prompt (World jest jedynym autorem) — fallback kernela
             #    (`prompt_store`) czytany jest tylko gdy World milczy (np. NullWorldInterface).
-            context_build = await self.world.build(sender_id=sender_id, voice_mode=voice_mode)
+            context_build = await self.world.build(sender_id=sender_id)
             tool_defs = context_build.tool_definitions
             dispatch_tool = context_build.dispatch
             system_prompt = context_build.system_prompt
@@ -225,12 +233,12 @@ class AgentEngine:
                         f"Wywołano narzędzie '{call.name}' [sesja: '{session_id}']: "
                         f"{'błąd' if result.is_error else 'ok'}"
                     )
-                    if result.redirect_sender_id is not None and result.redirect_sender_id != effective_session_id:
+                    if result.redirect_sender_id is not None and result.redirect_sender_id != target_client_id:
                         logger.info(
                             f"Przekierowano dostawę odpowiedzi [sesja: '{session_id}'] "
-                            f"z '{effective_session_id}' na '{result.redirect_sender_id}'."
+                            f"z '{target_client_id}' na '{result.redirect_sender_id}'."
                         )
-                        effective_session_id = result.redirect_sender_id
+                        target_client_id = result.redirect_sender_id
 
                     step_result: ToolStepPayload = {
                         "type": "tool_result",
@@ -263,7 +271,7 @@ class AgentEngine:
                 metadata={"steps": steps} if steps else None,
             )
 
-            await _publish(ServerEventType.CHAT_DONE, {}, terminal=True)
+            await _publish(ServerEventType.CHAT_DONE, {})
 
         except asyncio.CancelledError:
             logger.info(f"Generowanie odpowiedzi dla sesji '{session_id}' zostało przerwane.")
@@ -276,7 +284,7 @@ class AgentEngine:
                     content=partial_text + " [Przerwano]",
                     metadata={"steps": steps} if steps else None,
                 )
-            await _publish(ServerEventType.CHAT_CANCELLED, {}, terminal=True)
+            await _publish(ServerEventType.CHAT_CANCELLED, {})
             raise
         except Exception as err:
             # Pełny techniczny szczegół (np. surowa treść odpowiedzi API dostawcy LLM —
@@ -304,7 +312,7 @@ class AgentEngine:
                 content=persisted_content,
                 metadata={"is_error": True, "steps": steps} if steps else {"is_error": True},
             )
-            await _publish(ServerEventType.CHAT_ERROR, {"error": user_facing_error}, terminal=True)
+            await _publish(ServerEventType.CHAT_ERROR, {"error": user_facing_error})
             raise
         finally:
             self._active_tasks.pop(session_id, None)
@@ -374,24 +382,22 @@ class AgentEngine:
         session_id: str = "session_default",
         prompt: str = "",
         sender_id: str | None = None,
-        voice_mode: bool = False,
     ) -> AsyncIterator[StreamEvent]:
         """Główna strumieniowa pętla konwersacyjna. Utrwala zapytanie i odpowiedź w pamięci sesji.
 
         Subskrybuje zdarzenia `EventBus` dotyczące tej konkretnej sesji na czas trwania
         strumieniowania i tłumaczy je z powrotem na strumień ustrukturyzowanych zdarzeń
         (tekst, start/wynik wywołania narzędzia) dla wywołującego. Subskrypcja jest
-        zawsze pod oryginalnym `session_id` — jeśli w trakcie tury narzędzie
-        przekieruje dostawę (`ToolResult.redirect_sender_id`), ten strumień przestaje
-        dostawać kolejne `chunk`/`tool_*` (trafiają pod nowy tag, patrz
-        `_generate_in_background`), ale zawsze poprawnie się kończy na `done`.
+        po `session_id`, które nigdy się nie zmienia — nawet gdy narzędzie przekieruje
+        *dostawę* na innego klienta (`ToolResult.redirect_sender_id` zmienia wyłącznie
+        `target_client_id`, patrz `_generate_in_background`), ten strumień widzi całą
+        turę od początku do końca.
 
         :param session_id: Identyfikator sesji backendowej.
         :param prompt: Nowa treść wiadomości użytkownika.
         :param sender_id: Opaque identyfikator nadawcy (np. satelity) — nieinterpretowany
-            przez kernel, przekazywany dalej do `WorldInterface.build()`.
-        :param voice_mode: Mechaniczna flaga wywołania, przekazywana bez interpretacji
-            do `WorldInterface.build()` — patrz `WorldInterface.build`.
+            przez kernel, przekazywany dalej do `WorldInterface.build()`; służy też jako
+            początkowy adres dostawy (`target_client_id`).
         :yields: Kolejne `StreamEvent` (fragmenty tekstu oraz kroki tool-callingu).
         """
         if self.is_session_busy(session_id):
@@ -408,7 +414,6 @@ class AgentEngine:
                 session_id=session_id,
                 prompt=prompt,
                 sender_id=sender_id,
-                voice_mode=voice_mode,
             )
         )
         self._active_tasks[session_id] = bg_task
@@ -458,20 +463,18 @@ class AgentEngine:
         session_id: str = "session_default",
         prompt: str = "",
         sender_id: str | None = None,
-        voice_mode: bool = False,
     ) -> ChatResponseDTO:
         """Ścisła, niestrumieniowa konwersacja bazująca bezpośrednio na strumieniowej pętli (DRY wrapper).
 
         :param session_id: Identyfikator sesji backendowej.
         :param prompt: Nowa treść wiadomości użytkownika.
         :param sender_id: Opaque identyfikator nadawcy (np. satelity) — nieinterpretowany przez kernel.
-        :param voice_mode: Mechaniczna flaga wywołania — patrz `WorldInterface.build`.
         :return: Struktura ChatResponseDTO z wygenerowaną odpowiedzią i nazwą modelu.
         """
         _ = [
             chunk
             async for chunk in self.interact_stream(
-                session_id=session_id, prompt=prompt, sender_id=sender_id, voice_mode=voice_mode
+                session_id=session_id, prompt=prompt, sender_id=sender_id
             )
         ]
 
@@ -489,7 +492,6 @@ class AgentEngine:
         session_id: str,
         prompt: str,
         sender_id: str | None = None,
-        voice_mode: bool = False,
     ) -> None:
         """Odpala interakcję w tle i **od razu wraca** — jednokierunkowy "wyślij i zapomnij".
 
@@ -507,6 +509,6 @@ class AgentEngine:
 
         logger.info(f"Jednokierunkowa interakcja [Sesja: '{session_id}']: '{prompt}'")
         task = asyncio.create_task(
-            self._generate_in_background(session_id=session_id, prompt=prompt, sender_id=sender_id, voice_mode=voice_mode)
+            self._generate_in_background(session_id=session_id, prompt=prompt, sender_id=sender_id)
         )
         self._active_tasks[session_id] = task

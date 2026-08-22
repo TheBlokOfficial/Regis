@@ -13,7 +13,7 @@ tego, czy to połączenie zainicjowało bieżącą turę.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -33,6 +33,11 @@ logger = get_logger("regis.voice.gateway")
 WakeWordDetectorFactory = Callable[[], WakeWordDetector]
 SettingsLoader = Callable[[], Settings]
 
+RegistrationCheck = Callable[[str], Awaitable[bool]]
+"""Czy dany `sender_id` jest zatwierdzonym klientem. Wstrzykiwane z `main.py` (gdzie
+implementację dostarcza `World`) tym samym wzorcem co `connected_sender_ids` — dzięki
+temu `voice/` nadal nie importuje `world/` i nie wie, skąd ta odpowiedź pochodzi."""
+
 
 class VoiceConnection:
     """Jedno żywe połączenie WS — implementuje `SatelliteLink` (doręczenie) i utrzymuje
@@ -48,12 +53,15 @@ class VoiceConnection:
         tts_provider: BaseTTSProvider,
         settings_loader: SettingsLoader,
         sender_states: dict[str, str],
+        pending_capabilities: dict[str, list[str]],
+        is_registered: RegistrationCheck,
     ) -> None:
         self.sender_id = sender_id
         self._websocket = websocket
         self._agent_engine = agent_engine
         self._settings_loader = settings_loader
         self._sender_states = sender_states
+        self._pending_capabilities = pending_capabilities
         self._text_buffer = ""
         self.session = VoiceSession(
             sender_id=sender_id,
@@ -63,6 +71,7 @@ class VoiceConnection:
             tts_provider=tts_provider,
             on_transcript=self._on_transcript,
             publish_event=self._publish_voice_event,
+            is_registered=is_registered,
         )
 
     # --------------------------------------------------------------------------
@@ -110,7 +119,7 @@ class VoiceConnection:
     def _on_transcript(self, transcript: str) -> None:
         try:
             self._agent_engine.start_interaction(
-                session_id=self.sender_id, prompt=transcript, sender_id=self.sender_id, voice_mode=True
+                session_id=self.sender_id, prompt=transcript, sender_id=self.sender_id
             )
         except RuntimeError as err:
             logger.warning(f"Nie odpalono interakcji [sender_id: '{self.sender_id}']: {err}")
@@ -120,22 +129,37 @@ class VoiceConnection:
     # --------------------------------------------------------------------------
 
     async def _on_chunk(self, event: Event[Any]) -> None:
-        if event.payload.get("session_id") == self.sender_id:
+        if event.payload.get("target_client_id") == self.sender_id:
             self._text_buffer += event.payload.get("chunk", "")
 
     async def _on_done(self, event: Event[Any]) -> None:
-        if event.payload.get("session_id") != self.sender_id:
+        """Dwie różne role w jednym handlerze, bo to dwa różne pytania o tę samą turę:
+
+        * jestem ADRESATEM dostawy (`target_client_id`) — mówię zgromadzony tekst;
+        * jestem tylko INICJATOREM (`session_id`), a dostawa poszła gdzie indziej
+          (`speak_in_room`) — nie mam nic do powiedzenia, ale muszę wyjść z PROCESSING,
+          inaczej zostałbym w nim na zawsze, czekając na `tts_start`, którego nigdy nie
+          będzie.
+        """
+        payload = event.payload
+        if payload.get("target_client_id") == self.sender_id:
+            text = self._text_buffer
+            self._text_buffer = ""
+            if text.strip():
+                await self.session.speak(text)
             return
-        text = self._text_buffer
-        self._text_buffer = ""
-        if text.strip():
-            await self.session.speak(text)
+        if payload.get("session_id") == self.sender_id:
+            self._text_buffer = ""
+            logger.info(f"Tura dostarczona innemu klientowi [sender_id: '{self.sender_id}'] — wracam do nasłuchu.")
+            await self.session.reset_to_listening()
 
     async def _on_error_or_cancelled(self, event: Event[Any]) -> None:
         """Bez tego handlera błąd/anulowanie tury (kernel nigdy nie doszedł do CHAT_DONE
-        pod naszym tagiem) zostawiłoby `VoiceSession` uwięzioną w PROCESSING na zawsze —
+        pod naszym adresem) zostawiłoby `VoiceSession` uwięzioną w PROCESSING na zawsze —
         satelita czekałaby na tts_start, którego nigdy nie będzie."""
-        if event.payload.get("session_id") != self.sender_id:
+        # Błąd/anulowanie dotyczy nas, jeśli jesteśmy adresatem dostawy ALBO inicjatorem
+        # tury (mirror `_on_done` — po przekierowaniu nadal musimy wyjść z PROCESSING).
+        if self.sender_id not in (event.payload.get("target_client_id"), event.payload.get("session_id")):
             return
         self._text_buffer = ""
         detail = event.payload.get("error", "Przerwano generowanie odpowiedzi.")
@@ -188,7 +212,13 @@ class VoiceConnection:
         if hello.get("type") != SatelliteMessageType.HELLO.value:
             logger.warning(f"Oczekiwano handshake 'hello' [sender_id: '{self.sender_id}'], dostano: {hello}.")
             return
-        logger.info(f"Satelita połączona [sender_id: '{self.sender_id}'], możliwości: {hello.get('capabilities')}.")
+        # Deklarowane możliwości nie są już tylko logowane — trafiają do współdzielonego
+        # rejestru, z którego czyta `GET /api/v1/voice/connected`, żeby rejestracja z Web UI
+        # zapisała w World PRAWDZIWE capabilities klienta zamiast je zgadywać.
+        raw_capabilities = hello.get("capabilities")
+        capabilities = [str(c) for c in raw_capabilities] if isinstance(raw_capabilities, list) else []
+        self._pending_capabilities[self.sender_id] = capabilities
+        logger.info(f"Satelita połączona [sender_id: '{self.sender_id}'], możliwości: {capabilities}.")
 
         settings = self._settings_loader()
         await self.send_client_config(settings.vad_silence_duration_ms, settings.vad_amplitude_threshold)
@@ -216,6 +246,8 @@ def create_voice_router(
     connected_sender_ids: set[str],
     settings_loader: SettingsLoader,
     sender_states: dict[str, str],
+    pending_capabilities: dict[str, list[str]],
+    is_registered: RegistrationCheck,
 ) -> APIRouter:
     """Tworzy router z endpointem WS `/voice/{sender_id}`.
 
@@ -234,6 +266,14 @@ def create_voice_router(
     `SessionState.name` per `sender_id` — snapshot do hydratacji dashboardu
     "Klienci" przy pierwszym załadowaniu strony (`GET .../clients/status`),
     dalsze zmiany dochodzą już tylko przez `GET .../clients/watch` (SSE).
+
+    `pending_capabilities` (ten sam wzorzec) trzyma możliwości zadeklarowane w
+    handshake — Web UI czyta je przy rejestracji, żeby zapisać w World realne
+    capabilities zamiast zgadywać typ klienta.
+
+    `is_registered` to bramka: **połączyć się wolno każdemu** (inaczej nowa satelita
+    nigdy nie pojawiłaby się na liście "Oczekujący" i nie dałoby się jej zatwierdzić),
+    ale odpalenie tury wymaga już zatwierdzenia — sprawdzane w `VoiceSession`.
     """
     router = APIRouter()
 
@@ -254,11 +294,14 @@ def create_voice_router(
                 tts_provider=tts_provider,
                 settings_loader=settings_loader,
                 sender_states=sender_states,
+                pending_capabilities=pending_capabilities,
+                is_registered=is_registered,
             )
             await connection.run()
         finally:
             connected_sender_ids.discard(sender_id)
             sender_states.pop(sender_id, None)
+            pending_capabilities.pop(sender_id, None)
             await agent_engine.event_bus.publish(
                 Event(type=VoiceEventType.SATELLITE_DISCONNECTED, payload={"sender_id": sender_id}, sender="voice")
             )

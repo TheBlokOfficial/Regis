@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from server.world.models import ClientCapability
+
 
 class HomeAssistantConfigDTO(BaseModel):
     """Konfiguracja singletona Home Assistant dla API (access_token maskowany na GET)."""
@@ -115,15 +117,19 @@ class UpdateRoomRequest(BaseModel):
 
 
 class SenderProfileDTO(BaseModel):
-    """Przypisanie nadawcy do pokoju dla API."""
+    """Nadawca dla API: gdzie stoi i co potrafi."""
 
     sender_id: str = Field(..., description="Opaque identyfikator nadawcy")
     room_id: str | None = Field(default=None)
     room_name: str | None = Field(default=None, description="Nazwa pokoju rozwiązana z room_id, do renderu w UI")
+    capabilities: list[ClientCapability] = Field(
+        default_factory=list, description="Co klient potrafi (mic/speaker/text) — posortowane, stabilna kolejność"
+    )
 
 
 class RegisterSenderRequest(BaseModel):
-    """Żądanie dla POST /senders."""
+    """Żądanie dla POST /senders (upsert — służy i rejestracji, i zmianie pokoju)."""
 
     sender_id: str = Field(...)
     room_id: str | None = Field(default=None)
+    capabilities: list[ClientCapability] = Field(default_factory=list)

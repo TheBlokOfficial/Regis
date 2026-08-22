@@ -23,6 +23,31 @@ function shortSenderId(senderId) {
   return `…${senderId.slice(-8)}`;
 }
 
+// Wartości `ClientCapability` (server/world/models.py) — jedyne źródło prawdy o tym,
+// czym klient jest. UI NIE zgaduje typu (dawniej: porównanie z własnym localStorage,
+// przez co każdy inny klient tekstowy wyglądał jak satelita).
+const CAP_SPEAKER = 'speaker';
+const CAP_MIC = 'mic';
+
+// Capabilities deklarowane przez tę przeglądarkę przy rejestracji — nie ma mikrofonu
+// ani głośnika w rozumieniu pipeline'u głosowego (nie łączy się przez /ws/voice/),
+// jest czystym klientem tekstowym.
+const BROWSER_CAPABILITIES = ['text'];
+
+function isVoiceClient(capabilities) {
+  const caps = capabilities || [];
+  return caps.includes(CAP_SPEAKER) || caps.includes(CAP_MIC);
+}
+
+// Klient zarejestrowany, zanim capabilities w ogóle istniały (`senders.json` sprzed tej
+// zmiany). Pokazujemy to WPROST, zamiast renderować go jak klienta tekstowego: World
+// zbuduje mu tekstowe ramowanie odpowiedzi i odrzuci `speak_in_room` na niego, więc
+// cicha, wyglądająca poprawnie karta ukrywałaby realnie złe zachowanie. Naprawa to
+// wyrejestrowanie i ponowna rejestracja (jedno kliknięcie w zakładce Świat + tutaj).
+function hasUnknownCapabilities(capabilities) {
+  return (capabilities || []).length === 0;
+}
+
 /**
  * Zakładka Klienci (dawniej Głos) — dwie role: (1) "Konfiguracja klienta", jeden
  * globalny formularz (próg wake-worda + parametry VAD, patrz
@@ -185,12 +210,15 @@ export class VoiceConfigView {
   // --------------------------------------------------------------------------
 
   async _loadAndRenderClients() {
-    const [connectedSenderIds, senders, statesSnapshot] = await Promise.all([
+    const [connected, senders, statesSnapshot] = await Promise.all([
       this.apiClient.getConnectedSenders(),
       this.apiClient.getSenders(),
       this.apiClient.getClientsStatus(),
     ]);
-    this._connectedSenderIds = new Set(connectedSenderIds || []);
+    // Capabilities z handshake — potrzebne wyłącznie przy rejestracji oczekującego
+    // klienta; po rejestracji źródłem prawdy jest już `SenderProfile.capabilities`.
+    this._pendingCapabilities = new Map((connected || []).map((c) => [c.sender_id, c.capabilities || []]));
+    this._connectedSenderIds = new Set(this._pendingCapabilities.keys());
     this._registeredSenders = senders || [];
     this._senderStates = { ...statesSnapshot };
     this._renderClientsSection();
@@ -225,7 +253,7 @@ export class VoiceConfigView {
         ? '<p class="voice-empty-hint">Brak zarejestrowanych klientów.</p>'
         : `
       <div class="voice-client-card-list">
-        ${this._registeredSenders.map((s) => this._renderClientCard(s.sender_id, s.sender_id === thisBrowserId)).join('')}
+        ${this._registeredSenders.map((s) => this._renderClientCard(s)).join('')}
       </div>
     `;
 
@@ -260,22 +288,34 @@ export class VoiceConfigView {
   // `providers.css` — tylko `background-color`/`color` się przełącza) i zawsze
   // obecny w DOM span na pewność (toggle `opacity`, nie insert/remove).
   //
-  // Wariant `isThisBrowser`: przeglądarka nigdy nie łączy się przez `/ws/voice/`,
-  // więc online/offline i stan sesji głosowej nie mają tu znaczenia — badge i
-  // tekst stanu są statyczne, ale WYMIARY karty pozostają identyczne jak dla
-  // satelity (kontener dyktuje rozmiar, nie treść).
-  _renderClientCard(senderId, isThisBrowser) {
+  // Wariant karty wynika WYŁĄCZNIE z `capabilities` zapisanych w World — klient bez
+  // mikrofonu/głośnika nigdy nie łączy się przez `/ws/voice/`, więc online/offline i
+  // stan sesji głosowej nie mają dla niego sensu; badge i tekst stanu są wtedy
+  // statyczne, ale WYMIARY karty pozostają identyczne (kontener dyktuje rozmiar).
+  _renderClientCard(sender) {
+    const senderId = sender.sender_id;
+    const isUnknown = hasUnknownCapabilities(sender.capabilities);
+    const isVoice = isVoiceClient(sender.capabilities);
     const isOnline = this._connectedSenderIds.has(senderId);
     const state = this._senderStates[senderId];
     const stateLabel = state ? STATE_LABELS[state] || state : '—';
 
-    const badgeHtml = isThisBrowser
-      ? '<span class="badge-chip voice-client-online-badge" data-role="online-badge">przeglądarka</span>'
-      : `<span class="badge-chip voice-client-online-badge ${isOnline ? 'is-online' : 'is-offline'}" data-role="online-badge">${isOnline ? 'online' : 'offline'}</span>`;
-
-    const statusIconHtml = isThisBrowser
-      ? `<div class="voice-client-mic-status" data-role="mic-icon" title="Klient tekstowy">${Icons.MessageSquare()}</div>`
-      : `<div class="voice-client-mic-status" data-role="mic-icon" title="Wake-word">${Icons.Mic()}</div>`;
+    let badgeHtml;
+    let statusIconHtml;
+    let metaText;
+    if (isUnknown) {
+      badgeHtml = '<span class="badge-chip voice-client-online-badge is-unknown" data-role="online-badge">nieznany</span>';
+      statusIconHtml = `<div class="voice-client-mic-status" data-role="mic-icon" title="Brak zapisanych możliwości">${Icons.AlertCircle()}</div>`;
+      metaText = 'Zarejestruj ponownie';
+    } else if (isVoice) {
+      badgeHtml = `<span class="badge-chip voice-client-online-badge ${isOnline ? 'is-online' : 'is-offline'}" data-role="online-badge">${isOnline ? 'online' : 'offline'}</span>`;
+      statusIconHtml = `<div class="voice-client-mic-status" data-role="mic-icon" title="Wake-word">${Icons.Mic()}</div>`;
+      metaText = stateLabel;
+    } else {
+      badgeHtml = '<span class="badge-chip voice-client-online-badge" data-role="online-badge">tekstowy</span>';
+      statusIconHtml = `<div class="voice-client-mic-status" data-role="mic-icon" title="Klient tekstowy">${Icons.MessageSquare()}</div>`;
+      metaText = 'Klient tekstowy';
+    }
 
     return `
       <div class="voice-client-card" data-sender-id="${escapeAttr(senderId)}">
@@ -285,7 +325,7 @@ export class VoiceConfigView {
             ${badgeHtml}
           </div>
           <div class="voice-client-card-meta">
-            <span class="voice-client-state-text" data-role="state-text">${isThisBrowser ? 'Klient tekstowy' : escapeHtml(stateLabel)}</span>
+            <span class="voice-client-state-text" data-role="state-text">${escapeHtml(metaText)}</span>
           </div>
         </div>
         <div class="voice-client-card-status">
@@ -296,9 +336,14 @@ export class VoiceConfigView {
     `;
   }
 
+  // Capabilities biorą się z handshake WS (satelita) albo są stałe dla tej przeglądarki
+  // — nigdy nie są zgadywane. Bez nich World nie umiałby zbudować poprawnego ramowania
+  // odpowiedzi ani odrzucić `speak_in_room` celującego w klienta bez głośnika.
   async _registerSender(senderId) {
+    const capabilities =
+      senderId === getSenderId() ? BROWSER_CAPABILITIES : this._pendingCapabilities?.get(senderId) || [];
     try {
-      await this.apiClient.registerSender({ sender_id: senderId, room_id: null });
+      await this.apiClient.registerSender({ sender_id: senderId, room_id: null, capabilities });
       showToast('Zarejestrowano nadawcę.', 'success');
       await this._loadAndRenderClients();
     } catch (error) {

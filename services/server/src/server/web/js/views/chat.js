@@ -1,6 +1,7 @@
 import { Icons } from '../icons.js';
 import { getSenderId } from '../sender_id.js';
 import { escapeHtml, escapeAttr } from '../utils/dom.js';
+import { showToast } from '../utils/toast.js';
 import { StepRailRenderer } from './chat/step_rail.js';
 
 /**
@@ -586,6 +587,10 @@ export class ChatView {
       await this.apiClient.sendChatMessageAsync(this.activeSessionId, message, getSenderId());
     } catch (err) {
       console.error('[ChatView] Błąd wysyłania wiadomości:', err);
+      // Treść wraca prosto z backendu — w typowym przypadku (403, ta przeglądarka nie
+      // jest jeszcze zarejestrowanym klientem) mówi wprost, co zrobić. Bez tego odmowa
+      // wyglądała jak zniknięcie wiadomości: tekst wracał do pola bez żadnego powodu.
+      showToast(err.message || 'Nie udało się wysłać wiadomości.', 'error');
       textarea.value = message;
     }
   }

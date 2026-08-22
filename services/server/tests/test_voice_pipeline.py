@@ -247,8 +247,8 @@ def test_threshold_energy_detector_triggers_after_consecutive_loud_frames():
 class _RedirectWorld:
     """Fałszywy WorldInterface z jednym narzędziem przekierowującym dostawę."""
 
-    async def build(self, sender_id: str | None = None, voice_mode: bool = False) -> ContextBuild:
-        del sender_id, voice_mode
+    async def build(self, sender_id: str | None = None) -> ContextBuild:
+        del sender_id
 
         async def dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
             del arguments
@@ -263,6 +263,22 @@ class _RedirectWorld:
             system_prompt="",
             dispatch=dispatch,
         )
+
+
+class _TextOnlyMockProvider(BaseLLMProvider):
+    """Zwraca jeden fragment tekstu, nigdy nie woła narzędzi."""
+
+    def __init__(self) -> None:
+        self._model = "mock-text"
+
+    async def generate_stream(
+        self, messages: List[LLMMessage], tools: list[ToolDefinition] | None = None, **kwargs: Any
+    ) -> AsyncIterator[Any]:
+        del messages, tools, kwargs
+        yield "ok"
+
+    async def check_health(self) -> bool:
+        return True
 
 
 class _RedirectMockProvider(BaseLLMProvider):
@@ -286,32 +302,43 @@ class _RedirectMockProvider(BaseLLMProvider):
 
 
 @pytest.mark.anyio
-async def test_redirect_sender_id_changes_chunk_delivery_tag():
+async def test_redirect_changes_delivery_address_but_never_session_id():
+    """Przekierowanie zmienia WYŁĄCZNIE `target_client_id` (adres dostawy); `session_id`
+    (tożsamość rozmowy/pamięci) zostaje nietknięty przez całą turę.
+
+    Wcześniej obie role pełniło jedno pole i przekierowanie przestawiało `session_id` —
+    działało to tylko dla satelit, u których `session_id == sender_id`. Dla klienta,
+    u którego te wartości się różnią (przeglądarka: sesja czatu vs `sender_id`), tura
+    po przekierowaniu publikowała się pod tagiem, którego nikt nie słuchał, i odpowiedź
+    znikała bez błędu. Ten test pilnuje, żeby te dwie role nie zrosły się z powrotem.
+    """
     with tempfile.TemporaryDirectory() as tmp_dir:
         memory_manager = MemoryManager(data_dir=Path(tmp_dir) / "sessions")
         engine = AgentEngine(llm_provider=_RedirectMockProvider(), memory_manager=memory_manager, world=_RedirectWorld())
 
-        chunk_events: list[tuple[str, str]] = []
-        done_session_ids: list[str] = []
+        chunk_events: list[tuple[str, str, str]] = []
+        done_events: list[tuple[str, str]] = []
 
         async def on_chunk(event: Any) -> None:
-            chunk_events.append((event.payload["session_id"], event.payload["chunk"]))
+            chunk_events.append(
+                (event.payload["session_id"], event.payload["target_client_id"], event.payload["chunk"])
+            )
 
         async def on_done(event: Any) -> None:
-            done_session_ids.append(event.payload["session_id"])
+            done_events.append((event.payload["session_id"], event.payload["target_client_id"]))
 
         engine.event_bus.subscribe(ServerEventType.CHAT_CHUNK, on_chunk)
         engine.event_bus.subscribe(ServerEventType.CHAT_DONE, on_done)
 
-        # interact_stream() jest subskrybowany wyłącznie po oryginalnym "orig" — musi
-        # się poprawnie zakończyć mimo przekierowania (nie zawiesić się w oczekiwaniu na done).
+        # `interact_stream()` subskrybuje po "orig" — musi zobaczyć pełną turę i
+        # poprawnie się zakończyć, bez dawnego dual-castu zdarzeń terminalnych.
         stream_events = [event async for event in engine.interact_stream(session_id="orig", prompt="cześć")]
 
-        assert all(sid == "target_x" for sid, _ in chunk_events)
-        assert "".join(chunk for _, chunk in chunk_events) == "Hello after redirect"
-        # CHAT_DONE dostarczony pod obydwoma tagami: oryginalnym (dla plumbingu kernela)
-        # i przekierowanym (dla niezależnego, ciągłego słuchacza pod nowym sender_id).
-        assert set(done_session_ids) == {"orig", "target_x"}
+        assert all(sid == "orig" for sid, _, _ in chunk_events)
+        assert all(target == "target_x" for _, target, _ in chunk_events)
+        assert "".join(chunk for _, _, chunk in chunk_events) == "Hello after redirect"
+        # Dokładnie JEDNO zdarzenie terminalne — nie dwa (dual-cast usunięty).
+        assert done_events == [("orig", "target_x")]
         assert stream_events[-1].type != "error"
 
         # Historia rozmowy nadal zapisana pod oryginalnym session_id — przekierowanie
@@ -321,10 +348,31 @@ async def test_redirect_sender_id_changes_chunk_delivery_tag():
 
 
 @pytest.mark.anyio
+async def test_delivery_address_defaults_to_sender_id_not_session_id():
+    """Domyślny adres dostawy to `sender_id`, a nie `session_id` — dla przeglądarki te
+    wartości są różne i to `sender_id` identyfikuje fizycznego klienta."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        memory_manager = MemoryManager(data_dir=Path(tmp_dir) / "sessions")
+        engine = AgentEngine(llm_provider=_TextOnlyMockProvider(), memory_manager=memory_manager)
+
+        seen: list[tuple[str, str]] = []
+
+        async def on_chunk(event: Any) -> None:
+            seen.append((event.payload["session_id"], event.payload["target_client_id"]))
+
+        engine.event_bus.subscribe(ServerEventType.CHAT_CHUNK, on_chunk)
+
+        _ = [e async for e in engine.interact_stream(session_id="czat_1", prompt="cześć", sender_id="browser_9")]
+
+        assert seen
+        assert all(sid == "czat_1" and target == "browser_9" for sid, target in seen)
+
+
+@pytest.mark.anyio
 async def test_redirect_sender_id_not_used_when_tool_does_not_redirect():
     class NoRedirectWorld:
-        async def build(self, sender_id: str | None = None, voice_mode: bool = False) -> ContextBuild:
-            del sender_id, voice_mode
+        async def build(self, sender_id: str | None = None) -> ContextBuild:
+            del sender_id
 
             async def dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
                 del name, arguments
