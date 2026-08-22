@@ -108,6 +108,10 @@ async def main() -> None:
     # gateway.py, czytany przez routes.py (panel Nadawcy w Web UI, Świat), bez importu
     # między world/voice (patrz docs/manifest.md, sekcja 5).
     connected_sender_ids: set[str] = set()
+    # Snapshot SessionState.name per sender_id (mirror connected_sender_ids) — dla
+    # GET /api/v1/voice/clients/status (hydratacja dashboardu "Klienci"); dalsze zmiany
+    # dochodzą już tylko przez GET /api/v1/voice/clients/watch (SSE, VoiceEventType).
+    sender_states: dict[str, str] = {}
     stt_registry = STTRegistry()
     tts_registry = TTSRegistry()
     voice_stt_provider = STTRouter(stt_registry)
@@ -120,6 +124,7 @@ async def main() -> None:
         tts_provider=voice_tts_provider,
         connected_sender_ids=connected_sender_ids,
         settings_loader=load_settings,
+        sender_states=sender_states,
     )
     voice_status_router = create_voice_status_router(
         stt_provider=voice_stt_provider,
@@ -127,6 +132,8 @@ async def main() -> None:
         connected_sender_ids=connected_sender_ids,
         wakeword_detector_class_name=wakeword_detector_class_name,
         config_store=config_store,
+        sender_states=sender_states,
+        event_bus=event_bus,
     )
     voice_providers_router = create_voice_providers_router(stt_registry=stt_registry, tts_registry=tts_registry)
 

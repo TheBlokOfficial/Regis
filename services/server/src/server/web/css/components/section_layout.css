@@ -28,6 +28,21 @@
   margin-top: 40px;
 }
 
+/* Podnagłówek WEWNĄTRZ jednej sekcji (np. "Oczekujący"/"Zarejestrowani" w Klienci) —
+   mniejszy/cichszy niż .section-heading, nie zaczyna nowej sekcji strony. */
+.section-subheading {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 20px 0 10px;
+}
+
+.section-subheading:first-child {
+  margin-top: 0;
+}
+
 .section-hint {
   font-size: 0.82rem;
   color: var(--text-muted-aa);

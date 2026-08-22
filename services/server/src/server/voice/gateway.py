@@ -22,6 +22,7 @@ from shared import Event, EventBus, SatelliteMessageType, ServerMessageType, get
 from server.agent import AgentEngine
 from server.config import Settings
 from server.events import ServerEventType
+from server.voice.events import VoiceEventType
 from server.voice.session import VoiceSession
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider
@@ -46,11 +47,13 @@ class VoiceConnection:
         stt_provider: BaseSTTProvider,
         tts_provider: BaseTTSProvider,
         settings_loader: SettingsLoader,
+        sender_states: dict[str, str],
     ) -> None:
         self.sender_id = sender_id
         self._websocket = websocket
         self._agent_engine = agent_engine
         self._settings_loader = settings_loader
+        self._sender_states = sender_states
         self._text_buffer = ""
         self.session = VoiceSession(
             sender_id=sender_id,
@@ -59,7 +62,20 @@ class VoiceConnection:
             stt_provider=stt_provider,
             tts_provider=tts_provider,
             on_transcript=self._on_transcript,
+            publish_event=self._publish_voice_event,
         )
+
+    # --------------------------------------------------------------------------
+    # Zdarzenia statusu dla dashboardu "Klienci" (Web UI, `GET .../clients/watch`)
+    # --------------------------------------------------------------------------
+
+    async def _publish_voice_event(self, event_type: VoiceEventType, payload: dict[str, Any]) -> None:
+        """`sender_states` (mirror `connected_sender_ids`, dla `GET .../clients/status`)
+        aktualizowany tutaj przy okazji publikacji — jedyne miejsce, w którym stan sesji
+        realnie się zmienia, patrz `VoiceSession._set_state`."""
+        if event_type == VoiceEventType.SATELLITE_STATE_CHANGED:
+            self._sender_states[self.sender_id] = payload["state"]
+        await self._agent_engine.event_bus.publish(Event(type=event_type, payload=payload, sender="voice"))
 
     # --------------------------------------------------------------------------
     # SatelliteLink — używane przez VoiceSession do doręczenia
@@ -125,7 +141,7 @@ class VoiceConnection:
         detail = event.payload.get("error", "Przerwano generowanie odpowiedzi.")
         logger.warning(f"Błąd/anulowanie tury [sender_id: '{self.sender_id}']: {detail}")
         await self.send_error(str(detail))
-        self.session.reset_to_listening()
+        await self.session.reset_to_listening()
 
     def _subscribe(self, event_bus: EventBus) -> None:
         event_bus.subscribe(ServerEventType.CHAT_CHUNK, self._on_chunk)
@@ -199,6 +215,7 @@ def create_voice_router(
     tts_provider: BaseTTSProvider,
     connected_sender_ids: set[str],
     settings_loader: SettingsLoader,
+    sender_states: dict[str, str],
 ) -> APIRouter:
     """Tworzy router z endpointem WS `/voice/{sender_id}`.
 
@@ -212,6 +229,11 @@ def create_voice_router(
     `docs/manifest.md` sekcja 5). Pozwala Web UI (panel Nadawcy) pokazać
     podłączone, ale jeszcze niezarejestrowane satelity. Zwykły `set`, bez
     locka — jeden wątek asyncio, mutacje bezpieczne.
+
+    `sender_states` (mirror `connected_sender_ids`) trzyma ostatnio znany
+    `SessionState.name` per `sender_id` — snapshot do hydratacji dashboardu
+    "Klienci" przy pierwszym załadowaniu strony (`GET .../clients/status`),
+    dalsze zmiany dochodzą już tylko przez `GET .../clients/watch` (SSE).
     """
     router = APIRouter()
 
@@ -219,6 +241,9 @@ def create_voice_router(
     async def voice_endpoint(websocket: WebSocket, sender_id: str) -> None:
         await websocket.accept()
         connected_sender_ids.add(sender_id)
+        await agent_engine.event_bus.publish(
+            Event(type=VoiceEventType.SATELLITE_CONNECTED, payload={"sender_id": sender_id}, sender="voice")
+        )
         try:
             connection = VoiceConnection(
                 sender_id=sender_id,
@@ -228,9 +253,14 @@ def create_voice_router(
                 stt_provider=stt_provider,
                 tts_provider=tts_provider,
                 settings_loader=settings_loader,
+                sender_states=sender_states,
             )
             await connection.run()
         finally:
             connected_sender_ids.discard(sender_id)
+            sender_states.pop(sender_id, None)
+            await agent_engine.event_bus.publish(
+                Event(type=VoiceEventType.SATELLITE_DISCONNECTED, payload={"sender_id": sender_id}, sender="voice")
+            )
 
     return router

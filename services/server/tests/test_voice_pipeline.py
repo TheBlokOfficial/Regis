@@ -49,6 +49,10 @@ class AlwaysTriggerWakeWordDetector:
     def reset(self) -> None:
         pass
 
+    @property
+    def last_score(self) -> float | None:
+        return 0.99
+
 
 class NeverTriggerWakeWordDetector:
     def process(self, pcm_chunk: bytes) -> bool:
@@ -57,6 +61,10 @@ class NeverTriggerWakeWordDetector:
 
     def reset(self) -> None:
         pass
+
+    @property
+    def last_score(self) -> float | None:
+        return None
 
 
 class FakeSTT(BaseSTTProvider):
@@ -67,6 +75,10 @@ class FakeSTT(BaseSTTProvider):
 class FakeTTS(BaseTTSProvider):
     async def synthesize(self, text: str) -> bytes:
         return f"audio:{text}".encode()
+
+
+async def _noop_publish_event(event_type, payload) -> None:
+    del event_type, payload
 
 
 def _make_session(
@@ -81,6 +93,7 @@ def _make_session(
         stt_provider=FakeSTT(),
         tts_provider=FakeTTS(),
         on_transcript=on_transcript,
+        publish_event=_noop_publish_event,
     )
     return session, link
 
@@ -93,6 +106,38 @@ async def test_wake_word_transitions_to_recording_and_sends_wake_detected():
 
     assert session.state.name == "RECORDING_UTTERANCE"
     assert link.control_messages == [ServerMessageType.WAKE_DETECTED]
+
+
+@pytest.mark.anyio
+async def test_wake_word_publishes_state_changed_and_detected_events_with_score():
+    """Dashboard "Klienci" (Web UI) potrzebuje zarówno zmiany stanu, jak i score
+    detekcji — zdarzenia muszą przyjść w tej kolejności (state dopiero PO score, bo
+    ikonka ma zareagować na wykrycie, nie na wejście w RECORDING_UTTERANCE)."""
+    from server.voice.events import VoiceEventType
+
+    published: list[tuple[object, dict]] = []
+
+    async def capture_publish_event(event_type, payload) -> None:
+        published.append((event_type, payload))
+
+    link = FakeLink()
+    session = VoiceSession(
+        sender_id="snd_test",
+        link=link,
+        wakeword_detector=AlwaysTriggerWakeWordDetector(),
+        stt_provider=FakeSTT(),
+        tts_provider=FakeTTS(),
+        on_transcript=lambda t: None,
+        publish_event=capture_publish_event,
+    )
+
+    await session.handle_audio_frame(b"\x00\x01")
+
+    assert published[0] == (VoiceEventType.SATELLITE_WAKE_WORD_DETECTED, {"sender_id": "snd_test", "score": 0.99})
+    assert published[1] == (
+        VoiceEventType.SATELLITE_STATE_CHANGED,
+        {"sender_id": "snd_test", "state": "RECORDING_UTTERANCE"},
+    )
 
 
 @pytest.mark.anyio
@@ -179,7 +224,7 @@ async def test_reset_to_listening_recovers_from_stuck_processing():
     await session.handle_utterance_end()
     assert session.state.name == "PROCESSING"
 
-    session.reset_to_listening()
+    await session.reset_to_listening()
 
     assert session.state.name == "LISTENING_WAKEWORD"
 

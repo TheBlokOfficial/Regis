@@ -20,11 +20,16 @@ i shim kompatybilności `GET/PUT /providers/config` żyją osobno, w
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from shared import ConfigStore
+from shared import ConfigStore, Event, EventBus
 
 from server.config import Settings
+from server.voice.events import VoiceEventType
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider
 
@@ -59,12 +64,22 @@ class VoiceClientConfigDTO(BaseModel):
     vad_amplitude_threshold: int = Field(..., ge=0, description="Próg amplitudy PCM16 poniżej którego ramka liczy się jako cisza")
 
 
+class ClientStatusSnapshotDTO(BaseModel):
+    """Snapshot `SessionState.name` per `sender_id` aktualnie połączonych satelitów —
+    hydratacja dashboardu "Klienci" przy pierwszym załadowaniu strony; dalsze zmiany
+    dochodzą już tylko przez `GET .../clients/watch` (SSE, patrz niżej)."""
+
+    states: dict[str, str] = Field(..., description="sender_id -> SessionState.name")
+
+
 def create_voice_status_router(
     stt_provider: BaseSTTProvider,
     tts_provider: BaseTTSProvider,
     wakeword_detector_class_name: str,
     connected_sender_ids: set[str],
     config_store: ConfigStore[Settings],
+    sender_states: dict[str, str],
+    event_bus: EventBus,
 ) -> APIRouter:
     """Tworzy router statusu — providerzy/nazwa detektora wstrzykiwane z `main.py`."""
     router = APIRouter()
@@ -106,4 +121,49 @@ def create_voice_status_router(
         config_store.save(updated)
         return req
 
+    @router.get("/clients/status", response_model=ClientStatusSnapshotDTO, tags=["Voice"])
+    async def get_clients_status() -> ClientStatusSnapshotDTO:
+        return ClientStatusSnapshotDTO(states=dict(sender_states))
+
+    @router.get("/clients/watch", tags=["Voice"])
+    async def watch_clients() -> StreamingResponse:
+        """Pasywna, długożyjąca subskrypcja zdarzeń satelitów (SSE) — mirror
+        `AgentEngine.watch_session()`/`GET .../chat/sessions/{id}/watch` z domeny chat,
+        tyle że **globalna** (jeden strumień dla wszystkich `sender_id` naraz, bo
+        dashboard "Klienci" pokazuje ich wszystkich jednocześnie). Nigdy się nie kończy
+        sama — obserwator (karta przeglądarki) decyduje, kiedy przestać czytać."""
+
+        async def event_generator():
+            async for event in watch_voice_events(event_bus):
+                yield f"data: {json.dumps({**event.payload, 'type': event.type})}\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+
     return router
+
+
+async def watch_voice_events(event_bus: EventBus):
+    """Pasywna subskrypcja czterech `VoiceEventType` na `event_bus` — wydzielona z
+    `watch_clients()` endpointu, żeby testować mechanizm subskrypcji bezpośrednio
+    (mirror `AgentEngine.watch_session()`, testowalnej bez HTTP/SSE). Nigdy się nie
+    kończy sama; kończy się dopiero gdy wywołujący przerwie iterację (rozłączenie SSE)."""
+    queue: asyncio.Queue[Event] = asyncio.Queue()
+
+    async def on_event(event: Event) -> None:
+        await queue.put(event)
+
+    event_types = (
+        VoiceEventType.SATELLITE_CONNECTED,
+        VoiceEventType.SATELLITE_DISCONNECTED,
+        VoiceEventType.SATELLITE_STATE_CHANGED,
+        VoiceEventType.SATELLITE_WAKE_WORD_DETECTED,
+    )
+    for event_type in event_types:
+        event_bus.subscribe(event_type, on_event)
+
+    try:
+        while True:
+            yield await queue.get()
+    finally:
+        for event_type in event_types:
+            event_bus.unsubscribe(event_type, on_event)

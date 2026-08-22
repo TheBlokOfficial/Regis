@@ -33,13 +33,16 @@ class FakeAgentEngine:
 
 def _make_client(connected_sender_ids: set[str], tmp_path: Path) -> TestClient:
     app = FastAPI()
+    agent_engine = FakeAgentEngine()
+    sender_states: dict[str, str] = {}
     voice_router = create_voice_router(
-        agent_engine=FakeAgentEngine(),
+        agent_engine=agent_engine,
         wakeword_detector_factory=ThresholdEnergyWakeWordDetector,
         stt_provider=MockSTTProvider(),
         tts_provider=MockTTSProvider(),
         connected_sender_ids=connected_sender_ids,
         settings_loader=Settings,
+        sender_states=sender_states,
     )
     status_router = create_voice_status_router(
         stt_provider=MockSTTProvider(),
@@ -47,6 +50,8 @@ def _make_client(connected_sender_ids: set[str], tmp_path: Path) -> TestClient:
         wakeword_detector_class_name=ThresholdEnergyWakeWordDetector.__name__,
         connected_sender_ids=connected_sender_ids,
         config_store=ConfigStore(Settings, tmp_path / "settings.json"),
+        sender_states=sender_states,
+        event_bus=agent_engine.event_bus,
     )
     app.include_router(voice_router, prefix="/ws")
     app.include_router(status_router, prefix="/api/v1/voice")

@@ -42,6 +42,7 @@ async def run(sender_id: str) -> None:
         hello = {"type": "hello", "capabilities": ["mic", "speaker"]}
         print(f"-> {hello}")
         await ws.send(json.dumps(hello))
+        await _expect_control(ws, "client_config")
 
         # 2. Kilka cichych ramek (nie powinny wywołać wake_detected)
         for _ in range(3):

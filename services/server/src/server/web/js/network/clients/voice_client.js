@@ -34,6 +34,77 @@ export class VoiceClient {
     }
   }
 
+  async getClientsStatus() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/voice/clients/status`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      const data = await response.json();
+      return data?.states || {};
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania statusu klientów:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Długożyjący kanał SSE (`GET .../clients/watch`) — mirror `streamChatMessage`/
+   * `watchSession` (chat_client.js): jeden globalny strumień zdarzeń wszystkich
+   * satelitów (connected/disconnected/state_changed/wake_word_detected), nigdy się
+   * nie kończy sam. Zwraca się (bez rzucania) gdy strumień serwera się zakończy —
+   * wywołujący decyduje, czy i kiedy ponowić połączenie.
+   */
+  async watchClients(
+    { onConnected = null, onDisconnected = null, onStateChanged = null, onWakeWordDetected = null } = {},
+    signal = null
+  ) {
+    const response = await fetch(`${this.baseUrl}/api/v1/voice/clients/watch`, { signal });
+    if (!response.ok) {
+      throw new Error(`HTTP Error: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const rawData = trimmed.replace(/^data:\s*/, '');
+        try {
+          const parsed = JSON.parse(rawData);
+          switch (parsed.type) {
+            case 'voice.satellite_connected':
+              if (onConnected) onConnected(parsed.sender_id);
+              break;
+            case 'voice.satellite_disconnected':
+              if (onDisconnected) onDisconnected(parsed.sender_id);
+              break;
+            case 'voice.satellite_state_changed':
+              if (onStateChanged) onStateChanged(parsed.sender_id, parsed.state);
+              break;
+            case 'voice.satellite_wake_word_detected':
+              if (onWakeWordDetected) onWakeWordDetected(parsed.sender_id, parsed.score);
+              break;
+            default:
+              console.warn('[ApiClient] Nieznany typ ramki kanału klientów:', parsed);
+          }
+        } catch (e) {
+          console.warn('[ApiClient] Błąd parsowania ramki kanału klientów:', rawData, e);
+        }
+      }
+    }
+  }
+
   async getClientConfig() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/voice/client-config`);

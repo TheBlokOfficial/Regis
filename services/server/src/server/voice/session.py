@@ -15,15 +15,18 @@ Czysty automat treści/stanu — zero wiedzy o WebSocket czy EventBus. Doręczen
 from __future__ import annotations
 
 from enum import Enum, auto
-from typing import Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from shared import ServerMessageType, get_logger
 
+from server.voice.events import VoiceEventType
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider
 from server.voice.wakeword import WakeWordDetector
 
 logger = get_logger("regis.voice.session")
+
+EventPublisher = Callable[[VoiceEventType, dict[str, Any]], Awaitable[None]]
 
 
 class SessionState(Enum):
@@ -55,6 +58,7 @@ class VoiceSession:
         stt_provider: BaseSTTProvider,
         tts_provider: BaseTTSProvider,
         on_transcript: Callable[[str], None],
+        publish_event: EventPublisher,
     ) -> None:
         self.sender_id = sender_id
         self.state = SessionState.LISTENING_WAKEWORD
@@ -63,14 +67,29 @@ class VoiceSession:
         self._stt_provider = stt_provider
         self._tts_provider = tts_provider
         self._on_transcript = on_transcript
+        self._publish_event = publish_event
         self._utterance_buffer = bytearray()
+
+    async def _set_state(self, state: SessionState) -> None:
+        """Zmienia stan i rozgłasza `SATELLITE_STATE_CHANGED` — jedyne miejsce, w którym
+        `self.state` się zmienia, żeby dashboard "Klienci" (Web UI) zawsze widział każdą
+        zmianę na żywo, bez trwałego zapisu (czysto efemeryczne, mirror `sender_states`
+        w `gateway.py`)."""
+        self.state = state
+        await self._publish_event(
+            VoiceEventType.SATELLITE_STATE_CHANGED, {"sender_id": self.sender_id, "state": state.name}
+        )
 
     async def handle_audio_frame(self, chunk: bytes) -> None:
         """Ramka binarna PCM od satelity — znaczenie zależy od bieżącego stanu."""
         if self.state == SessionState.LISTENING_WAKEWORD:
             if self._wakeword_detector.process(chunk):
                 logger.info(f"Wake-word wykryty [sender_id: '{self.sender_id}'].")
-                self.state = SessionState.RECORDING_UTTERANCE
+                await self._publish_event(
+                    VoiceEventType.SATELLITE_WAKE_WORD_DETECTED,
+                    {"sender_id": self.sender_id, "score": self._wakeword_detector.last_score},
+                )
+                await self._set_state(SessionState.RECORDING_UTTERANCE)
                 self._utterance_buffer.clear()
                 await self._link.send_control(ServerMessageType.WAKE_DETECTED)
             return
@@ -86,7 +105,7 @@ class VoiceSession:
             logger.warning(f"utterance_end poza stanem nagrywania [sender_id: '{self.sender_id}'] — zignorowano.")
             return
         await self._link.send_control(ServerMessageType.PLAY_STOP_TONE)
-        self.state = SessionState.PROCESSING
+        await self._set_state(SessionState.PROCESSING)
 
         audio = bytes(self._utterance_buffer)
         self._utterance_buffer.clear()
@@ -97,7 +116,7 @@ class VoiceSession:
             # ten sam wzorzec sanityzacji co `agent/engine.py::_generate_in_background`.
             logger.error(f"Transkrypcja STT nie powiodła się [sender_id: '{self.sender_id}']: {err}")
             await self._link.send_error("STT nieskonfigurowany lub niedostępny — spróbuj ponownie później.")
-            self.reset_to_listening()
+            await self.reset_to_listening()
             return
         logger.info(f"Transkrypcja [sender_id: '{self.sender_id}']: '{transcript}'")
         self._on_transcript(transcript)
@@ -107,7 +126,7 @@ class VoiceSession:
 
     async def speak(self, text: str) -> None:
         """Syntezuje i odtwarza odpowiedź — wołane przez gateway po odebraniu CHAT_DONE."""
-        self.state = SessionState.SPEAKING
+        await self._set_state(SessionState.SPEAKING)
         audio = await self._tts_provider.synthesize(text)
         await self._link.send_control(ServerMessageType.TTS_START)
         await self._link.send_audio(audio)
@@ -117,13 +136,13 @@ class VoiceSession:
         """Satelita potwierdziła koniec fizycznego odtwarzania — wracamy do nasłuchu."""
         if self.state != SessionState.SPEAKING:
             logger.warning(f"playback_done poza stanem SPEAKING [sender_id: '{self.sender_id}'] — zignorowano.")
-        self.state = SessionState.LISTENING_WAKEWORD
+        await self._set_state(SessionState.LISTENING_WAKEWORD)
         self._wakeword_detector.reset()
 
-    def reset_to_listening(self) -> None:
+    async def reset_to_listening(self) -> None:
         """Awaryjny powrót do nasłuchu — wołane przez gateway, gdy tura kernela zakończyła
         się błędem/anulowaniem zanim `speak()` zostało wywołane (patrz `gateway.py`,
         `_on_error_or_cancelled`). Bez tego sesja utknęłaby w PROCESSING/SPEAKING na zawsze."""
-        self.state = SessionState.LISTENING_WAKEWORD
+        await self._set_state(SessionState.LISTENING_WAKEWORD)
         self._utterance_buffer.clear()
         self._wakeword_detector.reset()

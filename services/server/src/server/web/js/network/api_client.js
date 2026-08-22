@@ -163,6 +163,12 @@ export class ApiClient {
   updateClientConfig(...args) {
     return this._voice.updateClientConfig(...args);
   }
+  getClientsStatus(...args) {
+    return this._voice.getClientsStatus(...args);
+  }
+  watchClients(...args) {
+    return this._voice.watchClients(...args);
+  }
   getVoiceProvidersConfig(...args) {
     return this._voice.getVoiceProvidersConfig(...args);
   }

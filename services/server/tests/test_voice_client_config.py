@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from shared import ConfigStore
+from shared import ConfigStore, EventBus
 
 from server.config import Settings
 from server.main import _build_wakeword_detector_factory
@@ -23,6 +23,8 @@ def _make_client(tmp_path: Path) -> tuple[TestClient, ConfigStore[Settings]]:
         wakeword_detector_class_name="OnnxWakeWordDetector",
         connected_sender_ids=set(),
         config_store=config_store,
+        sender_states={},
+        event_bus=EventBus(),
     )
     app.include_router(router, prefix="/api/v1/voice")
     return TestClient(app), config_store

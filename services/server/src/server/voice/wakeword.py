@@ -34,6 +34,14 @@ class WakeWordDetector(Protocol):
         """Czyści wewnętrzny bufor/stan — wywoływane po powrocie do nasłuchu wake-wordu."""
         ...
 
+    @property
+    def last_score(self) -> float | None:
+        """Wynik (0-1) ostatniego inference, `None` gdy detektor nie ma pojęcia ciągłego
+        score (np. `ThresholdEnergyWakeWordDetector`). Czytane przez `VoiceSession` przy
+        wykryciu, do rozgłoszenia pewności detekcji (`VoiceEventType.SATELLITE_WAKE_WORD_DETECTED`,
+        Web UI zakładka Klienci) — samo `process()` zwraca tylko bool."""
+        ...
+
 
 class ThresholdEnergyWakeWordDetector:
     """Placeholder: wyzwala się po N kolejnych ramkach powyżej progu amplitudy.
@@ -62,6 +70,10 @@ class ThresholdEnergyWakeWordDetector:
     def reset(self) -> None:
         self._consecutive_loud_frames = 0
 
+    @property
+    def last_score(self) -> float | None:
+        return None
+
 
 class OnnxWakeWordDetector:
     """Realny detektor — kroczący bufor ~2s audio, inference co ~320ms (stride),
@@ -87,6 +99,7 @@ class OnnxWakeWordDetector:
         self._stride_samples = round(self._STRIDE_SECONDS * sample_rate_hz)
         self._buffer = np.zeros(0, dtype=np.int16)
         self._samples_since_predict = 0
+        self._last_score: float | None = None
         logger.info(f"Załadowano model wake-word '{self._model_name}' [próg: {threshold}].")
 
     def process(self, pcm_chunk: bytes) -> bool:
@@ -100,6 +113,7 @@ class OnnxWakeWordDetector:
 
         scores = self._model.predict(self._buffer)
         score = scores.get(self._model_name, 0.0)
+        self._last_score = score
         detected = score >= self._threshold
         # DEBUG (nie INFO) — inference co ~320ms podczas całego nasłuchu zalałoby konsolę
         # przy normalnym poziomie logowania. Włącz przez `Settings.debug=true` w config.json,
@@ -111,6 +125,10 @@ class OnnxWakeWordDetector:
     def reset(self) -> None:
         self._buffer = np.zeros(0, dtype=np.int16)
         self._samples_since_predict = 0
+
+    @property
+    def last_score(self) -> float | None:
+        return self._last_score
 
 
 def _peak_amplitude(pcm_chunk: bytes) -> int:

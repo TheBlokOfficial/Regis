@@ -1,8 +1,9 @@
 /* ==========================================================================
-   WIDOK GŁOS — wyłącznie Satelity (config dostawców STT/TTS przeniesiony do
-   zakładki Dostawcy, `css/views/providers.css`). Lista
-   podłączonych-ale-niezarejestrowanych (monitorowanie żywego WS to domena
-   voice, nie world) + odnośnik do właściwej rejestracji w Świecie.
+   WIDOK KLIENCI (dawniej Głos) — konfiguracja wake-word/VAD + dashboard
+   klientów na żywo (config dostawców STT/TTS przeniesiony do zakładki
+   Dostawcy, `css/views/providers.css`). Listy "Oczekujący"/"Zarejestrowani"
+   (monitorowanie żywego WS to domena voice, nie world) + odnośnik do
+   właściwej rejestracji pokoju w Świecie.
    ========================================================================== */
 .voice-placeholder-text {
   color: var(--text-secondary);
@@ -63,4 +64,129 @@
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 14px;
+}
+
+/* --------------------------------------------------------------------------
+   Karty klienta zarejestrowanego — dashboard "Klienci" (status na żywo, patrz
+   voice_config.js). ZASADA: kontener dyktuje rozmiar treści, dynamiczna treść
+   (badge online/offline, tekst stanu, pewność wake-worda) NIGDY nie zmienia
+   wymiarów ani pozycji karty — tylko kolor/widoczność (patrz feedback pamięci
+   projektu "Stabilność layoutu w UI"). Karta mirror `.agent-provider-card`
+   (`providers.css`), ikona mirror `.agent-provider-card-check` (stały kwadrat).
+   -------------------------------------------------------------------------- */
+.voice-client-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.voice-client-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+}
+
+.voice-client-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.voice-client-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.voice-client-card-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Szerokość/kolor stałe niezależnie od treści ("online"/"offline" — ta sama
+   długość, ale zasada obowiązuje ogólnie: nigdy nie zależnie od treści). */
+.voice-client-online-badge {
+  min-width: 62px;
+  text-align: center;
+  justify-content: center;
+}
+
+.voice-client-online-badge.is-online {
+  color: var(--accent-success);
+  border-color: var(--accent-success);
+}
+
+.voice-client-card-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted-aa);
+  font-family: var(--font-mono);
+}
+
+/* Stały min-width niezależnie od długości etykiety stanu ("Nasłuchiwanie" vs
+   "Odpowiada") — zapobiega drganiu szerokości karty przy zmianie stanu. */
+.voice-client-state-text {
+  display: inline-block;
+  min-width: 110px;
+}
+
+.voice-client-card-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+/* Zarezerwowane miejsce na pewność detekcji — ZAWSZE w DOM, tylko opacity się
+   przełącza (nigdy insert/remove), więc pojawienie/zniknięcie nie przesuwa ikony
+   mikrofonu obok. */
+.voice-client-confidence {
+  min-width: 40px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-success);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.voice-client-confidence.is-visible {
+  opacity: 1;
+}
+
+/* Stały 32×32 kwadrat (mirror .agent-provider-card-check) — TYLKO background-color/
+   color się zmieniają przy wykryciu wake-worda, nigdy rozmiar. */
+.voice-client-mic-status {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-hover);
+  color: var(--text-muted-aa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.voice-client-mic-status svg.icon-svg {
+  width: 17px;
+  height: 17px;
+}
+
+.voice-client-mic-status.is-detected {
+  background-color: var(--accent-success);
+  color: var(--bg-base);
 }
