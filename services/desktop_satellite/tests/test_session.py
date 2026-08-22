@@ -60,9 +60,13 @@ class NeverTriggerVad:
 
 
 def _make_session(vad) -> tuple[SatelliteSession, FakeLink, FakeSpeaker]:
+    """Testy tu wołają metody automatu bezpośrednio (nie `run()`, które czeka na
+    `CLIENT_CONFIG` od serwera przed ustawieniem `_vad`) — podstawiamy gotowy `vad`
+    wprost, `vad_factory` nigdy nie zostanie faktycznie wywołane w tych testach."""
     link = FakeLink()
     speaker = FakeSpeaker()
-    session = SatelliteSession(link=link, speaker=speaker, vad=vad)
+    session = SatelliteSession(link=link, speaker=speaker, vad_factory=lambda *_: vad)
+    session._vad = vad
     return session, link, speaker
 
 
@@ -137,3 +141,75 @@ async def test_binary_frame_ignored_outside_speaking_state() -> None:
     session.state = SessionState.LISTENING_WAKEWORD
     await session.handle_server_frame(b"stray-audio")
     assert speaker.played == []
+
+
+class ConfigLink(FakeLink):
+    """`FakeLink` z konfigurowalnym pierwszym odebranym frame'm — do testowania
+    `_await_client_config()` bez wchodzenia w `run()`'s nieskończone pompy."""
+
+    def __init__(self, first_frame) -> None:
+        super().__init__()
+        self._first_frame = first_frame
+
+    async def recv(self):
+        return self._first_frame
+
+
+@pytest.mark.anyio
+async def test_await_client_config_applies_server_values() -> None:
+    link = ConfigLink({"type": "client_config", "silence_duration_ms": 900.0, "amplitude_threshold": 700})
+    speaker = FakeSpeaker()
+    captured: list[tuple[float, int]] = []
+
+    def vad_factory(silence_ms: float, amplitude: int) -> NeverTriggerVad:
+        captured.append((silence_ms, amplitude))
+        return NeverTriggerVad()
+
+    session = SatelliteSession(link=link, speaker=speaker, vad_factory=vad_factory)
+    vad = await session._await_client_config()
+
+    assert captured == [(900.0, 700)]
+    assert vad is not None
+
+
+@pytest.mark.anyio
+async def test_await_client_config_falls_back_on_unexpected_frame() -> None:
+    link = ConfigLink({"type": "wake_detected"})
+    speaker = FakeSpeaker()
+    captured: list[tuple[float, int]] = []
+
+    def vad_factory(silence_ms: float, amplitude: int) -> NeverTriggerVad:
+        captured.append((silence_ms, amplitude))
+        return NeverTriggerVad()
+
+    session = SatelliteSession(link=link, speaker=speaker, vad_factory=vad_factory)
+    await session._await_client_config()
+
+    assert captured == [(1500.0, 500)]
+
+
+@pytest.mark.anyio
+async def test_await_client_config_falls_back_on_timeout(monkeypatch) -> None:
+    class NeverRespondsLink(FakeLink):
+        async def recv(self):
+            import asyncio
+
+            await asyncio.sleep(10)
+            raise AssertionError("nieosiągalne")
+
+    import desktop_satellite.session as session_module
+
+    monkeypatch.setattr(session_module, "CLIENT_CONFIG_TIMEOUT_SECONDS", 0.05)
+
+    link = NeverRespondsLink()
+    speaker = FakeSpeaker()
+    captured: list[tuple[float, int]] = []
+
+    def vad_factory(silence_ms: float, amplitude: int) -> NeverTriggerVad:
+        captured.append((silence_ms, amplitude))
+        return NeverTriggerVad()
+
+    session = SatelliteSession(link=link, speaker=speaker, vad_factory=vad_factory)
+    await session._await_client_config()
+
+    assert captured == [(1500.0, 500)]

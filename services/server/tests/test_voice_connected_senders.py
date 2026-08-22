@@ -6,10 +6,13 @@ from __future__ import annotations
 
 import json
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from shared import EventBus
+from shared import ConfigStore, EventBus
 
+from server.config import Settings
 from server.voice.gateway import create_voice_router
 from server.voice.routes import create_voice_status_router
 from server.ai.stt import MockSTTProvider
@@ -28,7 +31,7 @@ class FakeAgentEngine:
         del kwargs
 
 
-def _make_client(connected_sender_ids: set[str]) -> TestClient:
+def _make_client(connected_sender_ids: set[str], tmp_path: Path) -> TestClient:
     app = FastAPI()
     voice_router = create_voice_router(
         agent_engine=FakeAgentEngine(),
@@ -36,21 +39,23 @@ def _make_client(connected_sender_ids: set[str]) -> TestClient:
         stt_provider=MockSTTProvider(),
         tts_provider=MockTTSProvider(),
         connected_sender_ids=connected_sender_ids,
+        settings_loader=Settings,
     )
     status_router = create_voice_status_router(
         stt_provider=MockSTTProvider(),
         tts_provider=MockTTSProvider(),
         wakeword_detector_class_name=ThresholdEnergyWakeWordDetector.__name__,
         connected_sender_ids=connected_sender_ids,
+        config_store=ConfigStore(Settings, tmp_path / "settings.json"),
     )
     app.include_router(voice_router, prefix="/ws")
     app.include_router(status_router, prefix="/api/v1/voice")
     return TestClient(app)
 
 
-def test_sender_id_tracked_during_connection_and_removed_after_disconnect() -> None:
+def test_sender_id_tracked_during_connection_and_removed_after_disconnect(tmp_path: Path) -> None:
     connected: set[str] = set()
-    client = _make_client(connected)
+    client = _make_client(connected, tmp_path)
 
     assert connected == set()
     with client.websocket_connect("/ws/voice/test_sender_1") as ws:
@@ -60,9 +65,9 @@ def test_sender_id_tracked_during_connection_and_removed_after_disconnect() -> N
     assert "test_sender_1" not in connected
 
 
-def test_get_connected_reflects_shared_set() -> None:
+def test_get_connected_reflects_shared_set(tmp_path: Path) -> None:
     connected: set[str] = {"sender_b", "sender_a"}
-    client = _make_client(connected)
+    client = _make_client(connected, tmp_path)
 
     response = client.get("/api/v1/voice/connected")
     assert response.status_code == 200

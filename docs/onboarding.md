@@ -32,7 +32,8 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`max_history_messages`**: Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM (domyślnie: `40`).
 - **`max_tool_iterations`**: Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej (domyślnie: `8`).
 - **`wakeword_model_path`**: Ścieżka (względna wobec katalogu usługi) do wytrenowanego modelu wake-word `.onnx` (domyślnie: puste — placeholder progu amplitudy `ThresholdEnergyWakeWordDetector`, łagodna degradacja gdy plik nieskonfigurowany/nie istnieje). Model kopiuje się ręcznie, np. do `data/wakeword/<nazwa>.onnx` (katalog `data/` jest w `.gitignore`).
-- **`wakeword_threshold`**: Próg pewności detekcji wake-word, 0-1 (domyślnie: `0.5` — dla konkretnego modelu użyj wartości `optimal_threshold` z jego metryk ewaluacyjnych).
+- **`wakeword_threshold`**: Próg pewności detekcji wake-word, 0-1 (domyślnie: `0.65` — dla konkretnego modelu użyj wartości `optimal_threshold` z jego metryk ewaluacyjnych). Konfigurowalne przez Web UI (zakładka **Klienci**, `GET/PUT /api/v1/voice/client-config`), działa od razu bez restartu.
+- **`vad_silence_duration_ms`** / **`vad_amplitude_threshold`**: Parametry VAD satelity (koniec wypowiedzi) — domyślnie `1500.0`/`500`. Algorytm wykonuje się lokalnie na satelicie (zero rundtripu na decyzję), ale próg jest centralnie skonfigurowany tutaj i wysyłany satelicie raz, zaraz po handshake (`ServerMessageType.CLIENT_CONFIG`, `shared/voice_protocol.py`) — zmiana działa po następnym reconnect satelity, bez restartu serwera. Konfigurowalne przez to samo `GET/PUT /api/v1/voice/client-config`.
 
 ### Parametry dostawców LLM (`services/server/data/backends/*.json`, zarządzane przez `BackendRegistry`):
 - **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
@@ -49,7 +50,9 @@ Rozłączny z `WorldEngine` (patrz sekcja 3) — zna wyłącznie opaque `sender_
 nigdy configu World. Wake-word to realny model `.onnx` (`OnnxWakeWordDetector`,
 `Settings.wakeword_model_path`/`wakeword_threshold`, `server/config.py`), STT/TTS
 to Groq (`GroqSTTProvider`) i ElevenLabs (`ElevenLabsTTSProvider`) — oba
-konfigurowalne dziś przez Web UI (zakładka **Głos**, shim
+konfigurowalne dziś przez Web UI (zakładka **Klienci**, dawniej "Głos" — rename
+po dodaniu konfiguracji wake-word/VAD, `data-section` w kodzie zostaje `voice`,
+shim
 `GET/PUT /api/v1/voice/providers/config`). Pod spodem: pełny rejestr wielu
 nazwanych instancji per typ (`STTRegistry`/`TTSRegistry`,
 `services/server/data/{stt,tts}_backends/*.json`, mirror `BackendRegistry`

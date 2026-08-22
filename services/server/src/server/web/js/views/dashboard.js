@@ -2,17 +2,17 @@ import { Icons } from '../icons.js';
 
 /**
  * Moduł widoku głównego Dashboard — czysty panel powitalny/statusowy.
- * Zarządzanie konfiguracją przeniesione do zakładki Ustawienia (sekcje Agent/Świat/Głos).
+ * Zarządzanie konfiguracją przeniesione do zakładki Ustawienia (sekcje Agent/Świat/Klienci).
  *
  * Status węzła w `.stat-panel` (`components/stat_panel.css`, współdzielone
- * z Głosem) i karty skrótów (`.dashboard-shortcut-card`) wzorem klikalnych
+ * z Klientami) i karty skrótów (`.dashboard-shortcut-card`) wzorem klikalnych
  * kart Agent (`.agent-provider-card`, agent.css) — cała karta jest celem
  * kliknięcia, hover-elewacja identyczna jak w Agent.
  */
 const SHORTCUTS = [
   { section: 'agent', icon: 'Activity', title: 'Agent', desc: 'Zarządzaj dostawcami LLM' },
   { section: 'world', icon: 'Puzzle', title: 'Świat', desc: 'Pokoje, urządzenia, nadawcy, prompty' },
-  { section: 'voice', icon: 'Radio', title: 'Głos', desc: "Status pipeline'u głosowego" },
+  { section: 'voice', icon: 'Radio', title: 'Klienci', desc: 'Wake-word, VAD, status pipeline\'u głosowego' },
 ];
 
 export class DashboardView {

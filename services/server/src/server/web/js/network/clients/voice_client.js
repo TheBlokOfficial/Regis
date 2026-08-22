@@ -34,6 +34,32 @@ export class VoiceClient {
     }
   }
 
+  async getClientConfig() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/voice/client-config`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania konfiguracji klienta (wake-word/VAD):', error);
+      return null;
+    }
+  }
+
+  async updateClientConfig(data) {
+    const response = await fetch(`${this.baseUrl}/api/v1/voice/client-config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+    }
+    return await response.json();
+  }
+
   async getVoiceProvidersConfig() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/voice/providers/config`);

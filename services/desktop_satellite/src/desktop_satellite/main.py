@@ -55,13 +55,19 @@ async def run_forever(server_url_override: str | None, sender_id: str) -> None:
             await asyncio.sleep(RECONNECT_DELAY_SECONDS)
             continue
 
-        vad = SilenceVadDetector(frame_duration_ms=FRAME_DURATION_MS)
+        def vad_factory(silence_duration_ms: float, amplitude_threshold: int) -> SilenceVadDetector:
+            return SilenceVadDetector(
+                frame_duration_ms=FRAME_DURATION_MS,
+                silence_duration_ms=silence_duration_ms,
+                amplitude_threshold=amplitude_threshold,
+            )
+
         link = ProtocolClient(server_url, sender_id)
         try:
             logger.info(f"Łączenie z serwerem [{server_url}, sender_id: '{sender_id}'] ...")
             await link.connect()
             mic.start()
-            session = SatelliteSession(link=link, speaker=speaker, vad=vad)
+            session = SatelliteSession(link=link, speaker=speaker, vad_factory=vad_factory)
             await session.run(mic)
         except asyncio.CancelledError:
             raise

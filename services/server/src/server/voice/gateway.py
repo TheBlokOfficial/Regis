@@ -20,6 +20,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from shared import Event, EventBus, SatelliteMessageType, ServerMessageType, get_logger
 
 from server.agent import AgentEngine
+from server.config import Settings
 from server.events import ServerEventType
 from server.voice.session import VoiceSession
 from server.voice.stt import BaseSTTProvider
@@ -29,6 +30,7 @@ from server.voice.wakeword import WakeWordDetector
 logger = get_logger("regis.voice.gateway")
 
 WakeWordDetectorFactory = Callable[[], WakeWordDetector]
+SettingsLoader = Callable[[], Settings]
 
 
 class VoiceConnection:
@@ -43,10 +45,12 @@ class VoiceConnection:
         wakeword_detector: WakeWordDetector,
         stt_provider: BaseSTTProvider,
         tts_provider: BaseTTSProvider,
+        settings_loader: SettingsLoader,
     ) -> None:
         self.sender_id = sender_id
         self._websocket = websocket
         self._agent_engine = agent_engine
+        self._settings_loader = settings_loader
         self._text_buffer = ""
         self.session = VoiceSession(
             sender_id=sender_id,
@@ -69,6 +73,19 @@ class VoiceConnection:
 
     async def send_error(self, detail: str) -> None:
         await self._websocket.send_text(json.dumps({"type": ServerMessageType.ERROR.value, "detail": detail}))
+
+    async def send_client_config(self, silence_duration_ms: float, amplitude_threshold: int) -> None:
+        """Parametry VAD satelity (patrz `Settings.vad_*`) — algorytm zostaje lokalny,
+        próg jest centralnie skonfigurowany tutaj. Wysyłane raz, przy handshake."""
+        await self._websocket.send_text(
+            json.dumps(
+                {
+                    "type": ServerMessageType.CLIENT_CONFIG.value,
+                    "silence_duration_ms": silence_duration_ms,
+                    "amplitude_threshold": amplitude_threshold,
+                }
+            )
+        )
 
     # --------------------------------------------------------------------------
     # Odpalenie tury kernela — jednokierunkowe, "wyślij i zapomnij"
@@ -157,6 +174,9 @@ class VoiceConnection:
             return
         logger.info(f"Satelita połączona [sender_id: '{self.sender_id}'], możliwości: {hello.get('capabilities')}.")
 
+        settings = self._settings_loader()
+        await self.send_client_config(settings.vad_silence_duration_ms, settings.vad_amplitude_threshold)
+
     async def _handle_control_message(self, raw: str) -> None:
         try:
             data = json.loads(raw)
@@ -178,6 +198,7 @@ def create_voice_router(
     stt_provider: BaseSTTProvider,
     tts_provider: BaseTTSProvider,
     connected_sender_ids: set[str],
+    settings_loader: SettingsLoader,
 ) -> APIRouter:
     """Tworzy router z endpointem WS `/voice/{sender_id}`.
 
@@ -206,6 +227,7 @@ def create_voice_router(
                 wakeword_detector=wakeword_detector_factory(),
                 stt_provider=stt_provider,
                 tts_provider=tts_provider,
+                settings_loader=settings_loader,
             )
             await connection.run()
         finally:

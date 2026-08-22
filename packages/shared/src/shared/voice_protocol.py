@@ -54,3 +54,11 @@ class ServerMessageType(str, Enum):
 
     ERROR = "error"
     """Błąd protokołu/przetwarzania — payload niesie dodatkowo pole "detail"."""
+
+    CLIENT_CONFIG = "client_config"
+    """Wysyłane raz, zaraz po `hello`, przed jakąkolwiek inną wymianą — parametry VAD
+    satelity (`silence_duration_ms`, `amplitude_threshold`), centralnie skonfigurowane
+    po stronie serwera (`Settings`). Satelita wykonuje algorytm VAD lokalnie (zero
+    rundtripu na decyzję "koniec wypowiedzi"), ale jego progi są odtąd jednym źródłem
+    prawdy na serwerze, nie hardcoded per-maszyna. Próg wake-worda NIE jest tu
+    przesyłany — satelita nigdy nie robi detekcji wake-worda, to w 100% serwer."""

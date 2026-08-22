@@ -7,8 +7,10 @@ import { VoiceConfigView } from './voice_config.js';
 
 /**
  * Kontener sekcji Ustawień — poziome zakładki (pills): Agent / Dostawcy /
- * Świat / Głos. Zastępuje dawny płaski sidebar (Kernel/Świat/Głos/Prompty
- * jako osobne top-level taby).
+ * Świat / Klienci. Zastępuje dawny płaski sidebar (Kernel/Świat/Głos/Prompty
+ * jako osobne top-level taby). Sekcja "Klienci" (dawniej "Głos", `data-section="voice"`
+ * — id celowo bez zmian, wewnętrzny) to dziś nie tylko status pipeline'u głosowego, ale
+ * centralna konfiguracja parametrów satelitów (próg wake-worda, VAD), stąd rename.
  */
 export class SettingsView {
   constructor() {
@@ -30,7 +32,7 @@ export class SettingsView {
             <button class="pill-tab" data-section="agent">${Icons.Activity()} Agent</button>
             <button class="pill-tab" data-section="providers">${Icons.Server()} Dostawcy</button>
             <button class="pill-tab" data-section="world">${Icons.Puzzle()} Świat</button>
-            <button class="pill-tab" data-section="voice">${Icons.Radio()} Głos</button>
+            <button class="pill-tab" data-section="voice">${Icons.Radio()} Klienci</button>
           </nav>
         </div>
         <div class="settings-shell-content" id="settings-section-content"></div>

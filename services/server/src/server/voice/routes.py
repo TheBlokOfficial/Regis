@@ -22,7 +22,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+from shared import ConfigStore
 
+from server.config import Settings
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider
 
@@ -46,11 +48,23 @@ class ConnectedSendersDTO(BaseModel):
     sender_ids: list[str] = Field(..., description="Posortowana lista sender_id z żywym połączeniem WS")
 
 
+class VoiceClientConfigDTO(BaseModel):
+    """Konfiguracja "klientów" głosowych — próg wake-worda (100% serwerowa detekcja,
+    patrz `voice/wakeword.py`) i parametry VAD (algorytm lokalny na satelicie, próg
+    centralnie skonfigurowany tutaj i wysyłany przy handshake, patrz `gateway.py`
+    `send_client_config`/`ServerMessageType.CLIENT_CONFIG`)."""
+
+    wakeword_threshold: float = Field(..., ge=0.0, le=1.0, description="Próg pewności detekcji wake-word (0-1)")
+    vad_silence_duration_ms: float = Field(..., gt=0.0, description="Czas ciągłej ciszy (ms) uznawany za koniec wypowiedzi")
+    vad_amplitude_threshold: int = Field(..., ge=0, description="Próg amplitudy PCM16 poniżej którego ramka liczy się jako cisza")
+
+
 def create_voice_status_router(
     stt_provider: BaseSTTProvider,
     tts_provider: BaseTTSProvider,
     wakeword_detector_class_name: str,
     connected_sender_ids: set[str],
+    config_store: ConfigStore[Settings],
 ) -> APIRouter:
     """Tworzy router statusu — providerzy/nazwa detektora wstrzykiwane z `main.py`."""
     router = APIRouter()
@@ -69,5 +83,27 @@ def create_voice_status_router(
     @router.get("/connected", response_model=ConnectedSendersDTO, tags=["Voice"])
     async def get_connected() -> ConnectedSendersDTO:
         return ConnectedSendersDTO(sender_ids=sorted(connected_sender_ids))
+
+    @router.get("/client-config", response_model=VoiceClientConfigDTO, tags=["Voice"])
+    async def get_client_config() -> VoiceClientConfigDTO:
+        settings = config_store.load()
+        return VoiceClientConfigDTO(
+            wakeword_threshold=settings.wakeword_threshold,
+            vad_silence_duration_ms=settings.vad_silence_duration_ms,
+            vad_amplitude_threshold=settings.vad_amplitude_threshold,
+        )
+
+    @router.put("/client-config", response_model=VoiceClientConfigDTO, tags=["Voice"])
+    async def update_client_config(req: VoiceClientConfigDTO) -> VoiceClientConfigDTO:
+        current = config_store.load()
+        updated = current.model_copy(
+            update={
+                "wakeword_threshold": req.wakeword_threshold,
+                "vad_silence_duration_ms": req.vad_silence_duration_ms,
+                "vad_amplitude_threshold": req.vad_amplitude_threshold,
+            }
+        )
+        config_store.save(updated)
+        return req
 
     return router

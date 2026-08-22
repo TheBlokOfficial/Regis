@@ -9,7 +9,7 @@ from server.agent.prompts import AgentDefaultPromptStore
 from server.ai.llm import BackendRegistry, LLMRouter
 from server.ai.stt import STTRegistry, STTRouter
 from server.ai.tts import TTSRegistry, TTSRouter
-from server.config import Settings, load_settings
+from server.config import Settings, config_store, load_settings
 from server.discovery import DiscoveryBroadcaster
 from server.network.gateway import create_gateway_app
 from server.voice.gateway import WakeWordDetectorFactory, create_voice_router
@@ -37,7 +37,13 @@ def _build_wakeword_detector_factory(settings: Settings) -> tuple[WakeWordDetect
     """Wybiera realny detektor `.onnx` (`Settings.wakeword_model_path` ustawiony i plik
     istnieje) albo placeholder progu amplitudy — łagodna degradacja, ten sam wzorzec co
     brak konfiguracji Home Assistant w `WorldEngine`. Zwraca fabrykę (nowa instancja per
-    połączenie, patrz `server/voice/wakeword.py`) i nazwę klasy do statusu `/voice/status`."""
+    połączenie, patrz `server/voice/wakeword.py`) i nazwę klasy do statusu `/voice/status`.
+
+    `threshold` NIE jest zamykany w closure przy starcie procesu — `factory()` woła
+    `load_settings()` na świeżo przy każdym połączeniu, więc zmiana progu przez
+    `PUT /api/v1/voice/client-config` działa od razu, bez restartu serwera (ten sam
+    wzorzec "instant effect" co `STTRouter`/`TTSRouter`/`LLMRouter`). `model_path`
+    zostaje capture'owany raz — plik modelu `.onnx` się nie zmienia w locie."""
     if not settings.wakeword_model_path:
         return ThresholdEnergyWakeWordDetector, ThresholdEnergyWakeWordDetector.__name__
 
@@ -46,10 +52,8 @@ def _build_wakeword_detector_factory(settings: Settings) -> tuple[WakeWordDetect
         logger.warning(f"Plik modelu wake-word nie istnieje [{model_path}] — używam placeholdera progu amplitudy.")
         return ThresholdEnergyWakeWordDetector, ThresholdEnergyWakeWordDetector.__name__
 
-    threshold = settings.wakeword_threshold
-
     def factory() -> WakeWordDetector:
-        return OnnxWakeWordDetector(model_path, threshold)
+        return OnnxWakeWordDetector(model_path, load_settings().wakeword_threshold)
 
     return factory, OnnxWakeWordDetector.__name__
 
@@ -115,12 +119,14 @@ async def main() -> None:
         stt_provider=voice_stt_provider,
         tts_provider=voice_tts_provider,
         connected_sender_ids=connected_sender_ids,
+        settings_loader=load_settings,
     )
     voice_status_router = create_voice_status_router(
         stt_provider=voice_stt_provider,
         tts_provider=voice_tts_provider,
         connected_sender_ids=connected_sender_ids,
         wakeword_detector_class_name=wakeword_detector_class_name,
+        config_store=config_store,
     )
     voice_providers_router = create_voice_providers_router(stt_registry=stt_registry, tts_registry=tts_registry)
 

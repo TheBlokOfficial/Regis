@@ -3,9 +3,10 @@ import { escapeAttr, escapeHtml } from '../utils/dom.js';
 import { showToast } from '../utils/toast.js';
 
 /**
- * Zakładka Głos — wyłącznie Satelity (status podłączonych/niezarejestrowanych
- * nadawców). Config dostawców STT/TTS przeniesiony do zakładki Dostawcy
- * (`views/providers_config.js`, pełny CRUD mirror LLM) — dawny płaski,
+ * Zakładka Klienci (dawniej Głos) — konfiguracja klienta (próg wake-worda + VAD
+ * satelity, patrz `_renderClientConfigSection`) i Satelity (status podłączonych/
+ * niezarejestrowanych nadawców). Config dostawców STT/TTS przeniesiony do zakładki
+ * Dostawcy (`views/providers_config.js`, pełny CRUD mirror LLM) — dawny płaski,
  * jednosslotowy formularz (shim `GET/PUT /api/v1/voice/providers/config`)
  * usunięty stąd; backendowy endpoint zostaje (nieużywany przez to UI, ale
  * tani do utrzymania jako headless kompatybilność).
@@ -33,6 +34,9 @@ export class VoiceConfigView {
   render() {
     return `
       <div class="view-shell">
+        <h3 class="section-heading">Konfiguracja klienta</h3>
+        <div id="voice-client-config-section"></div>
+
         <h3 class="section-heading">Satelity</h3>
         <div id="voice-satellites-section"></div>
       </div>
@@ -43,7 +47,84 @@ export class VoiceConfigView {
     this.apiClient = apiClient;
     this._onNavigateToWorld = onNavigateToWorld;
 
+    await this._loadAndRenderClientConfig();
     await this._loadAndRenderSatellites();
+  }
+
+  // --------------------------------------------------------------------------
+  // Konfiguracja klienta: próg wake-worda (100% serwerowa detekcja, patrz
+  // `voice/wakeword.py`) + parametry VAD satelity (algorytm lokalny, próg
+  // centralnie skonfigurowany tutaj i wysyłany satelicie przy handshake —
+  // `ServerMessageType.CLIENT_CONFIG`). Pojedynczy globalny config, nie
+  // kolekcja instancji jak dostawcy LLM/STT/TTS — prosty formularz, jawny
+  // "Zapisz" (mirror wzorca z `extensions/ha/config_panel.js`).
+  // --------------------------------------------------------------------------
+
+  async _loadAndRenderClientConfig() {
+    const config = await this.apiClient.getClientConfig();
+    this._renderClientConfigSection(config);
+  }
+
+  _renderClientConfigSection(config) {
+    const container = document.getElementById('voice-client-config-section');
+    if (!container) return;
+
+    if (!config) {
+      container.innerHTML = `<p class="voice-empty-hint">Nie udało się wczytać konfiguracji.</p>`;
+      return;
+    }
+
+    const thresholdPct = Math.round(config.wakeword_threshold * 100);
+
+    container.innerHTML = `
+      <div class="form-card">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="voice-input-threshold">Próg pewności wake-worda (%)</label>
+            <input type="number" id="voice-input-threshold" class="form-control" min="0" max="100" step="1" value="${thresholdPct}" />
+          </div>
+          <div class="form-group">
+            <label for="voice-input-vad-silence">Cisza po wypowiedzi (ms)</label>
+            <input type="number" id="voice-input-vad-silence" class="form-control" min="100" step="100" value="${config.vad_silence_duration_ms}" />
+          </div>
+          <div class="form-group">
+            <label for="voice-input-vad-amplitude">Próg amplitudy VAD</label>
+            <input type="number" id="voice-input-vad-amplitude" class="form-control" min="0" step="50" value="${config.vad_amplitude_threshold}" />
+          </div>
+        </div>
+        <p class="section-hint">
+          Detekcja wake-worda dzieje się w 100% na serwerze. VAD (koniec wypowiedzi) liczy
+          się lokalnie na satelicie, ale jego próg jest stąd centralnie wysyłany przy
+          każdym połączeniu — zmiana zadziała po następnym reconnect satelity, bez
+          restartu serwera.
+        </p>
+        <div class="form-actions">
+          <button class="btn" id="voice-btn-save-client-config">Zapisz</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('voice-btn-save-client-config')?.addEventListener('click', () => this._saveClientConfig());
+  }
+
+  async _saveClientConfig() {
+    const thresholdInput = document.getElementById('voice-input-threshold');
+    const silenceInput = document.getElementById('voice-input-vad-silence');
+    const amplitudeInput = document.getElementById('voice-input-vad-amplitude');
+    if (!thresholdInput || !silenceInput || !amplitudeInput) return;
+
+    const payload = {
+      wakeword_threshold: Number(thresholdInput.value) / 100,
+      vad_silence_duration_ms: Number(silenceInput.value),
+      vad_amplitude_threshold: Number(amplitudeInput.value),
+    };
+
+    try {
+      await this.apiClient.updateClientConfig(payload);
+      showToast('Zapisano konfigurację klienta.', 'success');
+    } catch (error) {
+      showToast(error.message || 'Błąd zapisu konfiguracji klienta.', 'error');
+    }
   }
 
   async _loadAndRenderSatellites() {

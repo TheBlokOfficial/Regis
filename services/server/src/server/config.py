@@ -21,7 +21,15 @@ class Settings(BaseModel):
     wakeword_model_path: str = Field(
         default="", description="Ścieżka do wytrenowanego modelu wake-word .onnx. Puste = placeholder progu amplitudy."
     )
-    wakeword_threshold: float = Field(default=0.5, description="Próg pewności detekcji wake-word (0-1)")
+    wakeword_threshold: float = Field(default=0.65, description="Próg pewności detekcji wake-word (0-1)")
+    vad_silence_duration_ms: float = Field(
+        default=1500.0,
+        description="Czas ciągłej ciszy (ms) po którym VAD satelity uznaje wypowiedź za zakończoną. Algorytm wykonuje się lokalnie na satelicie (zero rundtripu), ale ten próg jest centralnie skonfigurowany tutaj i wysyłany satelicie przy handshake (CLIENT_CONFIG).",
+    )
+    vad_amplitude_threshold: int = Field(
+        default=500,
+        description="Próg amplitudy PCM16 poniżej którego ramka liczy się jako cisza dla VAD satelity (patrz vad_silence_duration_ms).",
+    )
 
 
 # Automatyczne odnajdywanie korzenia usługi (services/server)
