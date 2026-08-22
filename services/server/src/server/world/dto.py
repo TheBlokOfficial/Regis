@@ -128,36 +128,61 @@ class SenderProfileDTO(BaseModel):
 
 
 class PromptSectionDTO(BaseModel):
-    """Jedna sekcja kontekstu tury wraz z metadanymi potrzebnymi UI.
+    """Jedna sekcja kontekstu tury. `warnings` liczone są po stronie serwera i
+    zwracane też na GET (nie tylko po zapisie), żeby użytkownik widział problem
+    od razu, a nie dopiero po rozmowie z agentem."""
 
-    `default` jest zwracany celowo, mimo że to stała po stronie serwera — dzięki
-    temu przycisk "Przywróć domyślne" i podgląd wartości bazowej działają bez
-    duplikowania tych samych tekstów w JavaScripcie (jedno źródło prawdy).
-    """
+    id: str
+    label: str
+    text: str
+    condition: str
+    condition_param: str | None = None
+    negated: bool = False
+    warnings: list[str] = Field(default_factory=list)
 
-    key: str = Field(..., description="Identyfikator sekcji, np. delivery_voice")
-    label: str = Field(..., description="Nazwa widoczna w UI")
-    condition: str = Field(..., description="Kiedy sekcja trafia do promptu — opis dla użytkownika")
-    placeholders: list[str] = Field(default_factory=list, description="Dozwolone podstawienia, np. {czas}")
-    default: str = Field(..., description="Wartość domyślna (tekst wbudowany w serwer)")
-    value: str = Field(..., description="Wartość obowiązująca — nadpisanie albo domyślna")
-    is_overridden: bool = Field(..., description="Czy użytkownik nadpisał wartość domyślną")
+
+class ConditionSpecDTO(BaseModel):
+    """Opis dostępnego warunku — UI buduje z tego listę rozwijaną, zamiast
+    duplikować etykiety w JavaScripcie."""
+
+    key: str
+    label: str
+    param_source: str | None = Field(default=None, description="'rooms' = warunek wymaga wyboru pokoju")
+
+
+class PlaceholderSpecDTO(BaseModel):
+    """Opis podstawienia. `guaranteed_by` pozwala UI pogrupować je na 'zawsze
+    dostępne' i 'wymagają warunku'."""
+
+    token: str
+    label: str
+    guaranteed_by: list[str] = Field(default_factory=list)
 
 
 class PromptSectionsResponse(BaseModel):
-    """Odpowiedź dla GET /api/v1/world/prompt-sections."""
+    """Odpowiedź dla GET/PUT /api/v1/world/prompt-sections — sekcje wraz z
+    metadanymi potrzebnymi do zbudowania edytora."""
+
+    sections: list[PromptSectionDTO] = Field(default_factory=list)
+    conditions: list[ConditionSpecDTO] = Field(default_factory=list)
+    placeholders: list[PlaceholderSpecDTO] = Field(default_factory=list)
+
+
+class UpdatePromptSectionsRequest(BaseModel):
+    """Żądanie dla PUT /api/v1/world/prompt-sections — podmiana CAŁEJ listy.
+
+    Kolejność elementów to kolejność w prompcie, więc przestawianie i usuwanie są
+    naturalnie tą samą operacją co edycja; UI i tak trzyma całą listę.
+    """
 
     sections: list[PromptSectionDTO] = Field(default_factory=list)
 
 
-class UpdatePromptSectionsRequest(BaseModel):
-    """Żądanie dla PUT /api/v1/world/prompt-sections.
+class PromptPreviewResponse(BaseModel):
+    """Podgląd złożonego kontekstu tury dla wskazanego klienta."""
 
-    Klucz nieobecny w `sections` = bez zmian. Wartość `null` = przywróć domyślną.
-    Pusty string = wycisz sekcję (świadomie różne od przywrócenia domyślnej).
-    """
-
-    sections: dict[str, str | None] = Field(default_factory=dict)
+    turn_context: str = Field(..., description="Dokładnie ten tekst, który dostanie agent")
+    sender_id: str | None = Field(default=None)
 
 
 class RegisterSenderRequest(BaseModel):

@@ -17,7 +17,10 @@ from server.world.dto import (
     CreateRoomRequest,
     DeclaredDeviceDTO,
     HAGroupDTO,
+    ConditionSpecDTO,
     HomeAssistantConfigDTO,
+    PlaceholderSpecDTO,
+    PromptPreviewResponse,
     PromptSectionDTO,
     PromptSectionsResponse,
     RegisterSenderRequest,
@@ -32,7 +35,13 @@ from server.world.dto import (
     UpdateRoomRequest,
 )
 from server.world.engine import WorldEngine
-from server.world.prompt_sections import SECTION_SPECS, PromptSectionsConfig
+from server.world.prompt_sections import (
+    CONDITION_SPECS,
+    PLACEHOLDER_SPECS,
+    PromptSection,
+    PromptSectionsConfig,
+    section_warnings,
+)
 from server.world.models import DeclaredDeviceEntry, Device, HomeAssistantConfig, RoomInstanceConfig, SenderProfile
 
 
@@ -67,24 +76,31 @@ def _to_declared_dto(
     )
 
 
-def _to_section_dtos(config: PromptSectionsConfig) -> list[PromptSectionDTO]:
-    """Buduje pełny opis sekcji dla UI — kolejność z `SECTION_SPECS` jest tą samą,
-    w jakiej sekcje trafiają do promptu, więc panel czyta się jak wynik."""
-    dtos: list[PromptSectionDTO] = []
-    for spec in SECTION_SPECS:
-        override = getattr(config, spec.key)
-        dtos.append(
+def _to_sections_response(config: PromptSectionsConfig) -> PromptSectionsResponse:
+    """Sekcje w kolejności zapisu (= kolejność w prompcie) wraz z metadanymi
+    warunków i podstawień, żeby UI nie duplikowało etykiet."""
+    return PromptSectionsResponse(
+        sections=[
             PromptSectionDTO(
-                key=spec.key,
-                label=spec.label,
-                condition=spec.condition,
-                placeholders=list(spec.placeholders),
-                default=spec.default,
-                value=spec.default if override is None else override,
-                is_overridden=override is not None,
+                id=section.id,
+                label=section.label,
+                text=section.text,
+                condition=section.condition,
+                condition_param=section.condition_param,
+                negated=section.negated,
+                warnings=section_warnings(section),
             )
-        )
-    return dtos
+            for section in config.sections
+        ],
+        conditions=[
+            ConditionSpecDTO(key=spec.key, label=spec.label, param_source=spec.param_source)
+            for spec in CONDITION_SPECS
+        ],
+        placeholders=[
+            PlaceholderSpecDTO(token=spec.token, label=spec.label, guaranteed_by=list(spec.guaranteed_by))
+            for spec in PLACEHOLDER_SPECS
+        ],
+    )
 
 
 def _to_sender_dto(sender_id: str, profile: SenderProfile, rooms_by_id: dict[str, RoomInstanceConfig]) -> SenderProfileDTO:
@@ -275,16 +291,39 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
 
     @router.get("/prompt-sections", response_model=PromptSectionsResponse, tags=["World"])
     async def get_prompt_sections() -> PromptSectionsResponse:
-        config = await engine.get_prompt_sections()
-        return PromptSectionsResponse(sections=_to_section_dtos(config))
+        return _to_sections_response(await engine.get_prompt_sections())
 
     @router.put("/prompt-sections", response_model=PromptSectionsResponse, tags=["World"])
     async def update_prompt_sections(req: UpdatePromptSectionsRequest) -> PromptSectionsResponse:
+        sections = [
+            PromptSection(
+                id=dto.id,
+                label=dto.label,
+                text=dto.text,
+                condition=dto.condition,
+                condition_param=dto.condition_param,
+                negated=dto.negated,
+            )
+            for dto in req.sections
+        ]
         try:
-            config = await engine.update_prompt_sections(req.sections)
+            config = await engine.save_prompt_sections(sections)
         except ValueError as err:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
-        return PromptSectionsResponse(sections=_to_section_dtos(config))
+        return _to_sections_response(config)
+
+    @router.post("/prompt-sections/reset", response_model=PromptSectionsResponse, tags=["World"])
+    async def reset_prompt_sections() -> PromptSectionsResponse:
+        return _to_sections_response(await engine.reset_prompt_sections())
+
+    @router.get("/prompt-sections/preview", response_model=PromptPreviewResponse, tags=["World"])
+    async def preview_prompt_sections(sender_id: str | None = None) -> PromptPreviewResponse:
+        """Podgląd składa się przez `WorldEngine.build()`, czyli DOKŁADNIE tę samą
+        ścieżkę co realna tura — łącznie z odpytaniem Home Assistant. Osobna,
+        "szybsza" ścieżka renderowania prędzej czy później rozjechałaby się z
+        produkcyjną i podgląd przestałby cokolwiek dowodzić."""
+        build = await engine.build(sender_id=sender_id)
+        return PromptPreviewResponse(turn_context=build.turn_context or "", sender_id=sender_id)
 
     # --------------------------------------------------------------------------
     # Profile promptu — tożsamość Świata, do 3 przełączalnych profili

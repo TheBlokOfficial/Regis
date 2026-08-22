@@ -83,6 +83,12 @@ export class ApiClient {
   updatePromptSections(...args) {
     return this._world.updatePromptSections(...args);
   }
+  resetPromptSections(...args) {
+    return this._world.resetPromptSections(...args);
+  }
+  previewPromptSections(...args) {
+    return this._world.previewPromptSections(...args);
+  }
   getWorldPrompts(...args) {
     return this._world.getWorldPrompts(...args);
   }

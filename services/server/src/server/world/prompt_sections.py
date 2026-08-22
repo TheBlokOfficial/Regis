@@ -1,157 +1,301 @@
-"""Edytowalne sekcje kontekstu tury — tekst, który agent dostaje o świecie.
+"""Sekcje kontekstu tury — komponowalna lista bloków tekstu z warunkami.
 
-Do tej pory wszystkie te zdania były literałami w `world/engine.py`, więc
-zmiana instrukcji typu "odpowiadaj krótko, bo to pójdzie na głos" wymagała
-edycji kodu źródłowego. Tutaj mieszkają jako konfiguracja z wartościami
-domyślnymi (dokładnie dawny tekst) i nadpisaniami zapisywanymi z Web UI.
+Do tej pory wszystkie zdania o świecie były literałami w `world/engine.py`, więc
+zmiana instrukcji typu "odpowiadaj krótko, bo to pójdzie na głos" wymagała edycji
+kodu. Pierwsza wersja tego modułu wyniosła je do konfiguracji, ale jako **stały
+zestaw sześciu slotów** — czyli dokładnie tego, co silnik akurat liczy. Nie dało
+się w nim wyrazić "gdy nadawca jest w Salonie, dodaj instrukcję X".
 
-**Granica edytowalności — świadoma:** użytkownik edytuje to, co agent ma
-*usłyszeć*; silnik renderuje *dane*. Format wiersza urządzenia
-(`- [entity_id] Nazwa (możliwości: …)`) i nagłówki pokoi zostają w kodzie —
-zepsuty szablon wiersza po cichu zamieniłby całą listę urządzeń w śmieci, a
-to nie jest tekst, który ktokolwiek chce dostrajać.
+Dziś sekcje są **listą**: użytkownik dodaje, usuwa i przestawia własne bloki, a
+każdemu przypisuje warunek pojawienia się (z opcjonalną negacją).
 
-**Dlaczego osobne sekcje, a nie jeden szablon z placeholderami:** jeden
-szablon dałby kontrolę nad kolejnością, ale traci warunkowość. Gdy nadawca nie
-ma przypisanego pokoju, `{pokój}` byłoby puste i zostałoby kalekie zdanie
-"Nadawca znajduje się w lokalizacji: .". Tylko silnik wie, czy dane w ogóle
-istnieją, więc to on musi decydować o pominięciu CAŁEJ sekcji. Ratowanie tego
-regułą "pusty placeholder kasuje akapit" byłoby magią, która zaskakuje.
+**Dlaczego to nadal nie jest język szablonów.** Warunki pochodzą z zamkniętej
+listy zdefiniowanej tutaj i są ewaluowane w Pythonie — użytkownik ich nie *pisze*,
+tylko *wybiera*. Nie da się zrobić literówki w składni, nie ma sandboxa ani
+tracebacków z cudzego kodu. Zyskujemy kompozycję, nie interpreter.
+
+**Granica edytowalności zostaje bez zmian**: użytkownik edytuje to, co agent ma
+*usłyszeć*; silnik renderuje *dane*. Format wiersza urządzenia i nagłówki pokoi
+są dalej w kodzie — zepsuty szablon wiersza po cichu zamieniłby całą listę
+urządzeń w śmieci, a to nie jest tekst, który ktokolwiek chce dostrajać.
 """
 
 from __future__ import annotations
 
 import asyncio
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 from pydantic import BaseModel, Field
 from shared import ConfigStore, get_logger
 
 logger = get_logger("regis.world.prompt_sections")
 
-# Podstawienia — zamknięty, udokumentowany zestaw. Klucze widoczne dla użytkownika
-# są po polsku, bo to on je wpisuje w UI.
+# --------------------------------------------------------------------------
+# Podstawienia — zamknięty zestaw. Klucze są po polsku, bo użytkownik wpisuje
+# je ręcznie w UI.
+# --------------------------------------------------------------------------
+
 PLACEHOLDER_TIME = "{czas}"
 PLACEHOLDER_ROOM = "{pokój}"
 PLACEHOLDER_DEVICES = "{lista_urządzeń}"
 
 
 @dataclass(frozen=True)
-class SectionSpec:
-    """Metadane jednej sekcji — do zbudowania UI bez duplikowania tekstów w JS."""
+class PlaceholderSpec:
+    token: str
+    label: str
+    guaranteed_by: tuple[str, ...]
+    """Warunki, przy których wartość na pewno istnieje. Pusta krotka = zawsze."""
 
+
+# --------------------------------------------------------------------------
+# Fakty tury — jedyne wejście warunków. Silnik składa to raz, warunki są
+# czystymi funkcjami, więc dają się testować bez żadnego I/O.
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TurnFacts:
+    now: str
+    capabilities: frozenset[str]
+    room_id: str | None
+    room_name: str | None
+    device_list: str | None
+    ha_configured: bool
+
+
+@dataclass(frozen=True)
+class ConditionSpec:
     key: str
     label: str
-    default: str
-    placeholders: tuple[str, ...]
-    condition: str
-    """Kiedy sekcja się pojawia — opis dla użytkownika, nie kod. Warunek zna silnik."""
+    predicate: Callable[[TurnFacts, str | None], bool]
+    param_source: str | None = None
+    """Skąd UI ma wziąć listę wartości parametru (`rooms`) — `None` = bez parametru."""
 
 
-SECTION_SPECS: tuple[SectionSpec, ...] = (
-    SectionSpec(
-        key="datetime",
-        label="Data i godzina",
-        default=f"Aktualna data i godzina: {PLACEHOLDER_TIME}.",
-        placeholders=(PLACEHOLDER_TIME,),
-        condition="Zawsze",
+CONDITION_SPECS: tuple[ConditionSpec, ...] = (
+    ConditionSpec("always", "Zawsze", lambda f, p: True),
+    ConditionSpec("client_has_speaker", "Klient ma głośnik", lambda f, p: "speaker" in f.capabilities),
+    ConditionSpec("client_has_mic", "Klient ma mikrofon", lambda f, p: "mic" in f.capabilities),
+    ConditionSpec("client_has_room", "Nadawca ma przypisany pokój", lambda f, p: f.room_id is not None),
+    ConditionSpec(
+        "client_in_room",
+        "Nadawca jest w pokoju",
+        lambda f, p: p is not None and f.room_id == p,
+        param_source="rooms",
     ),
-    SectionSpec(
-        key="delivery_voice",
-        label="Dostawa: odpowiedź czytana na głos",
-        default=(
-            "Twoja odpowiedź zostanie odczytana na głos (synteza mowy) — odpowiadaj "
-            "krótkimi zdaniami, unikaj Markdown i list, dobierz treść pod słuchanie."
-        ),
-        placeholders=(),
-        condition="Gdy klient ma głośnik",
-    ),
-    SectionSpec(
-        key="delivery_text",
-        label="Dostawa: odpowiedź wyświetlana jako tekst",
-        default="Twoja odpowiedź zostanie wyświetlona jako tekst — Markdown jest dozwolony.",
-        placeholders=(),
-        condition="Gdy klient nie ma głośnika",
-    ),
-    SectionSpec(
-        key="location",
-        label="Lokalizacja nadawcy",
-        default=f"Nadawca znajduje się w lokalizacji: {PLACEHOLDER_ROOM}.",
-        placeholders=(PLACEHOLDER_ROOM,),
-        condition="Gdy nadawca ma przypisany pokój",
-    ),
-    SectionSpec(
-        key="devices",
-        label="Urządzenia",
-        default=f"Dostępne urządzenia (adresuj je po podanym entity_id):\n{PLACEHOLDER_DEVICES}",
-        placeholders=(PLACEHOLDER_DEVICES,),
-        condition="Gdy są zadeklarowane urządzenia lub grupy",
-    ),
-    SectionSpec(
-        key="extra",
-        label="Dodatkowe instrukcje",
-        default="",
-        placeholders=(),
-        condition="Zawsze, gdy niepuste",
-    ),
+    ConditionSpec("has_devices", "Są zadeklarowane urządzenia", lambda f, p: bool(f.device_list)),
+    ConditionSpec("ha_configured", "Home Assistant skonfigurowany", lambda f, p: f.ha_configured),
 )
 
-SECTION_SPECS_BY_KEY = {spec.key: spec for spec in SECTION_SPECS}
+CONDITION_SPECS_BY_KEY = {spec.key: spec for spec in CONDITION_SPECS}
+
+PLACEHOLDER_SPECS: tuple[PlaceholderSpec, ...] = (
+    PlaceholderSpec(PLACEHOLDER_TIME, "Data i godzina", ()),
+    PlaceholderSpec(PLACEHOLDER_ROOM, "Nazwa pokoju nadawcy", ("client_has_room", "client_in_room")),
+    PlaceholderSpec(PLACEHOLDER_DEVICES, "Lista urządzeń", ("has_devices",)),
+)
+
+
+# --------------------------------------------------------------------------
+# Model
+# --------------------------------------------------------------------------
+
+
+class PromptSection(BaseModel):
+    """Jeden blok tekstu wraz z warunkiem, przy którym trafia do promptu."""
+
+    id: str = Field(default_factory=lambda: f"sec_{uuid.uuid4().hex[:8]}")
+    label: str = Field(default="Sekcja", description="Nazwa widoczna wyłącznie w UI")
+    text: str = Field(default="")
+    condition: str = Field(default="always")
+    condition_param: str | None = Field(default=None)
+    negated: bool = Field(default=False, description="Odwraca warunek — 'gdy NIE …'")
 
 
 class PromptSectionsConfig(BaseModel):
-    """Nadpisania sekcji. `None` = użyj domyślnej, `""` = pomiń sekcję całkowicie.
+    """Uporządkowana lista sekcji. **Kolejność listy = kolejność w prompcie.**"""
 
-    Rozróżnienie jest celowe i widoczne w UI: wyczyszczenie pola to realna
-    decyzja ("nie chcę znacznika czasu w prompcie"), a nie to samo co
-    przywrócenie wartości domyślnej.
+    sections: list[PromptSection] = Field(default_factory=list)
+
+
+def default_sections() -> list[PromptSection]:
+    """Zestaw startowy — dokładnie to, co wcześniej było zahardkodowane.
+
+    `delivery_text` jest tą samą sekcją co `delivery_voice`, tylko z negacją —
+    pierwszy realny przykład tego, że negacja usuwa potrzebę bliźniaczych sekcji.
     """
+    return [
+        PromptSection(
+            id="sec_datetime",
+            label="Data i godzina",
+            text=f"Aktualna data i godzina: {PLACEHOLDER_TIME}.",
+            condition="always",
+        ),
+        PromptSection(
+            id="sec_delivery_voice",
+            label="Dostawa głosowa",
+            text=(
+                "Twoja odpowiedź zostanie odczytana na głos (synteza mowy) — odpowiadaj "
+                "krótkimi zdaniami, unikaj Markdown i list, dobierz treść pod słuchanie."
+            ),
+            condition="client_has_speaker",
+        ),
+        PromptSection(
+            id="sec_delivery_text",
+            label="Dostawa tekstowa",
+            text="Twoja odpowiedź zostanie wyświetlona jako tekst — Markdown jest dozwolony.",
+            condition="client_has_speaker",
+            negated=True,
+        ),
+        PromptSection(
+            id="sec_location",
+            label="Lokalizacja nadawcy",
+            text=f"Nadawca znajduje się w lokalizacji: {PLACEHOLDER_ROOM}.",
+            condition="client_has_room",
+        ),
+        PromptSection(
+            id="sec_devices",
+            label="Urządzenia",
+            text=f"Dostępne urządzenia (adresuj je po podanym entity_id):\n{PLACEHOLDER_DEVICES}",
+            condition="has_devices",
+        ),
+    ]
 
-    datetime: str | None = Field(default=None)
-    delivery_voice: str | None = Field(default=None)
-    delivery_text: str | None = Field(default=None)
-    location: str | None = Field(default=None)
-    devices: str | None = Field(default=None)
-    extra: str | None = Field(default=None)
+
+# Mapowanie starych, płaskich kluczy na ID sekcji zestawu startowego — używane
+# wyłącznie przy migracji (patrz `PromptSectionStore.load`).
+_LEGACY_KEY_TO_SECTION_ID = {
+    "datetime": "sec_datetime",
+    "delivery_voice": "sec_delivery_voice",
+    "delivery_text": "sec_delivery_text",
+    "location": "sec_location",
+    "devices": "sec_devices",
+}
 
 
 class PromptSectionStore:
-    """Magazyn nadpisań sekcji — singleton na plik, mirror `HomeAssistantConfig`."""
+    """Magazyn sekcji — jeden plik JSON, mirror wzorca singletona `HomeAssistantConfig`."""
 
     def __init__(self, data_dir: Path) -> None:
-        self._store: ConfigStore[PromptSectionsConfig] = ConfigStore(
-            PromptSectionsConfig, data_dir.resolve() / "prompt_sections.json"
-        )
+        self._path = data_dir.resolve() / "prompt_sections.json"
+        self._store: ConfigStore[PromptSectionsConfig] = ConfigStore(PromptSectionsConfig, self._path)
 
     async def load(self) -> PromptSectionsConfig:
-        return await asyncio.to_thread(self._store.load)
+        """Wczytuje sekcje, migrując po drodze stary, płaski format.
+
+        Pierwsza wersja tego modułu trzymała sześć nazwanych pól (`{"datetime": …}`)
+        zamiast listy. Migracja przenosi ewentualne nadpisania do odpowiadających im
+        sekcji zestawu startowego — użytkownik mógł zdążyć coś wpisać, a ciche
+        zgubienie jego tekstu byłoby przykrą niespodzianką.
+        """
+        raw = await asyncio.to_thread(self._read_raw)
+        if raw is None:
+            seeded = PromptSectionsConfig(sections=default_sections())
+            await self.save(seeded)
+            return seeded
+        if "sections" in raw:
+            return PromptSectionsConfig.model_validate(raw)
+
+        migrated = _migrate_legacy(raw)
+        logger.info("Zmigrowano sekcje kontekstu tury ze starego, płaskiego formatu do listy.")
+        await self.save(migrated)
+        return migrated
 
     async def save(self, config: PromptSectionsConfig) -> None:
         await asyncio.to_thread(self._store.save, config)
-        logger.info("Zapisano sekcje kontekstu tury.")
+
+    async def reset(self) -> PromptSectionsConfig:
+        seeded = PromptSectionsConfig(sections=default_sections())
+        await self.save(seeded)
+        logger.info("Przywrócono domyślny zestaw sekcji kontekstu tury.")
+        return seeded
+
+    def _read_raw(self) -> dict[str, Any] | None:
+        """Surowy odczyt JSON — potrzebny, bo `ConfigStore.load()` zwaliduje plik do
+        nowego modelu i stary kształt cicho zniknąłby jako pusta lista."""
+        import json
+
+        if not self._path.exists():
+            return None
+        try:
+            with self._path.open(encoding="utf-8") as handle:
+                data = json.load(handle)
+            return data if isinstance(data, dict) else None
+        except (OSError, ValueError) as err:
+            logger.warning(f"Nie udało się odczytać sekcji kontekstu tury [{self._path}]: {err}")
+            return None
 
 
-def resolve_section(
-    config: PromptSectionsConfig, key: str, substitutions: dict[str, str] | None = None
-) -> str | None:
-    """Zwraca gotowy tekst sekcji albo `None`, gdy sekcja ma zostać pominięta.
+def _migrate_legacy(raw: dict[str, Any]) -> PromptSectionsConfig:
+    sections = default_sections()
+    by_id = {section.id: section for section in sections}
+    for legacy_key, section_id in _LEGACY_KEY_TO_SECTION_ID.items():
+        override = raw.get(legacy_key)
+        if isinstance(override, str) and section_id in by_id:
+            by_id[section_id].text = override
+    extra = raw.get("extra")
+    if isinstance(extra, str) and extra:
+        sections.append(PromptSection(id="sec_extra", label="Dodatkowe instrukcje", text=extra, condition="always"))
+    return PromptSectionsConfig(sections=sections)
 
-    Podstawienia przekazywane są słownikiem (a nie `**kwargs`), bo klucze są
-    dosłownymi placeholderami widocznymi dla użytkownika — `"{czas}"` nie jest
-    poprawną nazwą argumentu Pythona.
+
+# --------------------------------------------------------------------------
+# Ewaluacja
+# --------------------------------------------------------------------------
+
+
+def section_applies(section: PromptSection, facts: TurnFacts) -> bool:
+    """Czy sekcja trafia do promptu tej tury. Nieznany warunek = sekcja pomijana
+    (bezpieczniej niż wpuścić do promptu blok, którego reguły nie rozumiemy)."""
+    spec = CONDITION_SPECS_BY_KEY.get(section.condition)
+    if spec is None:
+        logger.warning(f"Nieznany warunek sekcji [{section.id}]: '{section.condition}' — sekcja pominięta.")
+        return False
+    result = spec.predicate(facts, section.condition_param)
+    return not result if section.negated else result
+
+
+def render_section(section: PromptSection, facts: TurnFacts) -> str | None:
+    """Zwraca gotowy tekst sekcji albo `None`, gdy warunek niespełniony lub tekst pusty.
 
     Podstawianie przez jawny `str.replace`, **nigdy `str.format`** — ten drugi
     wysypuje się `KeyError`/`IndexError` na każdym nawiasie klamrowym w tekście
     użytkownika, a ludzie wklejają do promptów przykłady JSON. Nieznane
-    `{cokolwiek}` zostaje tu nietknięte, zamiast wywalić całą turę.
+    `{cokolwiek}` zostaje nietknięte, zamiast wywalić całą turę.
     """
-    spec = SECTION_SPECS_BY_KEY[key]
-    override = getattr(config, key)
-    template = spec.default if override is None else override
-    if not template:
+    if not section.text or not section_applies(section, facts):
         return None
 
-    for placeholder, value in (substitutions or {}).items():
-        template = template.replace(placeholder, value)
-    return template
+    rendered = section.text
+    for token, value in (
+        (PLACEHOLDER_TIME, facts.now),
+        (PLACEHOLDER_ROOM, facts.room_name or ""),
+        (PLACEHOLDER_DEVICES, facts.device_list or ""),
+    ):
+        rendered = rendered.replace(token, value)
+    return rendered
+
+
+def section_warnings(section: PromptSection) -> list[str]:
+    """Ostrzeżenia dla UI — **nie blokują zapisu**, bo użycie niegwarantowanego
+    podstawienia bywa zamierzone. Chodzi o to, żeby użytkownik nie odkrył dopiero
+    w rozmowie z agentem, że jego sekcja renderuje 'Nadawca jest w: .'."""
+    warnings: list[str] = []
+    for spec in PLACEHOLDER_SPECS:
+        if spec.token not in section.text or not spec.guaranteed_by:
+            continue
+        if section.negated or section.condition not in spec.guaranteed_by:
+            labels = " lub ".join(CONDITION_SPECS_BY_KEY[key].label for key in spec.guaranteed_by)
+            warnings.append(
+                f"Sekcja używa {spec.token}, ale jej warunek nie gwarantuje, że wartość istnieje "
+                f"(gwarantuje ją: {labels}). Przy braku wartości podstawi się pusty tekst."
+            )
+    if section.condition not in CONDITION_SPECS_BY_KEY:
+        warnings.append(f"Nieznany warunek '{section.condition}' — sekcja nigdy się nie pojawi.")
+    elif CONDITION_SPECS_BY_KEY[section.condition].param_source and not section.condition_param:
+        warnings.append("Warunek wymaga wybrania wartości — bez niej sekcja nigdy się nie pojawi.")
+    return warnings

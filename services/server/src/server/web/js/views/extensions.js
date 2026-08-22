@@ -52,7 +52,10 @@ export class ExtensionsView {
   }
 
   hasUnsavedChanges() {
-    return Boolean(this.promptsView.hasUnsavedChanges?.());
+    // Sekcje kontekstu tury też liczą się jako niezapisane zmiany — lista żyje w
+    // pamięci widoku do czasu jawnego "Zapisz", więc przełączenie zakładki bez
+    // ostrzeżenia po cichu wyrzuciłoby całą pracę użytkownika.
+    return Boolean(this.promptsView.hasUnsavedChanges?.() || this.sectionsView.hasUnsavedChanges?.());
   }
 
   _showToast(message, type = 'success') {

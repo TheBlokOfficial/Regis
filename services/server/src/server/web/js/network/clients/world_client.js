@@ -10,24 +10,23 @@ export class WorldClient {
 
   // --- Prompty Świata (profile tożsamości, do 3 przełączalnych) ---
 
-  /** Sekcje kontekstu tury — serwer zwraca wartość obowiązującą ORAZ domyślną,
-   * więc "przywróć domyślne" działa bez duplikowania tekstów po stronie JS. */
+  /** Sekcje kontekstu tury wraz z metadanymi (warunki, podstawienia) — serwer
+   * dostarcza etykiety, żeby UI ich nie duplikowało. */
   async getPromptSections() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/world/prompt-sections`);
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status}`);
       }
-      const data = await response.json();
-      return data?.sections || [];
+      return await response.json();
     } catch (error) {
       console.error('[ApiClient] Błąd pobierania sekcji kontekstu tury:', error);
-      return [];
+      return null;
     }
   }
 
-  /** `sections` to mapa klucz -> tekst. `null` przywraca domyślną, pusty string
-   * wycisza sekcję. Klucze nieobecne w mapie zostają bez zmian. */
+  /** Podmiana CAŁEJ uporządkowanej listy — kolejność elementów to kolejność
+   * w prompcie, więc przestawianie i usuwanie to ta sama operacja co edycja. */
   async updatePromptSections(sections) {
     const response = await fetch(`${this.baseUrl}/api/v1/world/prompt-sections`, {
       method: 'PUT',
@@ -38,8 +37,30 @@ export class WorldClient {
       const errData = await response.json().catch(() => ({}));
       throw new Error(errData.detail || `HTTP Error: ${response.status}`);
     }
-    const data = await response.json();
-    return data?.sections || [];
+    return await response.json();
+  }
+
+  async resetPromptSections() {
+    const response = await fetch(`${this.baseUrl}/api/v1/world/prompt-sections/reset`, { method: 'POST' });
+    if (!response.ok) {
+      throw new Error(`HTTP Error: ${response.status}`);
+    }
+    return await response.json();
+  }
+
+  /** Podgląd składany tą samą ścieżką co realna tura (`WorldEngine.build`). */
+  async previewPromptSections(senderId) {
+    const query = senderId ? `?sender_id=${encodeURIComponent(senderId)}` : '';
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/prompt-sections/preview${query}`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd podglądu kontekstu tury:', error);
+      return null;
+    }
   }
 
   async getWorldPrompts() {

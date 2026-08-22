@@ -389,43 +389,131 @@
 }
 
 /* ==========================================================================
-   KONTEKST TURY — edytowalne sekcje faktów wstrzykiwanych przed każdym
-   pytaniem (`world_prompt_sections_view.js`). Wizualnie rodzina edytora
-   promptów wyżej (ten sam krój mono, ta sama ramka pola), ale lista krótkich
-   pól zamiast jednego dużego edytora — bo to zdania, nie dokumenty.
+   KONTEKST TURY — edytor komponowalnej listy sekcji
+   (`world_prompt_sections_view.js`). Wizualnie rodzina edytora promptów wyżej
+   (ten sam mono w polach tekstowych, ta sama ramka), ale lista krótkich bloków
+   z warunkiem zamiast jednego dużego dokumentu.
    ========================================================================== */
 .wps-intro {
   margin-top: 0;
+  margin-bottom: 14px;
+}
+
+/* Legenda podstawień — rozdzielona na "zawsze dostępne" i "wymagają warunku",
+   bo to rozróżnienie jest jedyną pułapką swobodnej kompozycji: {pokój} w sekcji
+   bez odpowiedniego warunku podstawi pusty tekst. */
+.wps-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 10px 14px;
   margin-bottom: 18px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.wps-legend-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wps-legend-label {
+  font-size: 0.78rem;
+  color: var(--text-muted-aa);
+}
+
+.wps-placeholder {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--text-primary);
+  background-color: var(--bg-surface-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+
+.wps-section {
+  padding: 14px 16px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
 }
 
 .wps-section + .wps-section {
-  margin-top: 22px;
+  margin-top: 12px;
 }
 
 .wps-section-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
-.wps-section-label {
+/* Nazwa sekcji jest wyłącznie etykietą w UI (nie trafia do promptu), więc pole
+   wygląda jak tekst, a nie jak formularz — dopiero fokus pokazuje, że jest edytowalne. */
+.wps-label-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  color: var(--text-primary);
   font-size: 0.92rem;
   font-weight: 600;
-  color: var(--text-primary);
-}
-
-/* Warunek pojawienia się sekcji — informacja, nie stan, więc bez koloru. */
-.wps-condition {
-  text-transform: none;
-  letter-spacing: 0;
   font-family: var(--font-sans);
 }
 
-.wps-overridden {
-  color: var(--accent-warning);
-  border-color: var(--accent-warning);
+.wps-label-input:hover {
+  border-color: var(--border-subtle);
+}
+
+.wps-label-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  background-color: var(--bg-base);
+}
+
+.wps-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Strzałka "w górę" to ta sama ikona co "w dół", obrócona — jedna ikona w
+   zestawie zamiast dwóch prawie identycznych. */
+.wps-section-actions [data-move='up'] svg {
+  transform: rotate(180deg);
+}
+
+.wps-condition-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.wps-condition-label {
+  font-size: 0.82rem;
+  color: var(--text-muted-aa);
+}
+
+.wps-negate {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
 }
 
 .wps-box {
@@ -459,41 +547,67 @@
   box-shadow: none;
 }
 
-.wps-section-footer {
+/* Ostrzeżenie informuje, nie blokuje — bursztyn (wymaga uwagi), nie czerwień (błąd). */
+.wps-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--accent-warning);
+}
+
+.wps-warning svg.icon-svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.wps-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 8px;
+  margin-top: 16px;
 }
 
-.wps-placeholders {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.wps-placeholder {
-  font-family: var(--font-mono);
-  font-size: 0.76rem;
-  color: var(--text-primary);
-  background-color: var(--bg-surface-hover);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 2px 6px;
-}
-
-.wps-placeholder-none {
-  font-size: 0.76rem;
-  color: var(--text-muted);
-}
-
-/* Stała szerokość obszaru akcji — rozbłysk wyniku na "Zapisz" zamienia tekst na
-   ikonę, a przycisk "Przywróć domyślne" obok nie może przez to drgnąć. */
-.wps-section-actions {
+.wps-toolbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+}
+
+.wps-preview-heading {
+  margin-top: 32px;
+}
+
+.wps-preview-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.wps-preview-empty {
+  font-size: 0.82rem;
+  color: var(--text-muted-aa);
+}
+
+/* Podgląd celowo `pre`: pokazuje dokładnie ten tekst, który dostanie model —
+   razem z pustymi liniami i wcięciami listy urządzeń. */
+.wps-preview-output {
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px 14px;
+  background-color: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

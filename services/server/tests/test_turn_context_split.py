@@ -18,7 +18,6 @@ from shared import ChatMessageDTO
 from server.agent.context.builder import ContextBuilder
 from server.world.engine import WorldEngine
 from server.world.models import ClientCapability, SenderProfile
-from server.world.prompt_sections import PromptSectionsConfig, resolve_section
 
 IDENTITY = "Jesteś Regis."
 
@@ -130,35 +129,3 @@ async def test_identity_stays_out_of_turn_context() -> None:
 
         assert build.system_prompt == IDENTITY
         assert IDENTITY not in (build.turn_context or "")
-
-
-# --------------------------------------------------------------------------
-# Sekcje — nadpisanie / wyciszenie / domyślna / odporność na nawiasy klamrowe
-# --------------------------------------------------------------------------
-
-
-def test_section_falls_back_to_default_when_not_overridden() -> None:
-    rendered = resolve_section(PromptSectionsConfig(), "delivery_text")
-    assert rendered is not None and "tekst" in rendered
-
-
-def test_section_override_replaces_default() -> None:
-    config = PromptSectionsConfig(delivery_voice="MÓW KRÓTKO")
-    assert resolve_section(config, "delivery_voice") == "MÓW KRÓTKO"
-
-
-def test_empty_section_is_silenced_not_defaulted() -> None:
-    """Wyczyszczenie pola to świadoma decyzja użytkownika ("nie chcę tego w
-    prompcie"), a NIE to samo co przywrócenie wartości domyślnej."""
-    config = PromptSectionsConfig(datetime="")
-    assert resolve_section(config, "datetime", {"{czas}": "12:00"}) is None
-
-
-def test_braces_in_user_text_do_not_break_substitution() -> None:
-    """`str.format` wysypałby się tu `KeyError` — dlatego podstawiamy `str.replace`.
-    Ludzie wklejają do promptów przykłady JSON i nie mogą tym wywalić każdej tury."""
-    config = PromptSectionsConfig(location='Pokój: {pokój}. Przykład: {"a": 1} oraz {nieznane}.')
-
-    rendered = resolve_section(config, "location", {"{pokój}": "Salon"})
-
-    assert rendered == 'Pokój: Salon. Przykład: {"a": 1} oraz {nieznane}.'
