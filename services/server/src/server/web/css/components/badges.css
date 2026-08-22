@@ -1,11 +1,28 @@
-/* 3-Poziomowy System Plakietek (Badge Design System - Wyrazista Biel & 28-30px) */
-.badge {
+/* 3-Poziomowy System Plakietek (Badge Design System - Wyrazista Biel & 28-30px).
+   Warianty (`.badge-status`/`.badge-status-sm`/`.badge-chip`/`.badge-muted`) są w
+   markupie używane zarówno razem z `.badge` (`class="badge badge-chip"`) jak i
+   samodzielnie (`class="badge-chip"`) — layout (`display`/`align-items`/
+   `line-height`) musi więc siedzieć na KAŻDYM z nich, nie tylko na `.badge`,
+   inaczej samodzielne użycie dostaje `display: inline` domyślny ze `span`, na
+   którym `height` nic nie robi i tekst zostaje na naturalnej linii bazowej
+   zamiast się wyśrodkować — to była realna przyczyna tekstu "unoszącego się"
+   nad środkiem plakietki, nie tylko dobór `line-height`. */
+.badge,
+.badge-status,
+.badge-status-sm,
+.badge-chip,
+.badge-muted {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+}
+
+.badge {
   height: 28px;
   padding: 0 12px;
-  border-radius: var(--radius-sm);
   font-size: 0.80rem;
   font-family: var(--font-mono);
   font-weight: 500;
@@ -13,7 +30,6 @@
   color: #e4e4e7;
   border: 1px solid var(--border-medium);
   white-space: nowrap;
-  box-sizing: border-box;
 }
 
 .badge-status {

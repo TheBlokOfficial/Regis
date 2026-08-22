@@ -2,25 +2,9 @@
    WIDOK KLIENCI (dawniej Głos) — konfiguracja wake-word/VAD + dashboard
    klientów na żywo (config dostawców STT/TTS przeniesiony do zakładki
    Dostawcy, `css/views/providers.css`). Listy "Oczekujący"/"Zarejestrowani"
-   (monitorowanie żywego WS to domena voice, nie world) + odnośnik do
-   właściwej rejestracji pokoju w Świecie.
+   (monitorowanie żywego WS to domena voice, nie world) — ta przeglądarka
+   płynie tymi samymi listami co satelity, patrz `voice_config.js`.
    ========================================================================== */
-.voice-placeholder-text {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-
-.voice-pending-satellites {
-  margin-bottom: 14px;
-}
-
-.voice-pending-satellites-label {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  margin-bottom: 8px;
-}
-
 .voice-list {
   display: flex;
   flex-direction: column;
@@ -58,12 +42,11 @@
   overflow-wrap: anywhere;
 }
 
-.voice-browser-self-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
+/* Wyróżnienie wiersza "Oczekujący" należącego do tej przeglądarki — ten sam
+   rozmiar/krój co inne badge-chip w wierszu, bez dodatkowego koloru (to nie
+   stan, tylko etykieta pochodzenia). */
+.voice-browser-chip {
+  margin-left: 8px;
 }
 
 /* --------------------------------------------------------------------------
@@ -85,7 +68,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 20px;
+  padding: 20px 22px;
   background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
@@ -94,7 +77,7 @@
 .voice-client-card-main {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -104,11 +87,14 @@
   gap: 10px;
 }
 
+/* Identyfikator to metadana, nie tytuł — mirror `.agent-provider-card-meta`
+   (`providers.css`), nie `-name`: waga/rozmiar/kolor przygaszone, bo to, co
+   naprawdę interesuje w tym rzędzie, jest w badge online/offline obok. */
 .voice-client-card-name {
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 500;
   font-family: var(--font-mono);
-  color: var(--text-primary);
+  color: var(--text-muted-aa);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -127,10 +113,12 @@
   border-color: var(--accent-success);
 }
 
+/* Stan sesji na żywo jest tą realnie użyteczną informacją w karcie — wyraźniej
+   niż identyfikator (który jest w rzędzie nad nim). */
 .voice-client-card-meta {
-  font-size: 0.8rem;
-  color: var(--text-muted-aa);
-  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 /* Stały min-width niezależnie od długości etykiety stanu ("Nasłuchiwanie" vs

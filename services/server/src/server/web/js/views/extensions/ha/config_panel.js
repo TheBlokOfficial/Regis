@@ -1,4 +1,5 @@
 import { Icons } from '../../../icons.js';
+import { flashButtonResult, lockButtonForAction } from '../../../utils/button_flash.js';
 import { escapeAttr } from '../../../utils/dom.js';
 
 /**
@@ -92,23 +93,13 @@ async function handleSaveConfig(view) {
 }
 
 /** Wynik testu jest pokazywany BEZPOŚREDNIO na przycisku (kolor + ikona na
- * 2s), nie osobną plakietką obok — jeden spójny element zamiast dwóch
- * różnych stylistyk w tym samym wierszu.
- *
- * Szerokość/wysokość przycisku są zablokowane PRZED jakąkolwiek zmianą
- * zawartości (tekst -> checkmark/X -> z powrotem tekst) — inaczej krótsza
- * treść (sama ikona) kurczy przycisk, co przesuwa resztę wiersza/karty. Bez
- * fazy spinnera — na szybkim połączeniu odpowiedź przychodzi w <200ms, co
- * zmienia spinner w nieprzyjemny błysk; przycisk zostaje z oryginalnym
- * tekstem "Testuj połączenie" (i `disabled`) aż do przyjścia wyniku, dopiero
- * wtedy zamienia treść na checkmark/X + kolor. `disabled` zostaje `true`
- * przez CAŁY czas (oczekiwanie + 2s rozbłysku) — przycisk ma być realnie
- * nieklikalny, nie tylko wizualnie przygaszony; `.btn-flash-*:disabled` w
- * buttons.css nadpisuje domyślne przygaszenie `:disabled`, żeby kolor
- * wyniku zostawał żywy mimo blokady (i żeby hover nie mógł go w ogóle
- * dotknąć — `pointer-events: none` z `:disabled` wyłącza hover całkowicie).
- * Wynik nie idzie też do toastu — kolor+ikona na przycisku już w pełni go
- * niesie, drugi kanał informacji byłby redundantny.
+ * 2s, `flashButtonResult`), nie osobną plakietką obok — jeden spójny element
+ * zamiast dwóch różnych stylistyk w tym samym wierszu. Bez fazy spinnera —
+ * na szybkim połączeniu odpowiedź przychodzi w <200ms, co zmienia spinner w
+ * nieprzyjemny błysk; przycisk zostaje z oryginalnym tekstem "Testuj
+ * połączenie" (zablokowany przez `lockButtonForAction`) aż do przyjścia
+ * wyniku. Wynik nie idzie też do toastu — kolor+ikona na przycisku już w
+ * pełni go niesie, drugi kanał informacji byłby redundantny.
  */
 async function handleTestConnection(view) {
   const baseUrl = document.getElementById('ha-input-base-url')?.value.trim() || '';
@@ -121,10 +112,7 @@ async function handleTestConnection(view) {
 
   const btn = document.getElementById('ha-btn-test-config');
   if (!btn) return;
-  const originalHtml = btn.innerHTML;
-  const originalWidth = btn.getBoundingClientRect().width;
-  btn.style.width = `${originalWidth}px`;
-  btn.disabled = true;
+  lockButtonForAction(btn);
 
   let ok = false;
   try {
@@ -134,15 +122,7 @@ async function handleTestConnection(view) {
     ok = false;
   }
 
-  btn.classList.add(ok ? 'btn-flash-success' : 'btn-flash-error');
-  btn.innerHTML = ok ? Icons.Check() : Icons.X();
-
-  setTimeout(() => {
-    btn.classList.remove('btn-flash-success', 'btn-flash-error');
-    btn.innerHTML = originalHtml;
-    btn.disabled = false;
-    btn.style.width = '';
-  }, 2000);
+  flashButtonResult(btn, ok, { successHtml: Icons.Check(), errorHtml: Icons.X() });
 }
 
 function truncateMaskedToken(masked) {

@@ -1,5 +1,6 @@
 import { Icons } from '../icons.js';
 import { getSenderId } from '../sender_id.js';
+import { flashButtonResult, lockButtonForAction } from '../utils/button_flash.js';
 import { escapeAttr, escapeHtml } from '../utils/dom.js';
 import { showToast } from '../utils/toast.js';
 
@@ -14,6 +15,13 @@ const STATE_LABELS = {
 // Ile trwa "zaświecenie" ikony mikrofonu + wyświetlenie pewności po wykryciu wake-worda —
 // czysto efemeryczne (nic nie jest trwale zapisywane, patrz server/voice/events.py).
 const WAKE_WORD_FLASH_MS = 1500;
+
+// Pełny UUID (36 znaków) jako "nazwa" klienta jest nieczytelny i wygląda jak
+// nagłówek, choć jest tylko identyfikatorem — pokazujemy sufiks, pełne ID
+// zostaje w atrybucie `title` (mirror maskowania tokenu HA, `config_panel.js`).
+function shortSenderId(senderId) {
+  return `…${senderId.slice(-8)}`;
+}
 
 /**
  * Zakładka Klienci (dawniej Głos) — dwie role: (1) "Konfiguracja klienta", jeden
@@ -40,6 +48,12 @@ const WAKE_WORD_FLASH_MS = 1500;
  * Cross-domenowe wywołanie zapisu z poziomu UI innej domeny jest tu świadomie
  * dopuszczone — narusza własność danych dopiero *renderowanie* cudzej domeny, nie
  * samo wywołanie jej REST API.
+ *
+ * Ta przeglądarka (`getSenderId()`) jest traktowana jak każdy inny klient — płynie
+ * tymi samymi listami `pending`/`registered`, tylko oznaczona (badge "ta przeglądarka"
+ * / wariant karty `kind: 'browser'`), zamiast mieć osobny, jednoliniowy wpis poza
+ * listą. Nigdy nie łączy się przez `/ws/voice/`, więc w karcie zarejestrowanej nie ma
+ * sensu pokazywać online/offline ani stanu sesji głosowej — te pola są tam statyczne.
  */
 export class VoiceConfigView {
   constructor() {
@@ -62,9 +76,8 @@ export class VoiceConfigView {
     `;
   }
 
-  async init(apiClient, onNavigateToWorld) {
+  async init(apiClient) {
     this.apiClient = apiClient;
-    this._onNavigateToWorld = onNavigateToWorld;
 
     await this._loadAndRenderClientConfig();
     await this._loadAndRenderClients();
@@ -129,11 +142,17 @@ export class VoiceConfigView {
     document.getElementById('voice-btn-save-client-config')?.addEventListener('click', () => this._saveClientConfig());
   }
 
+  // Wynik zapisu jest pokazywany BEZPOŚREDNIO na przycisku (checkmark/X, mirror
+  // `config_panel.js::handleTestConnection` via `utils/button_flash.js`) — jeden
+  // kanał informacji zamiast koloru na przycisku + osobnego toastu. Walidacja NaN
+  // to jedyny wyjątek: to pre-flight przed wywołaniem API, przycisk jeszcze nic nie
+  // "wie" o wyniku, więc zostaje jako toast.
   async _saveClientConfig() {
     const thresholdInput = document.getElementById('voice-input-threshold');
     const silenceInput = document.getElementById('voice-input-vad-silence');
     const amplitudeInput = document.getElementById('voice-input-vad-amplitude');
-    if (!thresholdInput || !silenceInput || !amplitudeInput) return;
+    const btn = document.getElementById('voice-btn-save-client-config');
+    if (!thresholdInput || !silenceInput || !amplitudeInput || !btn) return;
 
     const thresholdPct = Number(thresholdInput.value);
     const silenceMs = Number(silenceInput.value);
@@ -143,23 +162,26 @@ export class VoiceConfigView {
       return;
     }
 
+    lockButtonForAction(btn);
+    let ok = false;
     try {
       await this.apiClient.updateClientConfig({
         wakeword_threshold: thresholdPct / 100,
         vad_silence_duration_ms: silenceMs,
         vad_amplitude_threshold: amplitude,
       });
-      showToast('Zapisano konfigurację klienta.', 'success');
-    } catch (error) {
-      showToast(error.message || 'Błąd zapisu konfiguracji klienta.', 'error');
+      ok = true;
+    } catch {
+      ok = false;
     }
+    flashButtonResult(btn, ok, { successHtml: Icons.Check(), errorHtml: Icons.X() });
   }
 
   // --------------------------------------------------------------------------
   // Dashboard klientów — "Oczekujący" (połączeni, niezarejestrowani) + "Zarejestrowani"
-  // (status online/offline, stan sesji, ikona mikrofonu). ID tej przeglądarki (nadawca
-  // tekstowy, nigdy nie ma połączenia WS) zostaje osobnym, prostym wierszem — nie jest
-  // satelitą, karta statusu (mic/stan) nie miałaby dla niej sensu.
+  // (status online/offline, stan sesji, ikona mikrofonu). Ta przeglądarka płynie tymi
+  // samymi listami co satelity (patrz `isThisBrowser` w `_renderPendingRow`/
+  // `_renderClientCard`), tylko z innym badge/ikoną zamiast online/offline+mikrofon.
   // --------------------------------------------------------------------------
 
   async _loadAndRenderClients() {
@@ -180,9 +202,12 @@ export class VoiceConfigView {
 
     const thisBrowserId = getSenderId();
     const registeredIds = new Set(this._registeredSenders.map((s) => s.sender_id));
-    const pending = [...this._connectedSenderIds].filter((id) => id !== thisBrowserId && !registeredIds.has(id));
-    const registered = this._registeredSenders.filter((s) => s.sender_id !== thisBrowserId);
-    const thisBrowserRegistered = registeredIds.has(thisBrowserId);
+    // Przeglądarka nigdy nie ma połączenia WS voice, więc nigdy nie trafia do
+    // `_connectedSenderIds` — dopisujemy ją do "Oczekujący" jawnie, żeby miała
+    // tam wpis zamiast znikać z obu list dopóki ktoś jej nie zarejestruje.
+    const pendingIds = new Set([...this._connectedSenderIds].filter((id) => !registeredIds.has(id)));
+    if (!registeredIds.has(thisBrowserId)) pendingIds.add(thisBrowserId);
+    const pending = [...pendingIds];
 
     const pendingHtml =
       pending.length === 0
@@ -190,24 +215,17 @@ export class VoiceConfigView {
         : `
       <div class="voice-list">
         ${pending
-          .map(
-            (senderId) => `
-          <div class="voice-list-row">
-            <span class="voice-satellite-id">${escapeHtml(senderId)}</span>
-            <button type="button" class="btn btn-sm btn-subtle" data-register-sender="${escapeAttr(senderId)}">Zarejestruj</button>
-          </div>
-        `
-          )
+          .map((senderId) => this._renderPendingRow(senderId, senderId === thisBrowserId))
           .join('')}
       </div>
     `;
 
     const registeredHtml =
-      registered.length === 0
+      this._registeredSenders.length === 0
         ? '<p class="voice-empty-hint">Brak zarejestrowanych klientów.</p>'
         : `
       <div class="voice-client-card-list">
-        ${registered.map((s) => this._renderClientCard(s.sender_id)).join('')}
+        ${this._registeredSenders.map((s) => this._renderClientCard(s.sender_id, s.sender_id === thisBrowserId)).join('')}
       </div>
     `;
 
@@ -217,52 +235,62 @@ export class VoiceConfigView {
 
       <h4 class="section-subheading">Zarejestrowani</h4>
       ${registeredHtml}
-
-      <p class="voice-empty-hint voice-browser-self-hint">
-        ID tej przeglądarki: <span class="voice-satellite-id">${escapeHtml(thisBrowserId)}</span>
-        ${thisBrowserRegistered ? '<span class="badge-chip">zarejestrowana</span>' : `<button type="button" class="btn btn-sm btn-ghost" data-register-sender="${escapeAttr(thisBrowserId)}">Zarejestruj tę przeglądarkę</button>`}
-      </p>
-      <div class="stat-panel">
-        <p class="voice-placeholder-text">
-          Przypisanie pokoju do zarejestrowanego nadawcy znajduje się w sekcji
-          <a href="#" id="voice-link-to-world" class="text-link">Świat</a>.
-        </p>
-      </div>
     `;
 
-    document.getElementById('voice-link-to-world')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      this._onNavigateToWorld?.('world');
-    });
     container.querySelectorAll('[data-register-sender]')?.forEach((btn) => {
       btn.addEventListener('click', () => this._registerSender(btn.getAttribute('data-register-sender')));
     });
   }
 
+  _renderPendingRow(senderId, isThisBrowser) {
+    return `
+      <div class="voice-list-row">
+        <span class="voice-satellite-id" title="${escapeAttr(senderId)}">
+          ${escapeHtml(shortSenderId(senderId))}
+          ${isThisBrowser ? '<span class="badge-chip voice-browser-chip">ta przeglądarka</span>' : ''}
+        </span>
+        <button type="button" class="btn btn-sm btn-subtle" data-register-sender="${escapeAttr(senderId)}">Zarejestruj</button>
+      </div>
+    `;
+  }
+
   // Karta zarejestrowanego klienta — kontener dyktuje rozmiar, dynamiczna treść
   // (badge online/offline, tekst stanu, pewność detekcji) NIGDY go nie zmienia:
-  // stały 32×32 kwadrat na ikonę mikrofonu (mirror `.agent-provider-card-check`,
+  // stały 32×32 kwadrat na ikonę statusu (mirror `.agent-provider-card-check`,
   // `providers.css` — tylko `background-color`/`color` się przełącza) i zawsze
   // obecny w DOM span na pewność (toggle `opacity`, nie insert/remove).
-  _renderClientCard(senderId) {
+  //
+  // Wariant `isThisBrowser`: przeglądarka nigdy nie łączy się przez `/ws/voice/`,
+  // więc online/offline i stan sesji głosowej nie mają tu znaczenia — badge i
+  // tekst stanu są statyczne, ale WYMIARY karty pozostają identyczne jak dla
+  // satelity (kontener dyktuje rozmiar, nie treść).
+  _renderClientCard(senderId, isThisBrowser) {
     const isOnline = this._connectedSenderIds.has(senderId);
     const state = this._senderStates[senderId];
     const stateLabel = state ? STATE_LABELS[state] || state : '—';
+
+    const badgeHtml = isThisBrowser
+      ? '<span class="badge-chip voice-client-online-badge" data-role="online-badge">przeglądarka</span>'
+      : `<span class="badge-chip voice-client-online-badge ${isOnline ? 'is-online' : 'is-offline'}" data-role="online-badge">${isOnline ? 'online' : 'offline'}</span>`;
+
+    const statusIconHtml = isThisBrowser
+      ? `<div class="voice-client-mic-status" data-role="mic-icon" title="Klient tekstowy">${Icons.MessageSquare()}</div>`
+      : `<div class="voice-client-mic-status" data-role="mic-icon" title="Wake-word">${Icons.Mic()}</div>`;
 
     return `
       <div class="voice-client-card" data-sender-id="${escapeAttr(senderId)}">
         <div class="voice-client-card-main">
           <div class="voice-client-card-title-row">
-            <span class="voice-client-card-name">${escapeHtml(senderId)}</span>
-            <span class="badge-chip voice-client-online-badge ${isOnline ? 'is-online' : 'is-offline'}" data-role="online-badge">${isOnline ? 'online' : 'offline'}</span>
+            <span class="voice-client-card-name" title="${escapeAttr(senderId)}">${escapeHtml(shortSenderId(senderId))}</span>
+            ${badgeHtml}
           </div>
           <div class="voice-client-card-meta">
-            <span class="voice-client-state-text" data-role="state-text">${escapeHtml(stateLabel)}</span>
+            <span class="voice-client-state-text" data-role="state-text">${isThisBrowser ? 'Klient tekstowy' : escapeHtml(stateLabel)}</span>
           </div>
         </div>
         <div class="voice-client-card-status">
           <span class="voice-client-confidence" data-role="confidence"></span>
-          <div class="voice-client-mic-status" data-role="mic-icon" title="Wake-word">${Icons.Mic()}</div>
+          ${statusIconHtml}
         </div>
       </div>
     `;
