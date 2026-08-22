@@ -1,11 +1,6 @@
 """Router REST CRUD dla dostawców STT/TTS (`ai.stt`/`ai.tts`) — mirror
 `network/routes/providers.py` (LLM). Montowany osobno od `voice/routes.py`
 (status/connected), pod tym samym prefiksem `/api/v1/voice`.
-
-Dokłada też shim kompatybilności `GET/PUT /providers/config` — dzisiejszy,
-płaski kontrakt używany przez `voice_config.js` (bez zmian we froncie),
-zbudowany nad rejestrami wielu instancji: operuje zawsze na *aktywnej*
-instancji STT i *aktywnej* instancji TTS.
 """
 
 from __future__ import annotations
@@ -13,8 +8,8 @@ from __future__ import annotations
 from typing import Any
 from fastapi import APIRouter, HTTPException, status
 
-from server.ai.stt import STTFactory, STTInstanceConfig, STTProviderType, STTRegistry
-from server.ai.tts import TTSFactory, TTSInstanceConfig, TTSProviderType, TTSRegistry
+from server.ai.stt import STTFactory, STTProviderType, STTRegistry
+from server.ai.tts import TTSFactory, TTSProviderType, TTSRegistry
 from server.voice.dto import (
     CreateSTTProviderRequest,
     CreateTTSProviderRequest,
@@ -24,19 +19,8 @@ from server.voice.dto import (
     STTProviderListResponse,
     TTSProviderDTO,
     TTSProviderListResponse,
-    UpdateVoiceProvidersConfigRequest,
-    VoiceProvidersConfigDTO,
 )
 from shared import ProviderMetadataResponse
-
-
-def _mask_key(key: str) -> str:
-    """Mirror `_mask_key` w `voice/routes.py` — brak wspólnego miejsca na tak
-    małą funkcję, YAGNI."""
-    if not key:
-        return key
-    visible = key[-4:] if len(key) > 4 else ""
-    return f"{'•' * (len(key) - len(visible))}{visible}"
 
 
 def _mask_secret_options(schemas: ProviderMetadataResponse, provider_type: str, options: dict[str, Any]) -> dict[str, Any]:
@@ -61,18 +45,8 @@ def _mask_secret_options(schemas: ProviderMetadataResponse, provider_type: str, 
     return masked
 
 
-def _to_flat_config_dto(stt_cfg: STTInstanceConfig, tts_cfg: TTSInstanceConfig) -> VoiceProvidersConfigDTO:
-    return VoiceProvidersConfigDTO(
-        groq_api_key=_mask_key(stt_cfg.options.get("api_key", "")),
-        groq_stt_model=stt_cfg.options.get("model", "whisper-large-v3-turbo"),
-        elevenlabs_api_key=_mask_key(tts_cfg.options.get("api_key", "")),
-        elevenlabs_voice_id=tts_cfg.options.get("voice_id", "pNInz6obpgDQGcFmaJgB"),
-        elevenlabs_model_id=tts_cfg.options.get("model_id", "eleven_multilingual_v2"),
-    )
-
-
 def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRegistry) -> APIRouter:
-    """Tworzy router dla CRUD dostawców STT/TTS + shim kompatybilności."""
+    """Tworzy router dla CRUD dostawców STT/TTS."""
     router = APIRouter()
 
     # -- STT ------------------------------------------------------------------
@@ -228,40 +202,5 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
             return {"success": True, "deleted_id": provider_id}
         except ValueError as err:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
-
-    # -- Shim kompatybilności (dzisiejszy kontrakt `voice_config.js`) --------
-
-    @router.get("/providers/config", response_model=VoiceProvidersConfigDTO, tags=["Voice"])
-    async def get_providers_config() -> VoiceProvidersConfigDTO:
-        stt_active_id = await stt_registry.get_active_backend_id()
-        stt_cfg = (await stt_registry.load_all_instances())[stt_active_id]
-        tts_active_id = await tts_registry.get_active_backend_id()
-        tts_cfg = (await tts_registry.load_all_instances())[tts_active_id]
-        return _to_flat_config_dto(stt_cfg, tts_cfg)
-
-    @router.put("/providers/config", response_model=VoiceProvidersConfigDTO, tags=["Voice"])
-    async def update_providers_config(req: UpdateVoiceProvidersConfigRequest) -> VoiceProvidersConfigDTO:
-        stt_active_id = await stt_registry.get_active_backend_id()
-        current_stt = (await stt_registry.load_all_instances())[stt_active_id]
-        updated_stt = await stt_registry.update_instance(
-            stt_active_id,
-            {
-                "api_key": req.groq_api_key if req.groq_api_key else current_stt.options.get("api_key", ""),
-                "model": req.groq_stt_model,
-            },
-        )
-
-        tts_active_id = await tts_registry.get_active_backend_id()
-        current_tts = (await tts_registry.load_all_instances())[tts_active_id]
-        updated_tts = await tts_registry.update_instance(
-            tts_active_id,
-            {
-                "api_key": req.elevenlabs_api_key if req.elevenlabs_api_key else current_tts.options.get("api_key", ""),
-                "voice_id": req.elevenlabs_voice_id,
-                "model_id": req.elevenlabs_model_id,
-            },
-        )
-
-        return _to_flat_config_dto(updated_stt, updated_tts)
 
     return router

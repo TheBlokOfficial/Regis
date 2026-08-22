@@ -150,10 +150,7 @@ export class ApiClient {
     return this._world.deleteSender(...args);
   }
 
-  // --- Voice (status pipeline'u głosowego, config dostawców STT/TTS) ---
-  getVoiceStatus(...args) {
-    return this._voice.getVoiceStatus(...args);
-  }
+  // --- Voice (rejestr klientów, wake-word/VAD, CRUD dostawców STT/TTS) ---
   getConnectedSenders(...args) {
     return this._voice.getConnectedSenders(...args);
   }
@@ -168,12 +165,6 @@ export class ApiClient {
   }
   watchClients(...args) {
     return this._voice.watchClients(...args);
-  }
-  getVoiceProvidersConfig(...args) {
-    return this._voice.getVoiceProvidersConfig(...args);
-  }
-  updateVoiceProvidersConfig(...args) {
-    return this._voice.updateVoiceProvidersConfig(...args);
   }
   getSttProviderSchemas(...args) {
     return this._voice.getSttProviderSchemas(...args);

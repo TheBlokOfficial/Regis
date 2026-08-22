@@ -50,22 +50,19 @@ Rozłączny z `WorldEngine` (patrz sekcja 3) — zna wyłącznie opaque `sender_
 nigdy configu World. Wake-word to realny model `.onnx` (`OnnxWakeWordDetector`,
 `Settings.wakeword_model_path`/`wakeword_threshold`, `server/config.py`), STT/TTS
 to Groq (`GroqSTTProvider`) i ElevenLabs (`ElevenLabsTTSProvider`) — oba
-konfigurowalne dziś przez Web UI (zakładka **Klienci**, dawniej "Głos" — rename
-po dodaniu konfiguracji wake-word/VAD, `data-section` w kodzie zostaje `voice`,
-shim
-`GET/PUT /api/v1/voice/providers/config`). Pod spodem: pełny rejestr wielu
-nazwanych instancji per typ (`STTRegistry`/`TTSRegistry`,
+konfigurowalne dziś przez Web UI (zakładka **Dostawcy**, pełny CRUD mirror LLM).
+Pod spodem: rejestr wielu nazwanych instancji per typ (`STTRegistry`/`TTSRegistry`,
 `services/server/data/{stt,tts}_backends/*.json`, mirror `BackendRegistry`
-LLM) i REST CRUD `.../voice/{stt,tts}/providers*` — przygotowane pod przyszłe
-lokalne backendy STT/TTS, UI dla tego CRUD jeszcze nie istnieje (dziś tylko
-LLM ma taki panel, `agent_config.js`). Puste klucze API/brak pliku modelu =
+LLM) i REST CRUD `.../voice/{stt,tts}/providers*`. Dawny płaski shim
+`GET/PUT /api/v1/voice/providers/config` **został usunięty** razem z
+jednosslotowym formularzem, który był jego jedynym konsumentem. Puste klucze API/brak pliku modelu =
 łagodna degradacja do dev-providerów (`MockSTTProvider`/`MockTTSProvider`,
 `ThresholdEnergyWakeWordDetector`) — wystarczają do przetestowania całego
 protokołu WS end-to-end bez żadnych kluczy (patrz
 `services/server/scripts/voice_satellite_sim.py`). `voice/` nie trzyma tych
 konkretów bezpośrednio, tylko singletony-routery `STTRouter`/`TTSRouter`
 (`server/ai/stt`/`server/ai/tts`, patrz `docs/manifest.md` sekcja 3.5) — zmiana
-klucza/modelu STT/TTS przez `PUT /api/v1/voice/providers/config` działa **od
+klucza/modelu STT/TTS przez CRUD `.../voice/{stt,tts}/providers*` działa **od
 razu, bez restartu serwera**. **Ograniczenie pozostaje wyłącznie dla
 wake-word**: detektor jest budowany raz przy starcie (`main.py`,
 `_build_wakeword_detector_factory`) — zmiana `Settings.wakeword_model_path`
@@ -75,7 +72,7 @@ nadal wymaga restartu.
 - **Profile promptu Świata** (`services/server/data/world/prompts/*.json`, `WorldPromptStore`): do 3 przełączalnych profili tożsamości, aktywny wskazuje `data/world/active_prompt.json`. `WorldEngine.build()` doklejają aktywny profil (może być pusty — domyślnie "Profil 1") do dynamicznych faktów (czas/pokój/urządzenia) i zwraca **kompletny, gotowy prompt** tej tury — kernel niczego nie skleja.
 - **Fallback promptu kernela** (`services/server/data/agent_default_prompt.json`, `AgentDefaultPromptStore`): jedna wartość, bez CRUD — używana **wyłącznie** gdy żaden World nie jest podłączony (`NullWorldInterface`, testy headless). `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` to fallback tego fallbacku (seed przy pierwszym uruchomieniu). W normalnej pracy (World zawsze wstrzyknięty w `main.py`) to pole rzadko się uruchamia.
 
-Najwygodniejszy sposób edycji: zakładka **Ustawienia** w Web UI, wewnątrz poziome sekcje (pills) **Agent** (dostawcy LLM, REST `/api/v1/llm/providers`, + fallbackowy prompt kernela, REST `/api/v1/agent/prompt`), **Świat** (Konfiguracja HA/pokoi/nadawców, REST `/api/v1/world/*`, + pod-zakładka **Prompty** — profile tożsamości Świata, REST `/api/v1/world/prompts/*`), **Głos** (status pipeline'u + config dostawców STT/TTS, REST `/api/v1/voice/status`, `/api/v1/voice/providers/config`) i **System** (info o instancji). Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami do sekcji Ustawień.
+Najwygodniejszy sposób edycji: zakładka **Ustawienia** w Web UI, wewnątrz poziome sekcje (pills) **Agent** (dostawcy LLM, REST `/api/v1/llm/providers`, + fallbackowy prompt kernela, REST `/api/v1/agent/prompt`), **Świat** (Konfiguracja HA/pokoi/nadawców, REST `/api/v1/world/*`, + pod-zakładka **Prompty** — profile tożsamości Świata, REST `/api/v1/world/prompts/*`), **Dostawcy** (CRUD dostawców LLM/STT/TTS) i **Klienci** (rejestr klientów + progi wake-worda/VAD, REST `/api/v1/voice/*`). Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami do sekcji Ustawień.
 
 ---
 
@@ -165,7 +162,6 @@ Wszystkie trzy wejścia odpalające turę (`/chat`, `/chat/stream`, `/chat/send`
 | | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py` |
 | | `GET /api/v1/voice/status` | Status pipeline'u głosowego (nazwy klas aktywnych providerów STT/TTS/wake-word), tylko do odczytu |
-| | `GET/PUT /api/v1/voice/providers/config` | Shim kompatybilności dla `voice_config.js` (płaski config Groq+ElevenLabs, klucze zamaskowane na odczyt) — operuje na *aktywnej* instancji STT i *aktywnej* instancji TTS; zmiana działa od razu (bez restartu) |
 | | `GET /api/v1/voice/stt/providers/schemas` `.../tts/providers/schemas` | Specyfikacje parametrów konfiguracji dostawców STT/TTS |
 | | `GET/POST/PUT /api/v1/voice/stt/providers[/active]` `.../tts/providers[/active]` | Lista, tworzenie i przełączanie aktywnej instancji STT/TTS — pełny CRUD, mirror `/api/v1/llm/providers*` (przygotowane pod przyszłe lokalne backendy STT/TTS) |
 | | `DELETE /api/v1/voice/stt/providers/{id}` `.../tts/providers/{id}` | Usunięcie instancji STT/TTS z dysku |

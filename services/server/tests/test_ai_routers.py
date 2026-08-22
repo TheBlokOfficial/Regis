@@ -164,7 +164,7 @@ async def test_stt_router_caches_provider_while_active_id_unchanged():
 
 @pytest.mark.anyio
 async def test_stt_router_rebuilds_when_active_instance_options_change_in_place():
-    """Regresja: shim `PUT /providers/config` edytuje `options` aktywnej instancji
+    """Regresja: `PUT /stt/providers/{id}` edytuje `options` aktywnej instancji
     (`STTRegistry.update_instance`) bez zmiany jej ID — cache musi to wykryć,
     nie tylko zmianę `active_id`."""
     registry = _FakeSTTRegistry()

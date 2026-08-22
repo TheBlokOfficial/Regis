@@ -60,9 +60,9 @@ function hasUnknownCapabilities(capabilities) {
  *
  * Config dostawców STT/TTS przeniesiony do zakładki Dostawcy
  * (`views/providers_config.js`, pełny CRUD mirror LLM) — dawny płaski,
- * jednosslotowy formularz (shim `GET/PUT /api/v1/voice/providers/config`)
- * usunięty stąd; backendowy endpoint zostaje (nieużywany przez to UI, ale
- * tani do utrzymania jako headless kompatybilność).
+ * jednosslotowy formularz żył nad shimem `GET/PUT /api/v1/voice/providers/config`;
+ * shim został usunięty razem z tym formularzem, gdy okazało się, że po
+ * przenosinach nikt go już nie woła.
  *
  * Rejestracja nadawców żyje świadomie **tutaj**, nie w zakładce Świat: pierwszy
  * kontakt z nieznanym nadawcą jest konceptualnie i pod maską domeną `voice`, nie

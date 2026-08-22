@@ -1,19 +1,21 @@
-"""Testy configu dostawców STT/TTS (`server/voice/config.py`, legacy) i shimu
-kompatybilności `GET/PUT /api/v1/voice/providers/config`
-(`server/voice/provider_routes.py`), zbudowanego nad `STTRegistry`/`TTSRegistry`
-— maskowanie kluczy API na odczyt, "puste pole = zachowaj obecny klucz" na
-zapis (mirror wzorca `HomeAssistantConfig`/`world/routes.py`)."""
+"""Testy legacy configu dostawców STT/TTS (`server/voice/config.py`).
+
+Plik `data/voice/config.json` pochodzi sprzed wprowadzenia rejestrów wielu
+instancji (`STTRegistry`/`TTSRegistry`) i **nie jest już zapisywany przez żadną
+ścieżkę aplikacji** — zostaje wyłącznie jako źródło jednorazowej migracji kluczy
+API do rejestru (`ai/stt/registry.py`, `ai/tts/registry.py`). Te testy pilnują
+kontraktu odczytu, na którym ta migracja stoi.
+
+Testy płaskiego shimu `GET/PUT /api/v1/voice/providers/config` zostały usunięte
+razem z samym shimem — jego jedyny konsument (`voice_config.js`) przeszedł na
+pełny CRUD w zakładce Dostawcy, a endpoint pozostawał martwy.
+"""
 
 from __future__ import annotations
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
-from server.ai.stt import STTRegistry
-from server.ai.tts import TTSRegistry
 from server.voice.config import VoiceProvidersConfig, load_voice_providers_config, save_voice_providers_config
-from server.voice.provider_routes import create_voice_providers_router
 
 
 @pytest.fixture
@@ -21,19 +23,6 @@ def voice_config_path(monkeypatch, tmp_path):
     path = tmp_path / "voice" / "config.json"
     monkeypatch.setattr("server.voice.config._CONFIG_PATH", path)
     return path
-
-
-@pytest.fixture
-def client(tmp_path):
-    app = FastAPI()
-    app.include_router(
-        create_voice_providers_router(
-            stt_registry=STTRegistry(data_dir=tmp_path),
-            tts_registry=TTSRegistry(data_dir=tmp_path),
-        ),
-        prefix="/api/v1/voice",
-    )
-    return TestClient(app)
 
 
 @pytest.mark.anyio
@@ -52,61 +41,3 @@ async def test_config_defaults_on_first_load(voice_config_path) -> None:
     assert config.groq_stt_model == "whisper-large-v3-turbo"
     assert config.elevenlabs_voice_id == "pNInz6obpgDQGcFmaJgB"
     assert config.elevenlabs_model_id == "eleven_multilingual_v2"
-
-
-def test_get_providers_config_masks_empty_key_as_empty(client) -> None:
-    response = client.get("/api/v1/voice/providers/config")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["groq_api_key"] == ""
-    assert data["elevenlabs_api_key"] == ""
-
-
-def test_put_then_get_returns_masked_key(client) -> None:
-    put_response = client.put(
-        "/api/v1/voice/providers/config",
-        json={
-            "groq_api_key": "sk-1234567890abcdef",
-            "groq_stt_model": "whisper-large-v3",
-            "elevenlabs_api_key": None,
-            "elevenlabs_voice_id": "custom_voice_id",
-            "elevenlabs_model_id": "eleven_multilingual_v2",
-        },
-    )
-    assert put_response.status_code == 200
-
-    get_response = client.get("/api/v1/voice/providers/config")
-    data = get_response.json()
-    assert data["groq_api_key"].endswith("cdef")
-    assert data["groq_api_key"].startswith("•")
-    assert data["groq_stt_model"] == "whisper-large-v3"
-    assert data["elevenlabs_voice_id"] == "custom_voice_id"
-
-
-def test_put_empty_api_key_preserves_existing_key(client) -> None:
-    client.put(
-        "/api/v1/voice/providers/config",
-        json={
-            "groq_api_key": "sk-original-key-value",
-            "groq_stt_model": "whisper-large-v3-turbo",
-            "elevenlabs_api_key": None,
-            "elevenlabs_voice_id": "pNInz6obpgDQGcFmaJgB",
-            "elevenlabs_model_id": "eleven_multilingual_v2",
-        },
-    )
-
-    # Druga aktualizacja bez klucza -> zachowuje poprzedni, ale pozostałe pola się zmieniają.
-    client.put(
-        "/api/v1/voice/providers/config",
-        json={
-            "groq_api_key": None,
-            "groq_stt_model": "whisper-large-v3",
-            "elevenlabs_api_key": None,
-            "elevenlabs_voice_id": "pNInz6obpgDQGcFmaJgB",
-            "elevenlabs_model_id": "eleven_multilingual_v2",
-        },
-    )
-
-    data = client.get("/api/v1/voice/providers/config").json()
-    assert data["groq_api_key"].endswith("alue")
-    assert data["groq_stt_model"] == "whisper-large-v3"
