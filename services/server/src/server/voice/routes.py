@@ -41,7 +41,11 @@ class VoiceStatusDTO(BaseModel):
     tts_provider: str = Field(..., description="Nazwa klasy aktywnego dostawcy TTS")
     wakeword_detector: str = Field(..., description="Nazwa klasy detektora wake-word")
     is_production_ready: bool = Field(
-        ..., description="False dopóki którykolwiek z providerów jest dev-providerem (Mock*)"
+        ...,
+        description=(
+            "False dopóki którykolwiek element pipeline'u jest dev-providerem: Mock* dla STT/TTS "
+            "albo ThresholdEnergyWakeWordDetector (placeholder reagujący na głośność, nie na słowo)"
+        ),
     )
 
 
@@ -107,7 +111,15 @@ def create_voice_status_router(
             stt_provider=stt_name,
             tts_provider=tts_name,
             wakeword_detector=wakeword_detector_class_name,
-            is_production_ready=not any(name.startswith("Mock") for name in (stt_name, tts_name)),
+            # Placeholder wake-worda liczy się tak samo jak Mock STT/TTS — jest
+            # dev-providerem wprost wg własnego docstringu (`voice/wakeword.py`) i
+            # reaguje na sekwencję głośnych ramek, nie na słowo. Bez tego
+            # `is_production_ready` mogło zwrócić True dla pipeline'u, który nigdy
+            # nie rozpozna "Regis", bo model .onnx się nie załadował.
+            is_production_ready=(
+                not any(name.startswith("Mock") for name in (stt_name, tts_name))
+                and wakeword_detector_class_name != "ThresholdEnergyWakeWordDetector"
+            ),
         )
 
     @router.get("/connected", response_model=ConnectedSendersDTO, tags=["Voice"])

@@ -7,6 +7,22 @@ export class VoiceClient {
     this.baseUrl = baseUrl;
   }
 
+  /** Status pipeline'u głosowego — nazwy klas faktycznie rozwiązanych w runtime
+   * (a nie tego, co skonfigurowano), plus `is_production_ready`. Jedyne miejsce,
+   * z którego UI dowiaduje się, że wake-word zdegradował się do placeholdera. */
+  async getVoiceStatus() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/voice/status`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error("[ApiClient] Błąd pobierania statusu pipeline'u głosowego:", error);
+      return null;
+    }
+  }
+
   /** Zwraca `[{sender_id, capabilities}]` — capabilities pochodzą z handshake WS i są
    * potrzebne przy rejestracji, żeby zapisać w World realne możliwości klienta zamiast
    * zgadywać jego typ po stronie UI. */

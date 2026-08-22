@@ -165,7 +165,7 @@ Wszystkie trzy wejścia odpalające turę (`/chat`, `/chat/stream`, `/chat/send`
 | **World (nadawcy)** | `GET/POST /api/v1/world/senders` | Lista i rejestracja klienta (`sender_id -> room_id` + `capabilities`). POST to upsert; **puste `capabilities` zachowują obecne**, nigdy nie czyszczą (zakładka Świat zmienia sam pokój i ich nie zna) |
 | | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py` |
-| | `GET /api/v1/voice/status` | Status pipeline'u głosowego (nazwy klas aktywnych providerów STT/TTS/wake-word), tylko do odczytu |
+| | `GET /api/v1/voice/status` | Co REALNIE działa w runtime (nie co skonfigurowano): klasy aktywnego STT/TTS/detektora wake-worda + `is_production_ready` — False także przy placeholderze wake-worda. Widoczne w Ustawieniach → Klienci |
 | | `GET /api/v1/voice/stt/providers/schemas` `.../tts/providers/schemas` | Specyfikacje parametrów konfiguracji dostawców STT/TTS |
 | | `GET/POST/PUT /api/v1/voice/stt/providers[/active]` `.../tts/providers[/active]` | Lista, tworzenie i przełączanie aktywnej instancji STT/TTS — pełny CRUD, mirror `/api/v1/llm/providers*` (przygotowane pod przyszłe lokalne backendy STT/TTS) |
 | | `DELETE /api/v1/voice/stt/providers/{id}` `.../tts/providers/{id}` | Usunięcie instancji STT/TTS z dysku |

@@ -120,8 +120,51 @@ export class VoiceConfigView {
   // --------------------------------------------------------------------------
 
   async _loadAndRenderClientConfig() {
-    const config = await this.apiClient.getClientConfig();
+    const [config, status] = await Promise.all([
+      this.apiClient.getClientConfig(),
+      this.apiClient.getVoiceStatus(),
+    ]);
+    this._voiceStatus = status;
     this._renderClientConfigSection(config);
+  }
+
+  /** Co realnie działa w runtime — nie co skonfigurowano.
+   *
+   * Serwer po cichu degraduje się do atrap, gdy czegoś brakuje: pusty klucz API →
+   * `Mock*`, brak/nieistniejący plik modelu → `ThresholdEnergyWakeWordDetector`
+   * (placeholder reagujący na samą głośność, nie na słowo "Regis"). W logu jest o
+   * tym linijka przy starcie, ale bez tego wiersza w UI strojenie progu pewności
+   * przy niezaładowanym modelu byłoby szukaniem problemu w złym miejscu.
+   */
+  _renderPipelineStatus() {
+    const status = this._voiceStatus;
+    if (!status) return '';
+
+    const isPlaceholderWake = status.wakeword_detector === 'ThresholdEnergyWakeWordDetector';
+    const item = (label, value, isFallback) =>
+      `<span class="voice-pipeline-item${isFallback ? ' is-fallback' : ''}">
+        <span class="voice-pipeline-label">${escapeHtml(label)}</span>
+        <code>${escapeHtml(value)}</code>
+      </span>`;
+
+    return `
+      <div class="voice-pipeline-status${status.is_production_ready ? '' : ' is-degraded'}">
+        <div class="voice-pipeline-row">
+          ${item('Wake-word', status.wakeword_detector, isPlaceholderWake)}
+          ${item('STT', status.stt_provider, status.stt_provider.startsWith('Mock'))}
+          ${item('TTS', status.tts_provider, status.tts_provider.startsWith('Mock'))}
+        </div>
+        ${
+          status.is_production_ready
+            ? ''
+            : `<p class="voice-pipeline-warning">${Icons.AlertCircle()} ${
+                isPlaceholderWake
+                  ? 'Model wake-worda nie został załadowany — działa placeholder reagujący na głośność, nie na słowo. Strojenie progu pewności nic tu nie da; sprawdź <code>wakeword_model_path</code> w konfiguracji serwera.'
+                  : 'Któryś dostawca to atrapa — skonfiguruj klucz API w zakładce Dostawcy.'
+              }</p>`
+        }
+      </div>
+    `;
   }
 
   _renderClientConfigSection(config) {
@@ -159,6 +202,7 @@ export class VoiceConfigView {
           każdym połączeniu — zmiana zadziała po następnym reconnect satelity, bez
           restartu serwera.
         </p>
+        ${this._renderPipelineStatus()}
         <div class="form-actions">
           <button class="btn" id="voice-btn-save-client-config">Zapisz</button>
         </div>

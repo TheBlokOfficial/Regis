@@ -163,6 +163,9 @@ export class ApiClient {
   }
 
   // --- Voice (rejestr klientów, wake-word/VAD, CRUD dostawców STT/TTS) ---
+  getVoiceStatus(...args) {
+    return this._voice.getVoiceStatus(...args);
+  }
   getConnectedSenders(...args) {
     return this._voice.getConnectedSenders(...args);
   }

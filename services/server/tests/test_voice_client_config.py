@@ -12,6 +12,8 @@ from shared import ConfigStore, EventBus
 from server.config import Settings
 from server.main import _build_wakeword_detector_factory
 from server.voice.routes import create_voice_status_router
+from server.voice.stt import BaseSTTProvider
+from server.voice.tts import BaseTTSProvider
 
 
 def _make_client(tmp_path: Path) -> tuple[TestClient, ConfigStore[Settings]]:
@@ -97,3 +99,50 @@ def test_wakeword_threshold_reloads_without_restart(tmp_path: Path, monkeypatch)
     config_store.save(settings.model_copy(update={"wakeword_threshold": 0.8}))
     second = factory()
     assert second.threshold == 0.8
+
+
+# --------------------------------------------------------------------------
+# GET /status — `is_production_ready` musi wykrywać TAKŻE placeholder wake-worda
+# --------------------------------------------------------------------------
+
+
+class _RealisticSTT(BaseSTTProvider):
+    """Nazwa klasy bez prefiksu `Mock` — inaczej test nie izolowałby zmiennej,
+    którą bada (sam wake-word)."""
+
+    async def transcribe(self, pcm_audio: bytes) -> str:
+        return ""
+
+
+class _RealisticTTS(BaseTTSProvider):
+    async def synthesize(self, text: str) -> bytes:
+        return b""
+
+
+def _status_for_detector(tmp_path: Path, detector_name: str) -> dict:
+    app = FastAPI()
+    app.include_router(
+        create_voice_status_router(
+            stt_provider=_RealisticSTT(),
+            tts_provider=_RealisticTTS(),
+            wakeword_detector_class_name=detector_name,
+            connected_sender_ids=set(),
+            config_store=ConfigStore(Settings, tmp_path / "settings.json"),
+            sender_states={},
+            event_bus=EventBus(),
+            pending_capabilities={},
+        ),
+        prefix="/api/v1/voice",
+    )
+    return TestClient(app).get("/api/v1/voice/status").json()
+
+
+def test_real_detector_with_real_providers_is_production_ready(tmp_path: Path) -> None:
+    assert _status_for_detector(tmp_path, "OnnxWakeWordDetector")["is_production_ready"] is True
+
+
+def test_placeholder_detector_marks_pipeline_as_not_ready(tmp_path: Path) -> None:
+    """Regresja: `is_production_ready` sprawdzało wcześniej tylko atrapy STT/TTS,
+    więc pipeline z niezaładowanym modelem `.onnx` (cicha degradacja do detektora
+    reagującego na głośność, nie na słowo) raportował się jako gotowy."""
+    assert _status_for_detector(tmp_path, "ThresholdEnergyWakeWordDetector")["is_production_ready"] is False

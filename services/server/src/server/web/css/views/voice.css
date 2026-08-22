@@ -188,3 +188,74 @@
   background-color: var(--accent-success);
   color: var(--bg-base);
 }
+
+/* --------------------------------------------------------------------------
+   Status pipeline'u — co realnie działa w runtime, nie co skonfigurowano.
+   Umieszczony przy progu wake-worda celowo: to jedyne miejsce, gdzie widać, że
+   model .onnx się nie załadował i serwer po cichu zdegradował się do
+   placeholdera reagującego na głośność (patrz `voice_config.js`).
+   -------------------------------------------------------------------------- */
+.voice-pipeline-status {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background-color: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+/* Degradacja to stan wymagający uwagi użytkownika, nie awaria systemu —
+   bursztyn, nie czerwień (ten sam język co badge "nieznany" na karcie klienta). */
+.voice-pipeline-status.is-degraded {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.voice-pipeline-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.voice-pipeline-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.voice-pipeline-label {
+  font-size: 0.76rem;
+  color: var(--text-muted-aa);
+}
+
+.voice-pipeline-item code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.voice-pipeline-item.is-fallback code {
+  color: var(--accent-warning);
+}
+
+.voice-pipeline-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--accent-warning);
+}
+
+.voice-pipeline-warning svg.icon-svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.voice-pipeline-warning code {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
