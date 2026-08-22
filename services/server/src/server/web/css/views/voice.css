@@ -135,12 +135,15 @@
   min-width: 110px;
 }
 
+/* Prawa strona karty: opcjonalny przycisk naprawy, pewność detekcji, ikona statusu
+   i usuwanie rejestracji. Przycisk naprawy pojawia się tylko na kartach bez
+   zapisanych możliwości — rozszerza tę grupę, ale NIE zmienia wysokości ani
+   szerokości karty (karta jest pełnej szerokości, grupa tylko rośnie w lewo). */
 .voice-client-card-status {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-  margin-right: 6px;
 }
 
 /* Zarezerwowane miejsce na pewność detekcji — ZAWSZE w DOM, tylko opacity się

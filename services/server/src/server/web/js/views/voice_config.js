@@ -1,4 +1,5 @@
 import { Icons } from '../icons.js';
+import { confirmModal } from '../modal_confirm.js';
 import { getSenderId } from '../sender_id.js';
 import { flashButtonResult, lockButtonForAction } from '../utils/button_flash.js';
 import { escapeAttr, escapeHtml } from '../utils/dom.js';
@@ -268,6 +269,14 @@ export class VoiceConfigView {
     container.querySelectorAll('[data-register-sender]')?.forEach((btn) => {
       btn.addEventListener('click', () => this._registerSender(btn.getAttribute('data-register-sender')));
     });
+    // "Zarejestruj ponownie" to ten sam upsert co pierwsza rejestracja — różni się
+    // tylko tym, że wpis już istnieje i ma puste capabilities.
+    container.querySelectorAll('[data-repair-sender]')?.forEach((btn) => {
+      btn.addEventListener('click', () => this._registerSender(btn.getAttribute('data-repair-sender')));
+    });
+    container.querySelectorAll('[data-delete-sender]')?.forEach((btn) => {
+      btn.addEventListener('click', () => this._deleteSender(btn.getAttribute('data-delete-sender')));
+    });
   }
 
   _renderPendingRow(senderId, isThisBrowser) {
@@ -306,7 +315,13 @@ export class VoiceConfigView {
     if (isUnknown) {
       badgeHtml = '<span class="badge-chip voice-client-online-badge is-unknown" data-role="online-badge">nieznany</span>';
       statusIconHtml = `<div class="voice-client-mic-status" data-role="mic-icon" title="Brak zapisanych możliwości">${Icons.AlertCircle()}</div>`;
-      metaText = 'Zarejestruj ponownie';
+      // Naprawa wymaga PRAWDZIWYCH możliwości klienta, a te znamy wyłącznie z
+      // handshake żywego połączenia. Offline nie da się tego odgadnąć — mówimy
+      // wprost, zamiast dawać przycisk, który zapisałby pustą listę i niczego nie
+      // naprawił.
+      metaText = this._pendingCapabilities?.has(senderId)
+        ? 'Można naprawić jednym kliknięciem'
+        : 'Podłącz klienta, by odczytać możliwości';
     } else if (isVoice) {
       badgeHtml = `<span class="badge-chip voice-client-online-badge ${isOnline ? 'is-online' : 'is-offline'}" data-role="online-badge">${isOnline ? 'online' : 'offline'}</span>`;
       statusIconHtml = `<div class="voice-client-mic-status" data-role="mic-icon" title="Wake-word">${Icons.Mic()}</div>`;
@@ -316,6 +331,14 @@ export class VoiceConfigView {
       statusIconHtml = `<div class="voice-client-mic-status" data-role="mic-icon" title="Klient tekstowy">${Icons.MessageSquare()}</div>`;
       metaText = 'Klient tekstowy';
     }
+
+    const canRepair = isUnknown && this._pendingCapabilities?.has(senderId);
+    const repairBtn = isUnknown
+      ? `<button type="button" class="btn btn-sm btn-subtle" data-repair-sender="${escapeAttr(senderId)}"
+           ${canRepair ? '' : 'disabled title="Klient musi być podłączony, żeby odczytać jego możliwości"'}>
+           Zarejestruj ponownie
+         </button>`
+      : '';
 
     return `
       <div class="voice-client-card" data-sender-id="${escapeAttr(senderId)}">
@@ -329,8 +352,11 @@ export class VoiceConfigView {
           </div>
         </div>
         <div class="voice-client-card-status">
+          ${repairBtn}
           <span class="voice-client-confidence" data-role="confidence"></span>
           ${statusIconHtml}
+          <button type="button" class="btn btn-ghost-danger btn-icon-square" data-delete-sender="${escapeAttr(senderId)}"
+            title="Usuń rejestrację" aria-label="Usuń rejestrację">${Icons.Trash2()}</button>
         </div>
       </div>
     `;
@@ -342,12 +368,39 @@ export class VoiceConfigView {
   async _registerSender(senderId) {
     const capabilities =
       senderId === getSenderId() ? BROWSER_CAPABILITIES : this._pendingCapabilities?.get(senderId) || [];
+    // Przypisanie do pokoju zachowujemy — ta sama metoda obsługuje pierwszą
+    // rejestrację (pokoju jeszcze nie ma) i naprawę istniejącego wpisu, gdzie
+    // wyzerowanie pokoju byłoby cichą utratą konfiguracji użytkownika.
+    const existing = this._registeredSenders?.find((s) => s.sender_id === senderId);
     try {
-      await this.apiClient.registerSender({ sender_id: senderId, room_id: null, capabilities });
-      showToast('Zarejestrowano nadawcę.', 'success');
+      await this.apiClient.registerSender({
+        sender_id: senderId,
+        room_id: existing?.room_id ?? null,
+        capabilities,
+      });
+      showToast('Zarejestrowano klienta.', 'success');
       await this._loadAndRenderClients();
     } catch (error) {
-      showToast(error.message || 'Błąd rejestracji nadawcy.', 'error');
+      showToast(error.message || 'Błąd rejestracji klienta.', 'error');
+    }
+  }
+
+  /** Wyrejestrowanie — odwrotność rejestracji, więc mieszka tu, a nie w zakładce
+   * Świat (ta zna wyłącznie encje już zatwierdzone i ich pokoje). */
+  async _deleteSender(senderId) {
+    const confirmed = await confirmModal({
+      title: 'Usunąć rejestrację klienta?',
+      message: 'Klient przestanie móc rozmawiać z agentem, dopóki nie zostanie zarejestrowany ponownie.',
+      confirmLabel: 'Usuń',
+      cancelLabel: 'Anuluj',
+    });
+    if (!confirmed) return;
+    try {
+      await this.apiClient.deleteSender(senderId);
+      showToast('Usunięto rejestrację klienta.', 'success');
+      await this._loadAndRenderClients();
+    } catch (error) {
+      showToast(error.message || 'Błąd usuwania rejestracji.', 'error');
     }
   }
 

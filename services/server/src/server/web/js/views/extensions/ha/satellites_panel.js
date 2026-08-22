@@ -1,21 +1,23 @@
-import { Icons } from '../../../icons.js';
-import { confirmModal } from '../../../modal_confirm.js';
 import { renderSelectMarkup, initSelect } from '../../../components/select.js';
-import { escapeHtml, escapeAttr } from '../../../utils/dom.js';
+import { escapeHtml } from '../../../utils/dom.js';
 
 /**
- * Panel "Nadawcy" — lista już zarejestrowanych `sender_id`, z możliwością
- * przypisania/zmiany pokoju per wiersz i usunięcia. **Świadomie bez tworzenia
- * nowych rejestracji tutaj** — to żyło tu wcześniej (formularz "+ Nowa
- * rejestracja", w tym skrót dla ID tej przeglądarki), ale rejestracja
- * (w tym pierwszy kontakt z podłączoną, jeszcze nieznaną satelitą) jest
- * koncepcyjnie i pod maską domeną `voice`, nie `world` — przeniesione do
- * zakładki Głos (`voice_config.js`, sekcja Satelity). Świat dostaje z powrotem
- * jedną odpowiedzialność: zarządzanie już zatwierdzonymi encjami.
+ * Panel "Nadawcy" — lista zarejestrowanych klientów z pickerem pokoju per wiersz.
+ *
+ * **Wyłącznie odczyt + przypisanie pokoju.** Świat nie tworzy rejestracji ani ich
+ * nie usuwa: jedno i drugie to cykl życia klienta, czyli domena zakładki Klienci
+ * (`views/voice_config.js`). Świat zna tylko encje już zatwierdzone i to, gdzie
+ * stoją.
+ *
+ * Historia obu przenosin: najpierw wyjechało stąd *tworzenie* rejestracji
+ * (formularz "+ Nowa rejestracja"), bo pierwszy kontakt z nieznanym nadawcą jest
+ * pod maską domeną `voice`. Kasowanie zostało wtedy przeoczone i wisiało tu
+ * dalej — czyli operacja odwrotna do rejestracji żyła w innej zakładce niż sama
+ * rejestracja. Naprawione: obie są w Klientach.
  */
 export function renderSatellitesList(view) {
   if (view.senders.length === 0) {
-    return `<p class="ha-empty-hint">Brak zarejestrowanych nadawców — zarejestruj w zakładce Głos.</p>`;
+    return `<p class="ha-empty-hint">Brak zarejestrowanych klientów — zarejestruj w zakładce Klienci.</p>`;
   }
   return `
     <div class="ha-list">
@@ -25,7 +27,6 @@ export function renderSatellitesList(view) {
         <div class="ha-list-row">
           <span class="ha-satellite-name">${escapeHtml(s.sender_id)}</span>
           ${renderSelectMarkup(`ha-sender-room-${s.sender_id}`, { placeholder: '— brak pokoju —', className: 'select--compact ha-sender-room-select' })}
-          <button class="btn btn-ghost-danger btn-icon-square" data-delete-satellite="${escapeAttr(s.sender_id)}" title="Usuń rejestrację" aria-label="Usuń rejestrację">${Icons.Trash2()}</button>
         </div>
       `
         )
@@ -48,14 +49,10 @@ export function initSatelliteRoomSelects(view) {
   });
 }
 
-export function bindSatelliteEvents(view) {
-  view.container.querySelectorAll('[data-delete-satellite]')?.forEach((btn) => {
-    btn.addEventListener('click', () => handleDeleteSatelliteClick(view, btn.getAttribute('data-delete-satellite')));
-  });
-}
-
 /** `POST /senders` jest upsertem (`WorldEngine.register_sender`: "rejestruje lub nadpisuje") —
- * to samo wywołanie tworzące nowego nadawcę służy tu do zmiany pokoju istniejącego. */
+ * to samo wywołanie tworzące nowego nadawcę służy tu do zmiany pokoju istniejącego.
+ * Pominięte `capabilities` backend zachowuje (patrz `world/routes.py::register_sender`),
+ * więc zmiana pokoju nie kasuje możliwości klienta. */
 async function handleAssignSenderRoom(view, senderId, roomId) {
   try {
     await view.apiClient.registerSender({ sender_id: senderId, room_id: roomId || null });
@@ -63,22 +60,5 @@ async function handleAssignSenderRoom(view, senderId, roomId) {
     await view._refresh();
   } catch (error) {
     view.showToast(error.message || 'Błąd aktualizacji pokoju.', 'error');
-  }
-}
-
-async function handleDeleteSatelliteClick(view, senderId) {
-  const confirmed = await confirmModal({
-    title: 'Usunąć rejestrację nadawcy?',
-    message: 'Ta operacja jest nieodwracalna.',
-    confirmLabel: 'Usuń',
-    cancelLabel: 'Anuluj',
-  });
-  if (!confirmed) return;
-  try {
-    await view.apiClient.deleteSender(senderId);
-    view.showToast('Usunięto rejestrację nadawcy.', 'success');
-    await view._refresh();
-  } catch (error) {
-    view.showToast(error.message || 'Błąd usuwania nadawcy.', 'error');
   }
 }

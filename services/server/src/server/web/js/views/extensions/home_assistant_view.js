@@ -2,7 +2,7 @@ import { renderConfigForm, bindConfigEvents } from './ha/config_panel.js';
 import { renderRoomsPanel, bindRoomEvents } from './ha/rooms_panel.js';
 import { renderDeviceSearch, renderSearchResults, renderDeclaredList, initDeclaredRoomSelects, bindDeviceEvents } from './ha/devices_panel.js';
 import { renderGroupsList, renderGroupForm, bindGroupEvents } from './ha/groups_panel.js';
-import { renderSatellitesList, initSatelliteRoomSelects, bindSatelliteEvents } from './ha/satellites_panel.js';
+import { renderSatellitesList, initSatelliteRoomSelects } from './ha/satellites_panel.js';
 
 /**
  * Widok konfiguracji silnika świata (WorldEngine) — w pełni domenowy (nie
@@ -144,6 +144,8 @@ export class HomeAssistantExtensionView {
     bindRoomEvents(this);
     bindDeviceEvents(this);
     bindGroupEvents(this);
-    bindSatelliteEvents(this);
+    // Nadawcy nie mają tu żadnych zdarzeń do podpięcia: picker pokoju wiąże się sam
+    // w `initSatelliteRoomSelects`, a usuwanie rejestracji (cykl życia klienta)
+    // należy do zakładki Klienci, nie do Świata.
   }
 }
