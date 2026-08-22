@@ -23,10 +23,33 @@ ToolDispatch = Callable[[str, dict[str, Any]], Awaitable[ToolResult]]
 
 @dataclass
 class ContextBuild:
-    """Pełny wkład silnika świata na czas jednej interakcji agenta."""
+    """Pełny wkład silnika świata na czas jednej interakcji agenta.
+
+    `system_prompt` i `turn_context` są rozdzielone **celowo, wzdłuż osi
+    zmienności** — nie tematycznie:
+
+    * `system_prompt` — treść, która między turami tej samej sesji się NIE
+      zmienia (tożsamość, zasady). Trafia na pozycję zerową kontekstu.
+    * `turn_context` — fakty prawdziwe tylko teraz (czas, stan urządzeń,
+      sposób dostarczenia odpowiedzi). Trafia tuż przed pytanie użytkownika.
+
+    Dwa powody, oba zweryfikowane w tym projekcie:
+
+    1. **Własność treści.** Tożsamość pisze użytkownik w UI, fakty generuje
+       silnik. Dopóki był to jeden sklejony string, nie dało się edytować
+       jednego bez dotykania drugiego.
+    2. **Stabilny prefiks żądania.** Znacznik czasu w wiadomości zerowej
+       sprawiał, że każda tura wyglądała dla dostawcy jak zupełnie nowe
+       żądanie — cache prefiksu nie miał się o co zaczepić. (Przy sesjach
+       rzędu 10-15 tur to zysk drugorzędny, ale darmowy.)
+
+    Efekt uboczny, celowo wykorzystany: fakty lądują blisko pytania, gdzie
+    modele trzymają się ich pewniej niż treści sprzed kilkunastu wiadomości.
+    """
 
     tool_definitions: list[ToolDefinition]
     system_prompt: str | None
+    turn_context: str | None
     dispatch: ToolDispatch
 
 
@@ -63,4 +86,4 @@ class NullWorldInterface:
             del arguments
             return ToolResult(is_error=True, content=f"Brak dostępnych narzędzi — narzędzie '{name}' niedostępne.")
 
-        return ContextBuild(tool_definitions=[], system_prompt=None, dispatch=_dispatch)
+        return ContextBuild(tool_definitions=[], system_prompt=None, turn_context=None, dispatch=_dispatch)

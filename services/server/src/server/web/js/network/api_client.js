@@ -77,6 +77,12 @@ export class ApiClient {
   }
 
   // --- World (prompty, Home Assistant, pokoje, nadawcy) ---
+  getPromptSections(...args) {
+    return this._world.getPromptSections(...args);
+  }
+  updatePromptSections(...args) {
+    return this._world.updatePromptSections(...args);
+  }
   getWorldPrompts(...args) {
     return this._world.getWorldPrompts(...args);
   }

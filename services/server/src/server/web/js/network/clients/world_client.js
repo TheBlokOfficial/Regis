@@ -10,6 +10,38 @@ export class WorldClient {
 
   // --- Prompty Świata (profile tożsamości, do 3 przełączalnych) ---
 
+  /** Sekcje kontekstu tury — serwer zwraca wartość obowiązującą ORAZ domyślną,
+   * więc "przywróć domyślne" działa bez duplikowania tekstów po stronie JS. */
+  async getPromptSections() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/world/prompt-sections`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      const data = await response.json();
+      return data?.sections || [];
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania sekcji kontekstu tury:', error);
+      return [];
+    }
+  }
+
+  /** `sections` to mapa klucz -> tekst. `null` przywraca domyślną, pusty string
+   * wycisza sekcję. Klucze nieobecne w mapie zostają bez zmian. */
+  async updatePromptSections(sections) {
+    const response = await fetch(`${this.baseUrl}/api/v1/world/prompt-sections`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sections }),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+    }
+    const data = await response.json();
+    return data?.sections || [];
+  }
+
   async getWorldPrompts() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/world/prompts`);

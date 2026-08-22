@@ -388,7 +388,7 @@ class SingleToolWorld:
             del name, arguments
             return ToolResult(is_error=False, content="ok")
 
-        return ContextBuild(tool_definitions=[tool_def], system_prompt=None, dispatch=_dispatch)
+        return ContextBuild(tool_definitions=[tool_def], system_prompt=None, turn_context=None, dispatch=_dispatch)
 
 
 class TextThenToolThenFailingProvider(BaseLLMProvider):

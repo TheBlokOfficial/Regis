@@ -69,7 +69,8 @@ wake-word**: detektor jest budowany raz przy starcie (`main.py`,
 nadal wymaga restartu.
 
 ### Prompty systemowe — World jest jedynym autorem, gdy podłączony
-- **Profile promptu Świata** (`services/server/data/world/prompts/*.json`, `WorldPromptStore`): do 3 przełączalnych profili tożsamości, aktywny wskazuje `data/world/active_prompt.json`. `WorldEngine.build()` doklejają aktywny profil (może być pusty — domyślnie "Profil 1") do dynamicznych faktów (czas/pokój/urządzenia) i zwraca **kompletny, gotowy prompt** tej tury — kernel niczego nie skleja.
+- **Profile promptu Świata** (`services/server/data/world/prompts/*.json`, `WorldPromptStore`): do 3 przełączalnych profili **tożsamości**, aktywny wskazuje `data/world/active_prompt.json`. Treść stabilna — trafia na pozycję zerową kontekstu i nie zmienia się między turami.
+- **Sekcje kontekstu tury** (`services/server/data/world/prompt_sections.json`, `world/prompt_sections.py`): edytowalny tekst **faktów** wstrzykiwanych tuż przed każdym pytaniem (czas, ramowanie dostawy, lokalizacja, lista urządzeń). Wartości domyślne siedzą w kodzie, plik trzyma wyłącznie nadpisania: brak klucza = domyślna, pusty string = sekcja wyciszona. Edycja w zakładce **Świat → Kontekst tury**; `WorldEngine.build()` zwraca to osobno od tożsamości (`ContextBuild.turn_context`), kernel niczego nie skleja.
 - **Fallback promptu kernela** (`services/server/data/agent_default_prompt.json`, `AgentDefaultPromptStore`): jedna wartość, bez CRUD — używana **wyłącznie** gdy żaden World nie jest podłączony (`NullWorldInterface`, testy headless). `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` to fallback tego fallbacku (seed przy pierwszym uruchomieniu). W normalnej pracy (World zawsze wstrzyknięty w `main.py`) to pole rzadko się uruchamia.
 
 Najwygodniejszy sposób edycji: zakładka **Ustawienia** w Web UI, wewnątrz poziome sekcje (pills) **Agent** (dostawcy LLM, REST `/api/v1/llm/providers`, + fallbackowy prompt kernela, REST `/api/v1/agent/prompt`), **Świat** (Konfiguracja HA/pokoi/nadawców, REST `/api/v1/world/*`, + pod-zakładka **Prompty** — profile tożsamości Świata, REST `/api/v1/world/prompts/*`), **Dostawcy** (CRUD dostawców LLM/STT/TTS) i **Klienci** (rejestr klientów + progi wake-worda/VAD, REST `/api/v1/voice/*`). Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami do sekcji Ustawień.
@@ -158,6 +159,7 @@ Wszystkie trzy wejścia odpalające turę (`/chat`, `/chat/stream`, `/chat/send`
 | **World (pokoje)** | `GET/POST /api/v1/world/rooms` | Lista i tworzenie pokoi — pełnoprawny byt World, niezależny od HA Areas |
 | | `PUT/DELETE /api/v1/world/rooms/{id}` | Zmiana nazwy i usunięcie pokoju (bez cascade delete przypisań) |
 | | `POST /api/v1/world/rooms/import-from-ha` | Jednorazowy import pokoju per unikalna HA Area — nie ciągła synchronizacja |
+| **World (kontekst tury)** | `GET/PUT /api/v1/world/prompt-sections` | Edytowalne sekcje faktów. GET zwraca wartość obowiązującą i domyślną; w PUT `null` przywraca domyślną, pusty string wycisza sekcję |
 | **World (nadawcy)** | `GET/POST /api/v1/world/senders` | Lista i rejestracja klienta (`sender_id -> room_id` + `capabilities`). POST to upsert; **puste `capabilities` zachowują obecne**, nigdy nie czyszczą (zakładka Świat zmienia sam pokój i ich nie zna) |
 | | `DELETE /api/v1/world/senders/{sender_id}` | Usunięcie przypisania |
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py` |

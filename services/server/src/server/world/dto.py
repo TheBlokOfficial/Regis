@@ -127,6 +127,39 @@ class SenderProfileDTO(BaseModel):
     )
 
 
+class PromptSectionDTO(BaseModel):
+    """Jedna sekcja kontekstu tury wraz z metadanymi potrzebnymi UI.
+
+    `default` jest zwracany celowo, mimo że to stała po stronie serwera — dzięki
+    temu przycisk "Przywróć domyślne" i podgląd wartości bazowej działają bez
+    duplikowania tych samych tekstów w JavaScripcie (jedno źródło prawdy).
+    """
+
+    key: str = Field(..., description="Identyfikator sekcji, np. delivery_voice")
+    label: str = Field(..., description="Nazwa widoczna w UI")
+    condition: str = Field(..., description="Kiedy sekcja trafia do promptu — opis dla użytkownika")
+    placeholders: list[str] = Field(default_factory=list, description="Dozwolone podstawienia, np. {czas}")
+    default: str = Field(..., description="Wartość domyślna (tekst wbudowany w serwer)")
+    value: str = Field(..., description="Wartość obowiązująca — nadpisanie albo domyślna")
+    is_overridden: bool = Field(..., description="Czy użytkownik nadpisał wartość domyślną")
+
+
+class PromptSectionsResponse(BaseModel):
+    """Odpowiedź dla GET /api/v1/world/prompt-sections."""
+
+    sections: list[PromptSectionDTO] = Field(default_factory=list)
+
+
+class UpdatePromptSectionsRequest(BaseModel):
+    """Żądanie dla PUT /api/v1/world/prompt-sections.
+
+    Klucz nieobecny w `sections` = bez zmian. Wartość `null` = przywróć domyślną.
+    Pusty string = wycisz sekcję (świadomie różne od przywrócenia domyślnej).
+    """
+
+    sections: dict[str, str | None] = Field(default_factory=dict)
+
+
 class RegisterSenderRequest(BaseModel):
     """Żądanie dla POST /senders (upsert — służy i rejestracji, i zmianie pokoju)."""
 

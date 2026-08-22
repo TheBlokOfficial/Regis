@@ -387,3 +387,113 @@
   font-size: 0.76rem;
   color: var(--text-muted-aa);
 }
+
+/* ==========================================================================
+   KONTEKST TURY — edytowalne sekcje faktów wstrzykiwanych przed każdym
+   pytaniem (`world_prompt_sections_view.js`). Wizualnie rodzina edytora
+   promptów wyżej (ten sam krój mono, ta sama ramka pola), ale lista krótkich
+   pól zamiast jednego dużego edytora — bo to zdania, nie dokumenty.
+   ========================================================================== */
+.wps-intro {
+  margin-top: 0;
+  margin-bottom: 18px;
+}
+
+.wps-section + .wps-section {
+  margin-top: 22px;
+}
+
+.wps-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.wps-section-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Warunek pojawienia się sekcji — informacja, nie stan, więc bez koloru. */
+.wps-condition {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-sans);
+}
+
+.wps-overridden {
+  color: var(--accent-warning);
+  border-color: var(--accent-warning);
+}
+
+.wps-box {
+  display: flex;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background-color: var(--bg-base);
+}
+
+.wps-box:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.wps-textarea {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.wps-textarea:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.wps-section-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.wps-placeholders {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wps-placeholder {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--text-primary);
+  background-color: var(--bg-surface-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+
+.wps-placeholder-none {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+/* Stała szerokość obszaru akcji — rozbłysk wyniku na "Zapisz" zamienia tekst na
+   ikonę, a przycisk "Przywróć domyślne" obok nie może przez to drgnąć. */
+.wps-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}

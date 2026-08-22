@@ -37,6 +37,15 @@ from server.world.models import (
     SenderProfile,
     SenderProfilesFileContent,
 )
+from server.world.prompt_sections import (
+    PLACEHOLDER_DEVICES,
+    PLACEHOLDER_ROOM,
+    PLACEHOLDER_TIME,
+    SECTION_SPECS_BY_KEY,
+    PromptSectionsConfig,
+    PromptSectionStore,
+    resolve_section,
+)
 from server.world.prompts import PromptInstanceConfig, WorldPromptStore
 from server.world.registry import DeviceRegistry
 from server.world.tools import HomeAssistantToolExecutor, TOOL_NAMES, build_tool_definitions
@@ -67,6 +76,7 @@ class WorldEngine:
         # World jest jedynym autorem promptu tej tury, gdy podłączony — własny magazyn
         # profili tożsamości (do 3, przełączalne), zarządzany wewnętrznie (patrz `build()`).
         self._prompt_store = WorldPromptStore(self.base_data_dir)
+        self._section_store = PromptSectionStore(self.base_data_dir)
 
     async def _ensure_defaults(self) -> None:
         """Tworzy katalogi grup/pokoi jeśli nie istnieją. Silnik startuje bez konfiguracji i grup."""
@@ -419,6 +429,28 @@ class WorldEngine:
         return None, matches
 
     # --------------------------------------------------------------------------
+    # Sekcje kontekstu tury — edytowalny tekst faktów wstrzykiwanych co turę
+    # --------------------------------------------------------------------------
+
+    async def get_prompt_sections(self) -> PromptSectionsConfig:
+        return await self._section_store.load()
+
+    async def update_prompt_sections(self, changes: dict[str, str | None]) -> PromptSectionsConfig:
+        """Nadpisuje wskazane sekcje. Klucz nieobecny w `changes` zostaje bez zmian —
+        dzięki temu UI może zapisywać pojedynczą sekcję, nie odsyłając całości.
+
+        :raises ValueError: gdy podano nieznany klucz sekcji (literówka w kliencie
+            cicho zniknęłaby, a użytkownik zobaczyłby "zapisano" bez efektu).
+        """
+        current = await self._section_store.load()
+        unknown = set(changes) - set(SECTION_SPECS_BY_KEY)
+        if unknown:
+            raise ValueError(f"Nieznane sekcje promptu: {', '.join(sorted(unknown))}.")
+        updated = current.model_copy(update=changes)
+        await self._section_store.save(updated)
+        return updated
+
+    # --------------------------------------------------------------------------
     # Profile promptu — tożsamość Świata, do 3 przełączalnych profili
     # --------------------------------------------------------------------------
 
@@ -459,16 +491,18 @@ class WorldEngine:
     # --------------------------------------------------------------------------
 
     async def build(self, sender_id: str | None = None) -> ContextBuild:
-        # World jest jedynym autorem promptu tej tury: profil tożsamości (jeśli
-        # niepusty) jest doklejany PRZED faktami, całość jednym, spójnym autorem —
-        # nigdy sklejane z osobno wybranym promptem kernela.
+        # Prompt tury dzieli się wzdłuż osi ZMIENNOŚCI, nie tematu (patrz
+        # `agent/context_provider.py::ContextBuild`):
+        #   * tożsamość (aktywny profil) -> `system_prompt`, stabilne między turami,
+        #   * wszystko poniżej -> `turn_context`, prawdziwe tylko teraz.
+        # Wcześniej było to jednym sklejonym stringiem, przez co znacznik czasu
+        # zmieniał wiadomość zerową co turę, a tekstu faktów nie dało się edytować
+        # bez dotykania tożsamości.
+        sections = await self._section_store.load()
         context_parts: list[str] = []
-        active_profile_content = await self._prompt_store.get_active_content()
-        if active_profile_content:
-            context_parts.append(active_profile_content)
 
         now_value = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        context_parts.append(f"Aktualna data i godzina: {now_value}.")
+        _append_section(context_parts, sections, "datetime", {PLACEHOLDER_TIME: now_value})
 
         # 1. Profil nadawcy: gdzie stoi i co potrafi. Modalność wyprowadzana jest tu,
         #    z trwałych `capabilities` klienta — nie przenoszona przez kernel jako flaga
@@ -480,10 +514,10 @@ class WorldEngine:
             senders = await self.get_senders()
             profile = senders.entries.get(sender_id)
         if profile is not None:
-            context_parts.append(_render_delivery_framing(profile.capabilities))
+            _append_section(context_parts, sections, _delivery_section_key(profile.capabilities))
         current_room = rooms_by_id.get(profile.room_id) if (profile and profile.room_id) else None
         if current_room is not None:
-            context_parts.append(f"Nadawca znajduje się w lokalizacji: {current_room.name}.")
+            _append_section(context_parts, sections, "location", {PLACEHOLDER_ROOM: current_room.name})
 
         # 2. Home Assistant — łagodna degradacja, nie wpływa na framing z kroku 1.
         config = await self.get_config()
@@ -497,14 +531,13 @@ class WorldEngine:
             groups = [DeviceGroup(id=cfg.id, name=cfg.name, device_ids=cfg.device_ids) for cfg in group_instances.values()]
 
         if devices or groups:
-            context_parts.append(
-                self._render_devices_section(
-                    devices,
-                    groups,
-                    rooms_by_id=rooms_by_id,
-                    current_room_id=current_room.id if current_room else None,
-                )
+            device_list = self._render_devices_section(
+                devices,
+                groups,
+                rooms_by_id=rooms_by_id,
+                current_room_id=current_room.id if current_room else None,
             )
+            _append_section(context_parts, sections, "devices", {PLACEHOLDER_DEVICES: device_list})
 
         # 3. Narzędzia + dispatch
         tool_definitions: list[ToolDefinition] = [
@@ -552,16 +585,16 @@ class WorldEngine:
                         )
                     return ToolResult(is_error=True, content=f"Brak odbiornika z głośnikiem w pokoju '{room}'.")
                 # Treść wyniku niesie NOWE ramowanie dostawy — cel zmienił się w połowie
-                # tury, a prompt systemowy powstał przed jej startem i już tego nie
-                # nadgoni. Wyniki narzędzi wracają do modelu w pętli ReAct, więc to
-                # naturalny kanał na tę korektę; nie trzeba do tego osobnego mechanizmu.
-                return ToolResult(
-                    content=(
-                        f"Przełączono dalszą odpowiedź na pokój '{room}'. "
-                        f"{_render_delivery_framing(frozenset({ClientCapability.SPEAKER}))}"
-                    ),
-                    redirect_sender_id=target_sender_id,
-                )
+                # tury, a kontekst tury powstał przed jej startem i już tego nie nadgoni.
+                # Wyniki narzędzi wracają do modelu w pętli ReAct, więc to naturalny
+                # kanał na tę korektę; nie trzeba do tego osobnego mechanizmu. Tekst
+                # bierzemy z TEJ SAMEJ sekcji co start tury, żeby edycja w UI działała
+                # spójnie w obu miejscach.
+                voice_framing = resolve_section(sections, "delivery_voice")
+                content = f"Przełączono dalszą odpowiedź na pokój '{room}'."
+                if voice_framing:
+                    content = f"{content} {voice_framing}"
+                return ToolResult(content=content, redirect_sender_id=target_sender_id)
             if executor is not None:
                 try:
                     return await executor.execute(name, arguments)
@@ -570,9 +603,14 @@ class WorldEngine:
                     return ToolResult(is_error=True, content=f"Błąd wykonania narzędzia '{name}': {e}")
             return ToolResult(is_error=True, content=f"Nieznane narzędzie: '{name}'.")
 
+        # Furtka użytkownika — cokolwiek chce dopisać na koniec bez zmiany kodu.
+        _append_section(context_parts, sections, "extra")
+
+        active_profile_content = await self._prompt_store.get_active_content()
         return ContextBuild(
             tool_definitions=tool_definitions,
-            system_prompt="\n\n".join(context_parts),
+            system_prompt=active_profile_content or None,
+            turn_context="\n\n".join(context_parts) if context_parts else None,
             dispatch=dispatch,
         )
 
@@ -583,10 +621,15 @@ class WorldEngine:
         rooms_by_id: dict[str, RoomInstanceConfig],
         current_room_id: str | None,
     ) -> str:
-        """Renderuje listę urządzeń posegregowaną wg `Device.room_id` (pełnoprawny pokój
-        World, niezależny od Home Assistant) — pełna adresowalność zawsze zachowana,
-        segregacja to wyłącznie prezentacja. Urządzenie wskazujące na usunięty/nieznany
-        `room_id` traktowane jest jak nieprzypisane (bez cascade delete przy usuwaniu pokoju)."""
+        """Renderuje SAMĄ listę urządzeń posegregowaną wg `Device.room_id` (pełnoprawny
+        pokój World, niezależny od Home Assistant) — pełna adresowalność zawsze
+        zachowana, segregacja to wyłącznie prezentacja. Urządzenie wskazujące na
+        usunięty/nieznany `room_id` traktowane jest jak nieprzypisane (bez cascade
+        delete przy usuwaniu pokoju).
+
+        **Bez zdania wprowadzającego** — to należy do edytowalnej sekcji `devices`
+        (`prompt_sections.py`), która wstawia tę listę w miejsce `{lista_urządzeń}`.
+        Trzymanie nagłówka w obu miejscach dawało go w prompcie dwukrotnie."""
         by_room: dict[str, list[Device]] = {}
         unassigned: list[Device] = []
         for device in devices:
@@ -595,7 +638,7 @@ class WorldEngine:
             else:
                 unassigned.append(device)
 
-        lines = ["Dostępne urządzenia (adresuj je po podanym entity_id):"]
+        lines: list[str] = []
         for room_id, room_devices in sorted(by_room.items(), key=lambda item: item[0] != current_room_id):
             is_current = room_id == current_room_id
             header = f"### {rooms_by_id[room_id].name}" + (" (Twoja lokalizacja)" if is_current else "")
@@ -621,18 +664,22 @@ def _format_capabilities(device: Device) -> str:
     return ", ".join(labels) if labels else "brak"
 
 
-def _render_delivery_framing(capabilities: frozenset[ClientCapability]) -> str:
-    """Jedno zdanie mówiące modelowi, JAK dotrze jego odpowiedź — o **wyjściu**, nie o
+def _delivery_section_key(capabilities: frozenset[ClientCapability]) -> str:
+    """Która sekcja opisuje sposób dostarczenia odpowiedzi — o **wyjściu**, nie o
     wejściu. Rozstrzyga `SPEAKER`: to, że coś przyszło głosem, nie znaczy jeszcze, że
     odpowiedź zostanie odczytana (i odwrotnie — `speak_in_room` potrafi przełączyć
-    tekstową turę na głośnik).
+    tekstową turę na głośnik)."""
+    return "delivery_voice" if ClientCapability.SPEAKER in capabilities else "delivery_text"
 
-    Wspólne dla startu tury (`WorldEngine.build`) i dla korekty po przekierowaniu
-    (wynik `speak_in_room`), żeby oba miejsca nie rozjechały się w sformułowaniu.
-    """
-    if ClientCapability.SPEAKER in capabilities:
-        return (
-            "Twoja odpowiedź zostanie odczytana na głos (synteza mowy) — odpowiadaj "
-            "krótkimi zdaniami, unikaj Markdown i list, dobierz treść pod słuchanie."
-        )
-    return "Twoja odpowiedź zostanie wyświetlona jako tekst — Markdown jest dozwolony."
+
+def _append_section(
+    parts: list[str],
+    config: PromptSectionsConfig,
+    key: str,
+    substitutions: dict[str, str] | None = None,
+) -> None:
+    """Dokłada rozwiązaną sekcję do budowanego kontekstu, pomijając wyciszone
+    (użytkownik wyczyścił pole = świadoma decyzja "nie chcę tego w prompcie")."""
+    rendered = resolve_section(config, key, substitutions)
+    if rendered:
+        parts.append(rendered)

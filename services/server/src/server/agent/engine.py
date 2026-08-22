@@ -197,6 +197,7 @@ class AgentEngine:
                 session_history=history,
                 system_prompt=system_prompt,
                 tools_available=bool(tool_defs),
+                turn_context=context_build.turn_context,
             )
 
             for iteration in range(self.max_tool_iterations):

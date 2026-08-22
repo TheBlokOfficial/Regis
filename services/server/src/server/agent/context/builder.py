@@ -37,15 +37,25 @@ class ContextBuilder:
         new_prompt: str | None = None,
         system_prompt: str | None = None,
         tools_available: bool = False,
+        turn_context: str | None = None,
     ) -> list[LLMMessage]:
         """Składa listę wiadomości LLMMessage na podstawie historii sesji oraz nowego zapytania.
+
+        Układ docelowy:
+
+        ```text
+        [0]      system   — tożsamość + zasady (stabilne między turami)
+        [1..N-1] historia
+        [N]      system   — fakty tej tury (`turn_context`)
+        [N+1]    user     — pytanie użytkownika
+        ```
 
         Historia jest przycinana do `max_history_messages` najnowszych wiadomości (jeśli ustawiono),
         aby uniknąć przekroczenia limitu kontekstu modelu w długich konwersacjach.
 
         :param session_history: Dotychczasowa historia wiadomości z sesji backendowej.
         :param new_prompt: Opcjonalny nowy prompt od użytkownika (jeśli nie został jeszcze dodany do historii).
-        :param system_prompt: Kompletny, gotowy system prompt tej tury (zwykle
+        :param system_prompt: Stabilna część promptu tej tury (zwykle
             `ContextBuild.system_prompt` z implementacji `WorldInterface`, jeśli World
             jest podłączony i ma coś do powiedzenia) — wklejany bez modyfikacji.
             `None` oznacza brak wkładu World — użyty zostaje `self.default_system_prompt`
@@ -53,6 +63,12 @@ class ContextBuilder:
         :param tools_available: Czy w tej interakcji agent ma dostęp do jakichkolwiek narzędzi
             (z `ContextBuild.tool_definitions`) — jeśli tak, dokleja jedno neutralne zdanie
             zachęcające do ich użycia, bez wymieniania czegokolwiek konkretnego.
+            Doklejane do wiadomości ZEROWEJ, bo jest stabilne w obrębie sesji.
+        :param turn_context: Fakty prawdziwe tylko w tej turze (`ContextBuild.turn_context`)
+            — wstawiane jako osobna wiadomość `system` tuż przed ostatnią wiadomością
+            użytkownika. Rola `system` w środku rozmowy zweryfikowana empirycznie na
+            `openai/gpt-oss-120b` (model wprost cytuje ten blok w swoim rozumowaniu);
+            gdyby przyszły model ją ignorował, alternatywą jest rola `user` z markerem.
         :return: Lista zwalidowanych obiektów LLMMessage gotowych do wysłania do dostawcy LLM.
         """
         messages: list[LLMMessage] = []
@@ -82,5 +98,18 @@ class ContextBuilder:
         if new_prompt and (not session_history or session_history[-1].content != new_prompt):
             messages.append(LLMMessage(role="user", content=new_prompt))
 
-        logger.debug(f"Zbudowano kontekst LLM z {len(messages)} wiadomościami (System Prompt + historia).")
+        # 4. Fakty tej tury — TUŻ PRZED ostatnią wiadomością, nie na końcu listy.
+        #    Ostatnia wiadomość to pytanie użytkownika (w normalnej ścieżce jest już
+        #    w historii, bo `AgentEngine` zapisuje je do pamięci przed budową kontekstu;
+        #    w ścieżce z `new_prompt` została właśnie dopisana wyżej). Dzięki wstawieniu
+        #    przed nią model czyta: fakty -> pytanie, a nie pytanie -> fakty.
+        #    Gdy nie ma żadnej wiadomości poza systemową, fakty po prostu lądują na końcu.
+        if turn_context:
+            insert_at = len(messages) - 1 if len(messages) > 1 else len(messages)
+            messages.insert(insert_at, LLMMessage(role="system", content=turn_context))
+
+        logger.debug(
+            f"Zbudowano kontekst LLM z {len(messages)} wiadomościami "
+            f"(System Prompt + historia{' + fakty tury' if turn_context else ''})."
+        )
         return messages

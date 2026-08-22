@@ -18,6 +18,8 @@ from server.world.dto import (
     DeclaredDeviceDTO,
     HAGroupDTO,
     HomeAssistantConfigDTO,
+    PromptSectionDTO,
+    PromptSectionsResponse,
     RegisterSenderRequest,
     RoomDTO,
     SenderProfileDTO,
@@ -26,9 +28,11 @@ from server.world.dto import (
     UpdateDeclaredDeviceRequest,
     UpdateHAGroupRequest,
     UpdateHomeAssistantConfigRequest,
+    UpdatePromptSectionsRequest,
     UpdateRoomRequest,
 )
 from server.world.engine import WorldEngine
+from server.world.prompt_sections import SECTION_SPECS, PromptSectionsConfig
 from server.world.models import DeclaredDeviceEntry, Device, HomeAssistantConfig, RoomInstanceConfig, SenderProfile
 
 
@@ -61,6 +65,26 @@ def _to_declared_dto(
         room_id=entry.room_id,
         room_name=room.name if room is not None else None,
     )
+
+
+def _to_section_dtos(config: PromptSectionsConfig) -> list[PromptSectionDTO]:
+    """Buduje pełny opis sekcji dla UI — kolejność z `SECTION_SPECS` jest tą samą,
+    w jakiej sekcje trafiają do promptu, więc panel czyta się jak wynik."""
+    dtos: list[PromptSectionDTO] = []
+    for spec in SECTION_SPECS:
+        override = getattr(config, spec.key)
+        dtos.append(
+            PromptSectionDTO(
+                key=spec.key,
+                label=spec.label,
+                condition=spec.condition,
+                placeholders=list(spec.placeholders),
+                default=spec.default,
+                value=spec.default if override is None else override,
+                is_overridden=override is not None,
+            )
+        )
+    return dtos
 
 
 def _to_sender_dto(sender_id: str, profile: SenderProfile, rooms_by_id: dict[str, RoomInstanceConfig]) -> SenderProfileDTO:
@@ -244,6 +268,23 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         if not deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Nadawca '{sender_id}' nie jest zarejestrowany.")
         return {"success": True, "deleted_id": sender_id}
+
+    # --------------------------------------------------------------------------
+    # Sekcje kontekstu tury — edytowalny tekst faktów wstrzykiwanych co turę
+    # --------------------------------------------------------------------------
+
+    @router.get("/prompt-sections", response_model=PromptSectionsResponse, tags=["World"])
+    async def get_prompt_sections() -> PromptSectionsResponse:
+        config = await engine.get_prompt_sections()
+        return PromptSectionsResponse(sections=_to_section_dtos(config))
+
+    @router.put("/prompt-sections", response_model=PromptSectionsResponse, tags=["World"])
+    async def update_prompt_sections(req: UpdatePromptSectionsRequest) -> PromptSectionsResponse:
+        try:
+            config = await engine.update_prompt_sections(req.sections)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+        return PromptSectionsResponse(sections=_to_section_dtos(config))
 
     # --------------------------------------------------------------------------
     # Profile promptu — tożsamość Świata, do 3 przełączalnych profili
