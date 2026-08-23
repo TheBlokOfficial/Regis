@@ -3,6 +3,7 @@ import { renderSelectMarkup, initSelect } from '../components/select.js';
 import { confirmModal } from '../modal_confirm.js';
 import { flashButtonResult, lockButtonForAction } from '../utils/button_flash.js';
 import { escapeAttr, escapeHtml } from '../utils/dom.js';
+import { senderLabel } from '../utils/sender_label.js';
 import { showToast } from '../utils/toast.js';
 
 /**
@@ -216,7 +217,7 @@ export class WorldPromptSectionsView {
         idPrefix: 'wps-preview-client',
         options: this._clients.map((c) => ({
           value: c.sender_id,
-          label: c.room_name ? `…${c.sender_id.slice(-8)} (${c.room_name})` : `…${c.sender_id.slice(-8)}`,
+          label: c.room_name ? `${senderLabel(c)} (${c.room_name})` : senderLabel(c),
         })),
         value: this._previewSenderId,
         placeholder: 'Wybierz klienta',

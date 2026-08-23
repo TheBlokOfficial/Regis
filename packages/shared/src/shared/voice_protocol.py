@@ -52,6 +52,14 @@ class ServerMessageType(str, Enum):
     TTS_END = "tts_end"
     """Koniec strumienia audio odpowiedzi."""
 
+    TURN_END = "turn_end"
+    """Tura skończona, ale nic nie zostanie odtworzone — satelita wraca do nasłuchu od razu.
+
+    Wysyłane, gdy tura nie wyprodukowała tekstu do wypowiedzenia (np. model wykonał samo
+    wywołanie narzędzia albo skończył na rozumowaniu). Osobne od `ERROR`, bo to nie jest
+    błąd — nic się nie zepsuło, po prostu nie ma czego mówić. Bez tej ramki satelita
+    czekałaby na `tts_start`, który nigdy nie przyjdzie, z wstrzymanym mikrofonem."""
+
     ERROR = "error"
     """Błąd protokołu/przetwarzania — payload niesie dodatkowo pole "detail"."""
 

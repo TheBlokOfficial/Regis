@@ -2,9 +2,13 @@
 
 ```text
 LISTENING_WAKEWORD -> (wake-word) -> RECORDING_UTTERANCE
-    -> (utterance_end) -> PROCESSING (STT -> kernel -> TTS)
-    -> SPEAKING -> (playback_done) -> LISTENING_WAKEWORD
+    -> (utterance_end) -> PROCESSING (STT -> kernel)
+    -> SYNTHESIZING (TTS) -> SPEAKING -> (playback_done) -> LISTENING_WAKEWORD
 ```
+
+Każde wyjście z `PROCESSING`/`SYNTHESIZING`/`SPEAKING` musi kończyć się powrotem do
+nasłuchu — także ścieżki bez mowy (`end_turn_without_speech`) i błędne (`reset_to_listening`).
+Satelita wstrzymuje mikrofon poza nasłuchem, więc każdy stan bez wyjścia to trwała głuchota.
 
 Czysty automat treści/stanu — zero wiedzy o WebSocket czy EventBus. Doręczenie
 (`SatelliteLink`) i odpalenie tury kernela (`on_transcript`) są wstrzykiwane,
@@ -37,6 +41,7 @@ class SessionState(Enum):
     LISTENING_WAKEWORD = auto()
     RECORDING_UTTERANCE = auto()
     PROCESSING = auto()
+    SYNTHESIZING = auto()
     SPEAKING = auto()
 
 
@@ -142,12 +147,47 @@ class VoiceSession:
         # sterowanym z zewnątrz przez gateway (odbiór CHAT_DONE z EventBus).
 
     async def speak(self, text: str) -> None:
-        """Syntezuje i odtwarza odpowiedź — wołane przez gateway po odebraniu CHAT_DONE."""
+        """Syntezuje i odtwarza odpowiedź — wołane przez gateway po odebraniu CHAT_DONE.
+
+        `SYNTHESIZING` i `SPEAKING` to dwa różne stany, bo to dwa różne oczekiwania:
+        pierwsze trwa tyle, ile zapytanie do dostawcy TTS, drugie tyle, ile realne
+        odtwarzanie u klienta. Dopóki oba nazywały się `SPEAKING`, dashboard pokazywał
+        "Odpowiada" także wtedy, gdy nic jeszcze nie grało — i nie dało się odróżnić
+        wolnej syntezy od zawieszonego odtwarzania.
+
+        Wyjątek dostawcy TTS **musi** być złapany tutaj: `speak()` jest wołane z handlera
+        `EventBus`, a ten połyka wyjątki (`shared/event_bus.py::publish`), więc bez tego
+        sesja zostawałaby w `SPEAKING` na zawsze, a satelita — z wstrzymanym mikrofonem.
+        """
+        await self._set_state(SessionState.SYNTHESIZING)
+        try:
+            audio = await self._tts_provider.synthesize(text)
+        except Exception as err:
+            # Sanityzacja jak wszędzie indziej: szczegół dostawcy tylko do logu.
+            logger.error(f"Synteza mowy nie powiodła się [sender_id: '{self.sender_id}']: {err}")
+            await self._link.send_error("Synteza mowy nieskonfigurowana lub niedostępna.")
+            await self.reset_to_listening()
+            return
+
+        if not audio:
+            logger.warning(f"Dostawca TTS zwrócił puste audio [sender_id: '{self.sender_id}'].")
+            await self.end_turn_without_speech()
+            return
+
         await self._set_state(SessionState.SPEAKING)
-        audio = await self._tts_provider.synthesize(text)
         await self._link.send_control(ServerMessageType.TTS_START)
         await self._link.send_audio(audio)
         await self._link.send_control(ServerMessageType.TTS_END)
+
+    async def end_turn_without_speech(self) -> None:
+        """Tura skończona, ale nie ma czego wypowiedzieć (sam tool call / samo rozumowanie).
+
+        Satelita dostaje jawną ramkę `turn_end` i wraca do nasłuchu natychmiast. Wcześniej
+        ten przypadek nie był obsłużony w ogóle — gateway po prostu kończył handler, a
+        sesja zostawała w `PROCESSING` na zawsze."""
+        logger.info(f"Tura bez treści do wypowiedzenia [sender_id: '{self.sender_id}'] — wracam do nasłuchu.")
+        await self._link.send_control(ServerMessageType.TURN_END)
+        await self.reset_to_listening()
 
     async def handle_playback_done(self) -> None:
         """Satelita potwierdziła koniec fizycznego odtwarzania — wracamy do nasłuchu."""

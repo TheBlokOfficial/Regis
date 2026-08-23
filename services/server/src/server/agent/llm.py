@@ -18,6 +18,24 @@ class ToolCallRequest:
 
 
 @dataclass
+class ReasoningChunk:
+    """Fragment *rozumowania* modelu (chain of thought), nie treści odpowiedzi.
+
+    Osobny typ, a nie string ze znacznikiem w treści (`<think>…</think>`, jak było
+    wcześniej): rodzaj tokena to fakt strukturalny, a przemycanie go w tekście gubiło
+    tę informację natychmiast po opuszczeniu providera. Konsekwencje tamtego modelu
+    były realne i wszystkie z jednego korzenia — TTS czytał rozumowanie na głos,
+    chain of thought lądował w pamięci sesji i wracał do modelu w każdej kolejnej
+    turze, a Web UI musiało odzyskiwać podział parsując strumień znak po znaku.
+
+    Kto nie potrafi tego wyświetlić/wypowiedzieć, po prostu pomija ten typ —
+    `isinstance(event, str)` nadal jednoznacznie znaczy "tekst odpowiedzi".
+    """
+
+    text: str
+
+
+@dataclass
 class ToolDefinition:
     """Specyfikacja narzędzia udostępnianego LLM (JSON Schema parametrów)."""
 
@@ -85,13 +103,14 @@ class BaseLLMProvider(ABC):
         messages: list[LLMMessage],
         tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str | ToolCallRequest]:
-        """Strumieniuje wygenerowane fragmenty tekstu oraz żądania wywołania narzędzi.
+    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest]:
+        """Strumieniuje fragmenty odpowiedzi, rozumowania oraz żądania wywołania narzędzi.
 
         :param messages: Lista wiadomości stanowiących kontekst konwersacji.
         :param tools: Opcjonalna lista narzędzi udostępnionych LLM do wywołania.
         :param kwargs: Dodatkowe opcjonalne parametry generacji.
-        :yields: Fragmenty tekstu (`str`) lub kompletne żądania wywołania narzędzia (`ToolCallRequest`).
+        :yields: Fragmenty tekstu odpowiedzi (`str`), fragmenty rozumowania
+            (`ReasoningChunk`) lub kompletne żądania wywołania narzędzia (`ToolCallRequest`).
         """
         pass
 
@@ -110,6 +129,8 @@ class BaseLLMProvider(ABC):
         """
         chunks: list[str] = []
         async for event in self.generate_stream(messages, tools=tools, **kwargs):
+            # `ReasoningChunk`/`ToolCallRequest` odpadają same — `str` to wyłącznie
+            # tekst odpowiedzi, więc rozumowanie nigdy nie wycieka do `LLMResponse`.
             if isinstance(event, str):
                 chunks.append(event)
 

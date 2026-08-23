@@ -63,8 +63,20 @@ async def run(sender_id: str) -> None:
         await ws.send(json.dumps(utterance_end))
         await _expect_control(ws, "play_stop_tone")
 
-        # 6. Odbiór odpowiedzi: tts_start -> ramki binarne -> tts_end
-        await _expect_control(ws, "tts_start")
+        # 6. Odbiór odpowiedzi: tts_start -> ramki binarne -> tts_end, ALBO turn_end, gdy
+        #    tura nie wyprodukowała nic do wypowiedzenia (sam tool call / samo rozumowanie).
+        #    Obie ścieżki są poprawne — patrz `shared/voice_protocol.py::TURN_END`.
+        first = await ws.recv()
+        if isinstance(first, bytes):
+            raise AssertionError(f"Oczekiwano ramki kontrolnej JSON, dostano {len(first)} bajtów binarnych.")
+        first_message = json.loads(first)
+        print(f"<- {first_message}")
+        if first_message.get("type") == "turn_end":
+            print("Tura zakończona bez odpowiedzi głosowej — cykl poprawny.")
+            return
+        assert first_message.get("type") == "tts_start", (
+            f"Oczekiwano 'tts_start' albo 'turn_end', dostano '{first_message.get('type')}'."
+        )
         audio_bytes = 0
         while True:
             raw = await ws.recv()

@@ -128,6 +128,25 @@ async def test_full_tts_cycle_plays_audio_and_returns_to_listening() -> None:
 
 
 @pytest.mark.anyio
+async def test_turn_end_frame_returns_to_listening_without_sound() -> None:
+    """Tura bez odpowiedzi głosowej (serwer: `end_turn_without_speech`) zwalnia satelitę
+    natychmiast. Bez tej ramki satelita czekałaby na `tts_start`, który nigdy nie
+    przyjdzie — z wstrzymanym mikrofonem, czyli trwale głucha.
+
+    Cisza jest tu zamierzona: nic się nie zepsuło, więc żaden dźwięk nie ma prawa zagrać
+    (to nie jest `error`) i nie wysyłamy `playback_done` — nie było czego odtwarzać."""
+    session, link, speaker = _make_session(NeverTriggerVad())
+    session.state = SessionState.PROCESSING
+
+    await session.handle_server_frame({"type": ServerMessageType.TURN_END.value})
+
+    assert session.state == SessionState.LISTENING_WAKEWORD
+    assert speaker.played == []
+    assert speaker.cues == []
+    assert link.control_messages == []
+
+
+@pytest.mark.anyio
 async def test_error_frame_resets_to_listening() -> None:
     session, _, _ = _make_session(NeverTriggerVad())
     session.state = SessionState.RECORDING_UTTERANCE

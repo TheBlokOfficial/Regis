@@ -145,6 +145,11 @@ class SatelliteSession:
             self._response_buffer.clear()
         elif message_type == ServerMessageType.TTS_END:
             await self._on_tts_end()
+        elif message_type == ServerMessageType.TURN_END:
+            # Tura skończona, ale nie ma czego odtworzyć (np. model wykonał samo wywołanie
+            # narzędzia). Bez dźwięku — wracamy do nasłuchu, tak jakby nic nie zaszło.
+            logger.info("Tura zakończona bez odpowiedzi głosowej — wracam do nasłuchu.")
+            self._reset_to_listening()
         elif message_type == ServerMessageType.ERROR:
             logger.warning(f"Błąd zgłoszony przez serwer: {frame.get('detail')}")
             self._reset_to_listening()

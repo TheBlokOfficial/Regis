@@ -5,7 +5,7 @@ import httpx
 from shared import get_logger
 
 from server.config import load_settings
-from server.agent.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition
+from server.agent.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest, ToolDefinition
 
 logger = get_logger("regis.ai.llm.providers.ollama")
 
@@ -66,7 +66,7 @@ class OllamaProvider(BaseLLMProvider):
         messages: list[LLMMessage],
         tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str | ToolCallRequest]:
+    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest]:
         url = f"{self.base_url}/api/chat"
         payload: dict[str, Any] = {
             "model": kwargs.get("model", self._model),
@@ -91,7 +91,6 @@ class OllamaProvider(BaseLLMProvider):
         httpx_timeout = httpx.Timeout(timeout_val, connect=5.0)
 
         try:
-            in_thinking = False
             async with httpx.AsyncClient(timeout=httpx_timeout) as client:
                 async with client.stream("POST", url, json=payload) as response:
                     response.raise_for_status()
@@ -109,15 +108,11 @@ class OllamaProvider(BaseLLMProvider):
                             content = message_data.get("content", "")
                             raw_tool_calls = message_data.get("tool_calls")
 
+                            # Rozumowanie i odpowiedź to dwa różne typy zdarzenia, nie
+                            # jeden string ze znacznikiem — patrz `ReasoningChunk`.
                             if reasoning:
-                                if not in_thinking:
-                                    yield "<think>\n"
-                                    in_thinking = True
-                                yield reasoning
+                                yield ReasoningChunk(text=reasoning)
                             elif content:
-                                if in_thinking:
-                                    yield "\n</think>\n\n"
-                                    in_thinking = False
                                 yield content
 
                             if raw_tool_calls:
@@ -132,9 +127,6 @@ class OllamaProvider(BaseLLMProvider):
                                     )
                         except json.JSONDecodeError:
                             continue
-
-                    if in_thinking:
-                        yield "\n</think>\n\n"
         except httpx.ConnectError as e:
             logger.error(
                 f"Nie można połączyć się z serwerem Ollama pod adresem {self.base_url}. "

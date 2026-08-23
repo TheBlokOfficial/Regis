@@ -148,7 +148,13 @@ class ClientCapability(str, Enum):
 
 
 class SenderProfile(BaseModel):
-    """Jeden opaque `sender_id`: gdzie stoi (`room_id`) i co potrafi (`capabilities`).
+    """Jeden opaque `sender_id`: jak się nazywa (`display_name`), gdzie stoi (`room_id`)
+    i co potrafi (`capabilities`).
+
+    `display_name` to czysto ludzka etykieta — dokładny mirror
+    `DeclaredDeviceEntry.display_name`, bo klient stojący w pokoju jest takim samym bytem
+    World co żarówka. Adresowanie nadal idzie po opaque `sender_id`/pokoju, nigdy po
+    nazwie (patrz `docs/manifest.md`, "Adresowanie po natywnym ID, nie po nazwie").
 
     `room_id` to odsyłacz do `Room` (katalog World) — etykieta pokoju do promptu
     liczona jest w `WorldEngine.build()` z katalogu, nigdy przechowywana tutaj
@@ -162,6 +168,10 @@ class SenderProfile(BaseModel):
     przenosić przez siebie wiedzy o kanale (patrz `agent/context_provider.py`).
     """
 
+    display_name: str | None = Field(
+        default=None,
+        description="Przyjazna nazwa klienta — mirror DeclaredDeviceEntry.display_name; pusta = pokaż skrócone ID",
+    )
     room_id: str | None = Field(default=None, description="Odsyłacz do Room — jedyne źródło prawdy o lokalizacji nadawcy")
     capabilities: frozenset[ClientCapability] = Field(
         default_factory=frozenset, description="Co klient potrafi — mic/speaker/text"

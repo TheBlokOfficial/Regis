@@ -3,6 +3,7 @@ import { confirmModal } from '../modal_confirm.js';
 import { getSenderId } from '../sender_id.js';
 import { flashButtonResult, lockButtonForAction } from '../utils/button_flash.js';
 import { escapeAttr, escapeHtml } from '../utils/dom.js';
+import { senderLabel, shortSenderId } from '../utils/sender_label.js';
 import { showToast } from '../utils/toast.js';
 
 // Mapowanie SessionState.name (server/voice/session.py) -> etykieta PL widoczna na karcie.
@@ -10,19 +11,13 @@ const STATE_LABELS = {
   LISTENING_WAKEWORD: 'Nasłuchiwanie',
   RECORDING_UTTERANCE: 'Nagrywanie',
   PROCESSING: 'Przetwarzanie',
+  SYNTHESIZING: 'Synteza mowy',
   SPEAKING: 'Odpowiada',
 };
 
 // Ile trwa "zaświecenie" ikony mikrofonu + wyświetlenie pewności po wykryciu wake-worda —
 // czysto efemeryczne (nic nie jest trwale zapisywane, patrz server/voice/events.py).
 const WAKE_WORD_FLASH_MS = 1500;
-
-// Pełny UUID (36 znaków) jako "nazwa" klienta jest nieczytelny i wygląda jak
-// nagłówek, choć jest tylko identyfikatorem — pokazujemy sufiks, pełne ID
-// zostaje w atrybucie `title` (mirror maskowania tokenu HA, `config_panel.js`).
-function shortSenderId(senderId) {
-  return `…${senderId.slice(-8)}`;
-}
 
 // Wartości `ClientCapability` (server/world/models.py) — jedyne źródło prawdy o tym,
 // czym klient jest. UI NIE zgaduje typu (dawniej: porównanie z własnym localStorage,
@@ -321,6 +316,56 @@ export class VoiceConfigView {
     container.querySelectorAll('[data-delete-sender]')?.forEach((btn) => {
       btn.addEventListener('click', () => this._deleteSender(btn.getAttribute('data-delete-sender')));
     });
+    // Nazwa klienta — jedyne miejsce w całym UI, gdzie się ją nadaje (zakładka Świat
+    // pokazuje ją read-only, patrz `extensions/ha/satellites_panel.js`). Zapis na Enter
+    // albo utracie focusu; Escape przywraca poprzednią wartość bez żądania.
+    container.querySelectorAll('[data-rename-sender]')?.forEach((input) => {
+      const senderId = input.getAttribute('data-rename-sender');
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          // Zapis wprost, nie przez `blur()` — Enter ma zadziałać nawet wtedy, gdy
+          // przeniesienie focusu z jakiegoś powodu nie wygeneruje zdarzenia blur.
+          // Podwójnego żądania nie ma: `_renameSender` przestawia `defaultValue` od razu,
+          // więc następujący po nim blur widzi wartość niezmienioną i kończy się od razu.
+          this._renameSender(senderId, input);
+          input.blur();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          input.value = input.defaultValue;
+          input.blur();
+        }
+      });
+      input.addEventListener('blur', () => this._renameSender(senderId, input));
+    });
+  }
+
+  /** Zmiana nazwy to ten sam upsert co rejestracja — `POST /senders` jest jedynym
+   * wejściem do rejestru klientów. Pokój i możliwości przepisujemy z bieżącego wpisu,
+   * żeby nie zależeć od kolejności pól w żądaniu. */
+  async _renameSender(senderId, input) {
+    const previousName = input.defaultValue;
+    const nextName = input.value.trim();
+    if (nextName === previousName) return;
+
+    // Przestawiamy PRZED żądaniem — to jest jednocześnie strażnik przed drugim zapisem
+    // (Enter woła zapis wprost, a zaraz po nim leci jeszcze blur tego samego pola).
+    input.defaultValue = nextName;
+    const existing = this._registeredSenders?.find((s) => s.sender_id === senderId);
+    try {
+      await this.apiClient.registerSender({
+        sender_id: senderId,
+        display_name: nextName,
+        room_id: existing?.room_id ?? null,
+        capabilities: existing?.capabilities || [],
+      });
+      if (existing) existing.display_name = nextName || null;
+      showToast(nextName ? 'Zapisano nazwę klienta.' : 'Wyczyszczono nazwę klienta.', 'success');
+    } catch (error) {
+      input.defaultValue = previousName;
+      input.value = previousName;
+      showToast(error.message || 'Błąd zapisu nazwy klienta.', 'error');
+    }
   }
 
   _renderPendingRow(senderId, isThisBrowser) {
@@ -388,7 +433,10 @@ export class VoiceConfigView {
       <div class="voice-client-card" data-sender-id="${escapeAttr(senderId)}">
         <div class="voice-client-card-main">
           <div class="voice-client-card-title-row">
-            <span class="voice-client-card-name" title="${escapeAttr(senderId)}">${escapeHtml(shortSenderId(senderId))}</span>
+            <input type="text" class="voice-client-card-name-input" data-rename-sender="${escapeAttr(senderId)}"
+              value="${escapeAttr(sender.display_name || '')}"
+              placeholder="${escapeAttr(shortSenderId(senderId))}"
+              title="${escapeAttr(senderId)}" aria-label="Nazwa klienta" />
             ${badgeHtml}
           </div>
           <div class="voice-client-card-meta">

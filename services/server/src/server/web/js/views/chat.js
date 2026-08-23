@@ -426,7 +426,7 @@ export class ChatView {
           sessionId,
           {
             onUserMessage: (content) => this._onWatchUserMessage(sessionId, content),
-            onChunk: (chunk) => this._onWatchChunk(sessionId, chunk),
+            onChunk: (chunk, kind) => this._onWatchChunk(sessionId, chunk, kind),
             onToolStart: (evt) => this._onWatchToolStart(sessionId, evt),
             onToolResult: (evt) => this._onWatchToolResult(sessionId, evt),
             onDone: () => this._onWatchDone(sessionId),
@@ -463,8 +463,16 @@ export class ChatView {
     this.stepRail.reset(this.currentAssistantTextEl);
   }
 
-  _onWatchChunk(sessionId, chunk) {
+  _onWatchChunk(sessionId, chunk, kind = 'answer') {
     if (sessionId !== this.activeSessionId) return;
+    // Rozumowanie ma własną ścieżkę renderowania i NIE wchodzi do `accumulatedText` —
+    // ten bufor odzwierciedla treść odpowiedzi, względem której liczone są `text_offset`
+    // kroków ReAct (patrz `server/agent/engine.py`).
+    if (kind === 'reasoning') {
+      this.stepRail.appendReasoningText(chunk);
+      this.scrollToBottom();
+      return;
+    }
     this.accumulatedText += chunk;
     this.stepRail.appendStreamingText(chunk);
     this.scrollToBottom();
@@ -637,7 +645,11 @@ export class ChatView {
     const cursorHtml = isStreaming ? '<span class="streaming-cursor"></span>' : '';
     const formattedContent = isUser
       ? this.formatMessageText(content) + cursorHtml
-      : this.stepRail.renderAssistantHistoryHtml(content, (metadata && metadata.steps) || []) + cursorHtml;
+      : this.stepRail.renderAssistantHistoryHtml(
+          content,
+          (metadata && metadata.steps) || [],
+          (metadata && metadata.reasoning) || []
+        ) + cursorHtml;
 
     if (isUser) {
       row.innerHTML = `

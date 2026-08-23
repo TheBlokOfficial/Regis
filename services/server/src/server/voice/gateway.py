@@ -12,6 +12,7 @@ tego, czy to połączenie zainicjowało bieżącą turę.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Awaitable, Callable
 
@@ -63,6 +64,7 @@ class VoiceConnection:
         self._sender_states = sender_states
         self._pending_capabilities = pending_capabilities
         self._text_buffer = ""
+        self._speak_task: asyncio.Task[None] | None = None
         self.session = VoiceSession(
             sender_id=sender_id,
             link=self,
@@ -129,6 +131,11 @@ class VoiceConnection:
     # --------------------------------------------------------------------------
 
     async def _on_chunk(self, event: Event[Any]) -> None:
+        """Bufor mowy zbiera WYŁĄCZNIE tekst odpowiedzi. Rozumowanie modelu przychodzi tym
+        samym kanałem, ale oznaczone `kind: "reasoning"` (patrz `agent/llm.py::ReasoningChunk`)
+        — dopóki nie było tego rozróżnienia, satelita czytała na głos cały chain of thought."""
+        if event.payload.get("kind") == "reasoning":
+            return
         if event.payload.get("target_client_id") == self.sender_id:
             self._text_buffer += event.payload.get("chunk", "")
 
@@ -140,18 +147,45 @@ class VoiceConnection:
           (`speak_in_room`) — nie mam nic do powiedzenia, ale muszę wyjść z PROCESSING,
           inaczej zostałbym w nim na zawsze, czekając na `tts_start`, którego nigdy nie
           będzie.
+
+        **Każda** gałąź adresata kończy się jawnym wyjściem ze stanu przetwarzania —
+        także ta bez tekstu. Dawniej pusta odpowiedź kończyła się gołym `return`, co
+        zostawiało sesję w `PROCESSING` na zawsze (satelita z wstrzymanym mikrofonem
+        była wtedy trwale głucha aż do restartu).
         """
         payload = event.payload
         if payload.get("target_client_id") == self.sender_id:
             text = self._text_buffer
             self._text_buffer = ""
             if text.strip():
-                await self.session.speak(text)
+                self._start_speaking(text)
+            else:
+                await self.session.end_turn_without_speech()
             return
         if payload.get("session_id") == self.sender_id:
             self._text_buffer = ""
             logger.info(f"Tura dostarczona innemu klientowi [sender_id: '{self.sender_id}'] — wracam do nasłuchu.")
             await self.session.reset_to_listening()
+
+    def _start_speaking(self, text: str) -> None:
+        """Odpala syntezę POZA handlerem `EventBus`.
+
+        `EventBus.publish()` woła handlery sekwencyjnie i czeka na każdy — trzymanie tu
+        `await session.speak(...)` blokowało publikację `CHAT_DONE` do wszystkich
+        pozostałych subskrybentów (m.in. kanału SSE Web UI) na cały czas syntezy TTS,
+        czyli kilka sekund. Referencja jest trzymana, bo `asyncio` nie gwarantuje życia
+        zadania, do którego nikt się nie odwołuje."""
+        task = asyncio.create_task(self.session.speak(text))
+        self._speak_task = task
+
+        def _log_failure(finished: "asyncio.Task[None]") -> None:
+            if finished.cancelled():
+                return
+            err = finished.exception()
+            if err is not None:
+                logger.error(f"Nieobsłużony błąd syntezy [sender_id: '{self.sender_id}']: {err}")
+
+        task.add_done_callback(_log_failure)
 
     async def _on_error_or_cancelled(self, event: Event[Any]) -> None:
         """Bez tego handlera błąd/anulowanie tury (kernel nigdy nie doszedł do CHAT_DONE

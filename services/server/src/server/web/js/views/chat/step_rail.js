@@ -54,58 +54,55 @@ export class StepRailRenderer {
   // krokami). Kroki narzędzi (appendStepNode) i myślenie dokładają się do wspólnej szyny
   // (currentRailEl) — zamykanej dopiero przez kolejny fragment zwykłego tekstu.
 
+  /**
+   * Fragment ROZUMOWANIA modelu (`kind: 'reasoning'` w strumieniu). Rodzaj tokena
+   * przychodzi dziś z serwera jako osobne pole (patrz `server/agent/llm.py::ReasoningChunk`),
+   * więc nie ma tu czego zgadywać — dawniej ta sama informacja była odzyskiwana przez
+   * parsowanie znaczników `<think>` wewnątrz strumienia tekstu.
+   */
+  appendReasoningText(chunkText) {
+    if (!this.currentAssistantTextEl || !chunkText) return;
+    // Rozumowanie przerywa bieżący przebieg zwykłego tekstu — kolejny fragment odpowiedzi
+    // otworzy nowy przebieg pod szyną, dokładnie jak po kroku narzędzia.
+    if (this.currentTextRunEl) {
+      this.renderPlainTextRun(this.currentTextRunEl, this.currentTextRunText, false);
+      this.currentTextRunEl = null;
+      this.currentTextRunText = '';
+    }
+    this.pendingRunText = '';
+    if (!this.currentThinkEl) {
+      this.currentThinkRawText = '';
+      this.startThinkRailItem();
+    }
+    this.currentThinkRawText += chunkText;
+    this.updateThinkRailItemDom(this.currentThinkEl, this.currentThinkRawText, true);
+  }
+
   appendStreamingText(chunkText) {
     if (!this.currentAssistantTextEl) return;
 
+    // Pierwszy fragment odpowiedzi domyka otwarty blok myślenia — od tego momentu
+    // rozumowanie tego przebiegu jest kompletne.
     if (this.currentThinkEl) {
-      this.currentThinkRawText += chunkText;
-      const closeIdx = this.currentThinkRawText.indexOf('</think>');
-      if (closeIdx === -1) {
-        this.updateThinkRailItemDom(this.currentThinkEl, this.currentThinkRawText, true);
-        return;
-      }
-      const thinkContent = this.currentThinkRawText.slice(0, closeIdx);
-      const rest = this.currentThinkRawText.slice(closeIdx + 8);
-      this.updateThinkRailItemDom(this.currentThinkEl, thinkContent, false);
+      this.updateThinkRailItemDom(this.currentThinkEl, this.currentThinkRawText, false);
       this.currentThinkEl = null;
       this.currentThinkRawText = '';
-      if (rest) this.appendStreamingText(rest);
-      return;
     }
 
     if (this.currentTextRunEl) {
-      // Już potwierdzony zwykły tekst tego przebiegu — dopisujemy bez ponownego
-      // sprawdzania <think> (to rozstrzygnięte raz, na pierwszym fragmencie przebiegu).
       this.currentTextRunText += chunkText;
       this.renderPlainTextRun(this.currentTextRunEl, this.currentTextRunText, true);
       return;
     }
 
     // Świeża granica (po kroku/myśleniu albo na starcie tury) — buforujemy bez dotykania
-    // DOM, dopóki nie rozstrzygniemy, czy to zaczątek <think>, sam biały znak (model
-    // często wstawia pojedynczy "\n" między krokami pętli ReAct — to trzeba zignorować,
-    // inaczej fałszywie przerywa sekwencję rail i np. "Analiza" traci linię łączącą), czy
-    // realny tekst.
+    // DOM, dopóki nie rozstrzygniemy, czy to sam biały znak (model często wstawia
+    // pojedynczy "\n" między krokami pętli ReAct — to trzeba zignorować, inaczej fałszywie
+    // przerywa sekwencję rail i np. "Analiza" traci linię łączącą), czy realny tekst.
     this.pendingRunText = (this.pendingRunText || '') + chunkText;
-    const trimmed = this.pendingRunText.replace(/^\s+/, '');
-    const THINK_TAG = '<think>';
+    if (this.pendingRunText.replace(/^\s+/, '') === '') return;
 
-    if (trimmed === '') return;
-
-    if (trimmed.startsWith(THINK_TAG)) {
-      this.pendingRunText = '';
-      this.startThinkRailItem();
-      const afterTag = trimmed.slice(THINK_TAG.length);
-      if (afterTag) this.appendStreamingText(afterTag);
-      return;
-    }
-
-    if (THINK_TAG.startsWith(trimmed)) {
-      // Wciąż może się okazać początkiem <think> — czekamy na kolejne fragmenty.
-      return;
-    }
-
-    // To na pewno nie <think> — realny tekst przerywa sekwencję rail.
+    // Realny tekst przerywa sekwencję rail.
     this.closeCurrentRail();
     this.currentTextRunEl = document.createElement('div');
     this.currentTextRunEl.className = 'message-text-run';
@@ -126,8 +123,8 @@ export class StepRailRenderer {
     if (this.currentTextRunEl) {
       this.renderPlainTextRun(this.currentTextRunEl, this.currentTextRunText, false);
     }
-    // Bufor oczekujący na rozstrzygnięcie (sam biały znak, albo urwany w połowie "<think>"
-    // fragment gdy strumień się skończył) nigdy nie trafił do DOM — po prostu go porzucamy.
+    // Bufor oczekujący na rozstrzygnięcie (sam biały znak na granicy przebiegu) nigdy nie
+    // trafił do DOM — po prostu go porzucamy.
     this.pendingRunText = '';
   }
 
@@ -615,6 +612,7 @@ export class StepRailRenderer {
         callId: s.call_id,
         name: s.name,
         textOffset: s.text_offset,
+        seq: s.seq || 0,
         arguments: null,
         content: null,
         isError: null,
@@ -622,6 +620,7 @@ export class StepRailRenderer {
       if (s.type === 'tool_call') {
         existing.arguments = s.arguments;
         existing.textOffset = s.text_offset;
+        existing.seq = s.seq || 0;
       } else if (s.type === 'tool_result') {
         existing.content = s.content;
         existing.isError = s.is_error;
@@ -652,20 +651,29 @@ export class StepRailRenderer {
     return parts;
   }
 
-  // Dzieli pełny tekst finalnej odpowiedzi na segmenty tekst/krok wg `textOffset` zapisanego
-  // przy każdym kroku, po czym każdy segment tekstowy dodatkowo rozbija na tekst/myślenie —
-  // potrzebne tylko przy replayu z historii, gdzie nie mamy naturalnej kolejności zdarzeń
-  // SSE, tylko płaski tekst + listę kroków.
-  buildSegments(text, steps) {
-    const sorted = [...steps].sort((a, b) => a.textOffset - b.textOffset);
+  // Dzieli pełny tekst finalnej odpowiedzi na segmenty tekst/krok/myślenie wg `textOffset`
+  // zapisanego przy każdej pozycji szyny — potrzebne tylko przy replayu z historii, gdzie
+  // nie mamy naturalnej kolejności zdarzeń SSE, tylko płaski tekst + listy pozycji.
+  //
+  // Sortowanie po `seq` (globalny licznik chronologiczny z serwera), nie po samym offsecie:
+  // cała sekwencja myślenie -> narzędzie -> myślenie dzieje się przy TYM SAMYM offsecie,
+  // dopóki model nie napisze pierwszego znaku odpowiedzi, więc offset by ich nie rozróżnił.
+  // Wpisy legacy (bez `seq`) mają 0 i spadają na dawne sortowanie po offsecie — `sort` w JS
+  // jest stabilny, więc zachowują kolejność zapisu.
+  buildSegments(text, steps, reasoning = []) {
+    const railItems = [
+      ...steps.map((step) => ({ kind: 'step', step, seq: step.seq || 0, textOffset: step.textOffset })),
+      ...reasoning,
+    ].sort((a, b) => (a.seq || 0) - (b.seq || 0) || a.textOffset - b.textOffset);
+
     const rawSegments = [];
     let cursor = 0;
-    for (const step of sorted) {
-      const offset = Math.min(Math.max(step.textOffset, 0), text.length);
+    for (const item of railItems) {
+      const offset = Math.min(Math.max(item.textOffset, 0), text.length);
       if (offset > cursor) {
         rawSegments.push({ kind: 'text', content: text.slice(cursor, offset) });
       }
-      rawSegments.push({ kind: 'step', step });
+      rawSegments.push(item);
       cursor = offset;
     }
     if (cursor < text.length) {
@@ -744,10 +752,24 @@ export class StepRailRenderer {
 
   // Buduje statyczny HTML całej wiadomości assistant z historii (albo z pollingu, gdzie
   // rawSteps zawsze jest puste).
-  renderAssistantHistoryHtml(content, rawSteps) {
+  renderAssistantHistoryHtml(content, rawSteps, rawReasoning) {
     const steps = this.mergeStepPairs(rawSteps || []);
-    const segments = steps.length ? this.buildSegments(content, steps) : this.splitThinkFromText(content);
-    return this.renderGroupedSegments(segments);
+    const reasoning = (rawReasoning || []).map((run) => ({
+      kind: 'think',
+      content: run.content,
+      done: true,
+      seq: run.seq || 0,
+      textOffset: run.text_offset || 0,
+    }));
+
+    // Ścieżka legacy: wiadomości sprzed rozdzielenia rozumowania nie mają
+    // `metadata.reasoning`, tylko znaczniki `<think>` wprost w treści. Pliki w
+    // `data/sessions/` to realne dane użytkownika — nie migrujemy ich, tylko nadal
+    // umiemy je odczytać (`splitThinkFromText` jest dla nowych wiadomości martwe).
+    if (!steps.length && !reasoning.length) {
+      return this.renderGroupedSegments(this.splitThinkFromText(content));
+    }
+    return this.renderGroupedSegments(this.buildSegments(content, steps, reasoning));
   }
 
   formatRestContent(restText) {

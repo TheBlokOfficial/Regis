@@ -1,5 +1,6 @@
 import { renderSelectMarkup, initSelect } from '../../../components/select.js';
-import { escapeHtml } from '../../../utils/dom.js';
+import { escapeAttr, escapeHtml } from '../../../utils/dom.js';
+import { senderLabel } from '../../../utils/sender_label.js';
 
 /**
  * Panel "Nadawcy" — lista zarejestrowanych klientów z pickerem pokoju per wiersz.
@@ -25,7 +26,7 @@ export function renderSatellitesList(view) {
         .map(
           (s) => `
         <div class="ha-list-row">
-          <span class="ha-satellite-name">${escapeHtml(s.sender_id)}</span>
+          <span class="ha-satellite-name" title="${escapeAttr(s.sender_id)}">${escapeHtml(senderLabel(s))}</span>
           ${renderSelectMarkup(`ha-sender-room-${s.sender_id}`, { placeholder: '— brak pokoju —', className: 'select--compact ha-sender-room-select' })}
         </div>
       `

@@ -107,6 +107,7 @@ def _to_sender_dto(sender_id: str, profile: SenderProfile, rooms_by_id: dict[str
     room = rooms_by_id.get(profile.room_id) if profile.room_id else None
     return SenderProfileDTO(
         sender_id=sender_id,
+        display_name=profile.display_name,
         room_id=profile.room_id,
         room_name=room.name if room is not None else None,
         # Posortowane — `frozenset` nie ma kolejności, a UI renderuje to wprost;
@@ -273,7 +274,17 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
             if req.capabilities
             else (existing.capabilities if existing is not None else frozenset())
         )
-        profile = SenderProfile(room_id=req.room_id, capabilities=capabilities)
+        # Nazwa idzie tą samą logiką co capabilities: pominięta (`None`) znaczy "zachowaj",
+        # bo picker pokoju w zakładce Świat nic o niej nie wie i nie może jej kasować przy
+        # każdej zmianie przypisania. Wyczyszczenie nazwy jest osobną, jawną intencją —
+        # pusty string. `room_id` **nie** dostaje tej semantyki: tam `None` to legalne
+        # "— brak pokoju —" z tego samego pickera.
+        display_name = (
+            (existing.display_name if existing is not None else None)
+            if req.display_name is None
+            else (req.display_name.strip() or None)
+        )
+        profile = SenderProfile(display_name=display_name, room_id=req.room_id, capabilities=capabilities)
         await engine.register_sender(req.sender_id, profile)
         rooms_by_id = await engine.list_rooms()
         return _to_sender_dto(req.sender_id, profile, rooms_by_id)

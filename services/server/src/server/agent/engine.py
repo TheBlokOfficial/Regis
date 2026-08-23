@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import AsyncIterator, Any, Literal, TypedDict
 from shared import ChatResponseDTO, Event, EventBus, get_logger
-from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse, ToolCallRequest
+from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse, ReasoningChunk, ToolCallRequest
 from server.ai.llm import OllamaProvider
 from server.agent.context import ContextBuilder
 from server.agent.context_provider import NullWorldInterface, WorldInterface
@@ -19,18 +19,38 @@ class ToolStepPayload(TypedDict):
     `text_offset` to długość dotychczas zakumulowanego tekstu finalnej
     odpowiedzi assistant w momencie wystąpienia kroku — pozwala frontendowi
     wpleść node kroku między segmenty tekstu, zarówno w strumieniu live, jak
-    i przy replayu z `ChatMessageDTO.metadata["steps"]`. Kształt płaski (pola
+    i przy replayu z `ChatMessageDTO.metadata["steps"]`. `seq` rozstrzyga
+    kolejność tam, gdzie sam offset jej nie niesie: cała sekwencja
+    myślenie -> narzędzie -> myślenie dzieje się przy tym samym offsecie, dopóki
+    model nie napisze pierwszego znaku finalnej odpowiedzi. Kształt płaski (pola
     zawsze obecne, `None` gdy nieużywane w danym wariancie) zamiast opcjonalnych
     kluczy — prostszy do konsumpcji bez rozgałęzień w JS.
     """
 
     type: Literal["tool_call", "tool_result"]
+    seq: int
     call_id: str
     name: str
     text_offset: int
     arguments: dict[str, Any] | None
     content: str | None
     is_error: bool | None
+
+
+class ReasoningRunPayload(TypedDict):
+    """Jeden ciągły blok rozumowania modelu (chain of thought) w kolejności chronologicznej.
+
+    Mirror `ToolStepPayload` co do pary pól pozycjonujących (`seq`/`text_offset`), bo
+    z punktu widzenia odtwarzania tury myślenie i wywołanie narzędzia to ten sam rodzaj
+    bytu: coś, co wydarzyło się w konkretnym momencie pomiędzy fragmentami finalnego
+    tekstu. Trafia do `ChatMessageDTO.metadata["reasoning"]` — **nigdy** do `content`
+    wiadomości, bo `content` jest odsyłany do modelu w kolejnych turach i czytany na
+    głos przez TTS (patrz `agent/llm.py::ReasoningChunk`).
+    """
+
+    seq: int
+    text_offset: int
+    content: str
 
 
 @dataclass
@@ -178,6 +198,43 @@ class AgentEngine:
         self._generation_buffers[session_id] = ""
 
         steps: list[ToolStepPayload] = []
+        reasoning_runs: list[ReasoningRunPayload] = []
+        seq_counter = 0
+
+        def _next_seq() -> int:
+            nonlocal seq_counter
+            seq_counter += 1
+            return seq_counter
+
+        # Rozumowanie modelu akumuluje się w PRZEBIEGI (jeden przebieg = jeden ciągły blok
+        # myślenia), domykane przy pierwszym fragmencie odpowiedzi, przed wywołaniem
+        # narzędzia i na koniec iteracji. Bufor odpowiedzi (`_generation_buffers`) nie
+        # dostaje ani znaku rozumowania — to na nim liczą się `text_offset`, on trafia do
+        # pamięci sesji i on wraca do modelu w kolejnych turach.
+        current_reasoning = ""
+
+        def _flush_reasoning() -> None:
+            nonlocal current_reasoning
+            if not current_reasoning:
+                return
+            reasoning_runs.append(
+                {
+                    "seq": _next_seq(),
+                    "text_offset": len(self._generation_buffers.get(session_id, "")),
+                    "content": current_reasoning,
+                }
+            )
+            current_reasoning = ""
+
+        def _build_metadata(extra: dict[str, Any] | None = None) -> dict[str, Any] | None:
+            """Metadane finalnej wiadomości — klucze dokładane tylko gdy niepuste, żeby
+            wiadomość bez narzędzi i bez rozumowania została po prostu bez metadanych."""
+            metadata: dict[str, Any] = dict(extra or {})
+            if steps:
+                metadata["steps"] = steps
+            if reasoning_runs:
+                metadata["reasoning"] = reasoning_runs
+            return metadata or None
 
         try:
             # 2. Budowa kontekstu tej tury od zera przez silnik świata (WorldInterface)
@@ -206,11 +263,21 @@ class AgentEngine:
 
                 async for event in self.llm_provider.generate_stream(working_messages, tools=tool_defs):
                     if isinstance(event, ToolCallRequest):
+                        _flush_reasoning()
                         pending_calls.append(event)
                         continue
+                    if isinstance(event, ReasoningChunk):
+                        # Rozgłaszane na żywo (Web UI pokazuje myślenie w trakcie), ale poza
+                        # buforem odpowiedzi — odbiorca decyduje po `kind`, co z tym zrobić.
+                        current_reasoning += event.text
+                        await _publish(ServerEventType.CHAT_CHUNK, {"chunk": event.text, "kind": "reasoning"})
+                        continue
+                    _flush_reasoning()
                     turn_text += event
                     self._generation_buffers[session_id] = self._generation_buffers.get(session_id, "") + event
-                    await _publish(ServerEventType.CHAT_CHUNK, {"chunk": event})
+                    await _publish(ServerEventType.CHAT_CHUNK, {"chunk": event, "kind": "answer"})
+
+                _flush_reasoning()
 
                 if not pending_calls:
                     break
@@ -219,6 +286,7 @@ class AgentEngine:
                 for call in pending_calls:
                     step_start: ToolStepPayload = {
                         "type": "tool_call",
+                        "seq": _next_seq(),
                         "call_id": call.id,
                         "name": call.name,
                         "text_offset": len(self._generation_buffers.get(session_id, "")),
@@ -243,6 +311,7 @@ class AgentEngine:
 
                     step_result: ToolStepPayload = {
                         "type": "tool_result",
+                        "seq": _next_seq(),
                         "call_id": call.id,
                         "name": call.name,
                         "text_offset": len(self._generation_buffers.get(session_id, "")),
@@ -269,7 +338,7 @@ class AgentEngine:
                 session_id=session_id,
                 role="assistant",
                 content=full_assistant_text,
-                metadata={"steps": steps} if steps else None,
+                metadata=_build_metadata(),
             )
 
             await _publish(ServerEventType.CHAT_DONE, {})
@@ -283,7 +352,7 @@ class AgentEngine:
                     session_id=session_id,
                     role="assistant",
                     content=partial_text + " [Przerwano]",
-                    metadata={"steps": steps} if steps else None,
+                    metadata=_build_metadata(),
                 )
             await _publish(ServerEventType.CHAT_CANCELLED, {})
             raise
@@ -311,7 +380,7 @@ class AgentEngine:
                 session_id=session_id,
                 role="assistant",
                 content=persisted_content,
-                metadata={"is_error": True, "steps": steps} if steps else {"is_error": True},
+                metadata=_build_metadata({"is_error": True}),
             )
             await _publish(ServerEventType.CHAT_ERROR, {"error": user_facing_error})
             raise
@@ -341,7 +410,17 @@ class AgentEngine:
 
         async def on_chunk(event: Event[Any]) -> None:
             if event.payload.get("session_id") == session_id:
-                await queue.put(StreamEvent(type="chunk", payload={"chunk": event.payload.get("chunk", "")}))
+                # `kind` ("answer"/"reasoning") przechodzi dalej nietknięty — to odbiorca
+                # decyduje, co zrobić z rozumowaniem (Web UI pokazuje, TTS pomija).
+                await queue.put(
+                    StreamEvent(
+                        type="chunk",
+                        payload={
+                            "chunk": event.payload.get("chunk", ""),
+                            "kind": event.payload.get("kind", "answer"),
+                        },
+                    )
+                )
 
         async def on_tool_start(event: Event[Any]) -> None:
             if event.payload.get("session_id") == session_id:

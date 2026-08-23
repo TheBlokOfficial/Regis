@@ -87,17 +87,40 @@
   gap: 10px;
 }
 
-/* Identyfikator to metadana, nie tytuł — mirror `.agent-provider-card-meta`
-   (`providers.css`), nie `-name`: waga/rozmiar/kolor przygaszone, bo to, co
-   naprawdę interesuje w tym rzędzie, jest w badge online/offline obok. */
-.voice-client-card-name {
+/* Nazwa klienta jest edytowalna w miejscu (jedyne miejsce w UI, gdzie się ją nadaje),
+   ale ma WYGLĄDAĆ jak etykieta, dopóki jej nie dotkniesz — obramowanie i tło pojawiają
+   się dopiero na hover/focus. Placeholderem jest skrócony `sender_id` monospace'em, więc
+   klient bez nazwy wygląda dokładnie jak przed tą zmianą. Wymiary są stałe (`width`,
+   nie `auto`), więc wpisanie długiej nazwy nigdy nie przesuwa badge'a obok ani nie
+   zmienia wysokości karty (zasada stabilności layoutu, patrz komentarz przy
+   `_renderClientCard`). */
+.voice-client-card-name-input {
+  width: 180px;
+  height: 24px;
+  padding: 0 6px;
   font-size: 0.82rem;
   font-weight: 500;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  outline: none;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.voice-client-card-name-input::placeholder {
   font-family: var(--font-mono);
   color: var(--text-muted-aa);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.voice-client-card-name-input:hover {
+  border-color: var(--border-medium);
+}
+
+.voice-client-card-name-input:focus {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-focus);
 }
 
 /* Szerokość/kolor stałe niezależnie od treści ("online"/"offline" — ta sama

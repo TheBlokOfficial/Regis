@@ -117,9 +117,12 @@ class UpdateRoomRequest(BaseModel):
 
 
 class SenderProfileDTO(BaseModel):
-    """Nadawca dla API: gdzie stoi i co potrafi."""
+    """Nadawca dla API: jak się nazywa, gdzie stoi i co potrafi."""
 
     sender_id: str = Field(..., description="Opaque identyfikator nadawcy")
+    display_name: str | None = Field(
+        default=None, description="Przyjazna nazwa; pusta = UI pokazuje skrócony sender_id"
+    )
     room_id: str | None = Field(default=None)
     room_name: str | None = Field(default=None, description="Nazwa pokoju rozwiązana z room_id, do renderu w UI")
     capabilities: list[ClientCapability] = Field(
@@ -186,8 +189,12 @@ class PromptPreviewResponse(BaseModel):
 
 
 class RegisterSenderRequest(BaseModel):
-    """Żądanie dla POST /senders (upsert — służy i rejestracji, i zmianie pokoju)."""
+    """Żądanie dla POST /senders (upsert — służy i rejestracji, i zmianie pokoju/nazwy)."""
 
     sender_id: str = Field(...)
+    display_name: str | None = Field(
+        default=None,
+        description="Pominięte (None) zachowuje obecną nazwę; pusty string ją czyści",
+    )
     room_id: str | None = Field(default=None)
     capabilities: list[ClientCapability] = Field(default_factory=list)

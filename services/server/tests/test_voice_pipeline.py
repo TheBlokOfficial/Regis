@@ -31,12 +31,16 @@ class FakeLink:
     def __init__(self) -> None:
         self.control_messages: list[ServerMessageType] = []
         self.audio_chunks: list[bytes] = []
+        self.errors: list[str] = []
 
     async def send_control(self, message_type: ServerMessageType) -> None:
         self.control_messages.append(message_type)
 
     async def send_audio(self, chunk: bytes) -> None:
         self.audio_chunks.append(chunk)
+
+    async def send_error(self, detail: str) -> None:
+        self.errors.append(detail)
 
 
 class AlwaysTriggerWakeWordDetector:
@@ -84,6 +88,7 @@ async def _noop_publish_event(event_type, payload) -> None:
 def _make_session(
     wakeword_detector: WakeWordDetector,
     on_transcript,
+    tts_provider: BaseTTSProvider | None = None,
 ) -> tuple[VoiceSession, FakeLink]:
     link = FakeLink()
     session = VoiceSession(
@@ -91,7 +96,7 @@ def _make_session(
         link=link,
         wakeword_detector=wakeword_detector,
         stt_provider=FakeSTT(),
-        tts_provider=FakeTTS(),
+        tts_provider=tts_provider or FakeTTS(),
         on_transcript=on_transcript,
         publish_event=_noop_publish_event,
     )
@@ -202,6 +207,60 @@ async def test_playback_done_returns_to_listening_and_resets_detector():
 
     assert session.state.name == "LISTENING_WAKEWORD"
     assert detector.reset_count == 1
+
+
+@pytest.mark.anyio
+async def test_speak_returns_to_listening_when_tts_fails():
+    """Bez tego sesja zostawała w SPEAKING na zawsze: `speak()` jest wołane z handlera
+    `EventBus`, a ten połyka wyjątki (`shared/event_bus.py::publish`), więc błąd dostawcy
+    TTS nie miał jak nigdzie wypłynąć — satelita czekała na `tts_start`, którego nigdy
+    nie było, z wstrzymanym mikrofonem."""
+
+    class ExplodingTTS(BaseTTSProvider):
+        async def synthesize(self, text: str) -> bytes:
+            raise RuntimeError(f"401 Unauthorized [klucz konta {text}]")
+
+    session, link = _make_session(
+        AlwaysTriggerWakeWordDetector(), on_transcript=lambda t: None, tts_provider=ExplodingTTS()
+    )
+
+    await session.speak("Cześć!")
+
+    assert session.state.name == "LISTENING_WAKEWORD"
+    assert link.control_messages == []
+    assert len(link.errors) == 1
+    # Sanityzacja: szczegół dostawcy zostaje w logu, nie leci do satelity.
+    assert "401" not in link.errors[0]
+
+
+@pytest.mark.anyio
+async def test_speak_ends_turn_when_tts_returns_empty_audio():
+    class SilentTTS(BaseTTSProvider):
+        async def synthesize(self, text: str) -> bytes:
+            del text
+            return b""
+
+    session, link = _make_session(
+        AlwaysTriggerWakeWordDetector(), on_transcript=lambda t: None, tts_provider=SilentTTS()
+    )
+
+    await session.speak("Cześć!")
+
+    assert session.state.name == "LISTENING_WAKEWORD"
+    assert link.control_messages == [ServerMessageType.TURN_END]
+
+
+@pytest.mark.anyio
+async def test_end_turn_without_speech_sends_turn_end_and_returns_to_listening():
+    """Tura bez tekstu do wypowiedzenia (sam tool call / samo rozumowanie) musi jawnie
+    zwolnić satelitę — `turn_end`, nie `error`, bo nic się nie zepsuło."""
+    session, link = _make_session(AlwaysTriggerWakeWordDetector(), on_transcript=lambda t: None)
+
+    await session.end_turn_without_speech()
+
+    assert session.state.name == "LISTENING_WAKEWORD"
+    assert link.control_messages == [ServerMessageType.TURN_END]
+    assert link.errors == []
 
 
 @pytest.mark.anyio

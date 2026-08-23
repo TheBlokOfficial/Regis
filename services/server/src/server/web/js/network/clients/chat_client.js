@@ -128,6 +128,11 @@ export class ChatClient {
    * pojedynczej tury: leci dalej, aż wywołujący przerwie `signal` (AbortController).
    * Zwraca się (bez rzucania), gdy strumień serwera się zakończy z jakiegokolwiek powodu —
    * wywołujący decyduje, czy i kiedy ponowić połączenie.
+   *
+   * `onChunk(chunk, kind)` — `kind` to `'answer'` (treść odpowiedzi) albo `'reasoning'`
+   * (chain of thought). Rozróżnienie przychodzi z serwera jako osobne pole, nie jako
+   * znacznik w treści (patrz `server/agent/llm.py::ReasoningChunk`); starszy serwer bez
+   * tego pola jest traktowany jak `'answer'`.
    */
   async watchSession(
     sessionId,
@@ -162,7 +167,7 @@ export class ChatClient {
               if (onUserMessage) onUserMessage(parsed.content);
               break;
             case 'chunk':
-              if (onChunk) onChunk(parsed.chunk);
+              if (onChunk) onChunk(parsed.chunk, parsed.kind || 'answer');
               break;
             case 'tool_start':
               if (onToolStart) onToolStart(parsed);
@@ -233,7 +238,7 @@ export class ChatClient {
               const parsed = JSON.parse(rawData);
               switch (parsed.type) {
                 case 'chunk':
-                  if (onChunk) onChunk(parsed.chunk);
+                  if (onChunk) onChunk(parsed.chunk, parsed.kind || 'answer');
                   break;
                 case 'tool_start':
                   if (onToolStart) onToolStart(parsed);
