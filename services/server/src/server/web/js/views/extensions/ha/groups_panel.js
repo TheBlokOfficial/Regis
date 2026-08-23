@@ -50,10 +50,11 @@ export function renderGroupForm(view) {
               : options
                   .map(
                     (opt) => `
-                  <label class="ha-group-device-option">
-                    <input type="checkbox" value="${escapeAttr(opt.ref)}" />
+                  <button type="button" class="ha-group-device-option" role="checkbox"
+                    aria-checked="false" data-ref="${escapeAttr(opt.ref)}">
+                    <span class="ha-check">${Icons.Check()}</span>
                     <span>${escapeHtml(opt.label)}</span>
-                  </label>
+                  </button>
                 `
                   )
                   .join('')
@@ -66,6 +67,17 @@ export function renderGroupForm(view) {
       </div>
     </div>
   `;
+
+  // Ostatni natywny checkbox w projekcie zastapiony wlasnym przelacznikiem — zaznaczenie
+  // zyje na `aria-checked`, czyli tam, gdzie i tak musi byc dla czytnikow ekranu, zamiast
+  // w rownoleglym stanie JS.
+  formContainer.querySelectorAll('.ha-group-device-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('aria-checked') !== 'true';
+      btn.setAttribute('aria-checked', String(next));
+      btn.classList.toggle('is-checked', next);
+    });
+  });
 
   document.getElementById('ha-btn-save-group')?.addEventListener('click', () => handleCreateGroup(view));
   document.getElementById('ha-btn-cancel-group')?.addEventListener('click', () => {
@@ -86,7 +98,9 @@ export function bindGroupEvents(view) {
 
 async function handleCreateGroup(view) {
   const name = document.getElementById('ha-group-name')?.value.trim() || '';
-  const deviceIds = Array.from(view.container.querySelectorAll('.ha-group-device-option input:checked')).map((el) => el.value);
+  const deviceIds = Array.from(
+    view.container.querySelectorAll('.ha-group-device-option[aria-checked="true"]')
+  ).map((el) => el.getAttribute('data-ref'));
 
   if (!name) {
     view.showToast('Nazwa grupy jest wymagana.', 'error');

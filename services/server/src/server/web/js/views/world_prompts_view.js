@@ -6,10 +6,22 @@ import { showToast } from '../utils/toast.js';
 const MAX_PROFILES = 3;
 
 /**
- * Widok zarządzania profilami promptu Świata — lista profili (lewa kolumna)
- * i edytor inline (prawa kolumna). World jest jedynym autorem promptu tury,
- * gdy podłączony — ten CRUD (do 3 przełączalnych profili tożsamości) żył
- * wcześniej w agent/ ("Prompty"), dziś należy do world/ (patrz docs/manifest.md).
+ * Widok zarządzania profilami promptu Świata. World jest jedynym autorem promptu tury,
+ * gdy podłączony — ten CRUD (do 3 przełączalnych profili tożsamości) żył wcześniej
+ * w agent/ ("Prompty"), dziś należy do world/ (patrz docs/manifest.md).
+ *
+ * **Układ jednokolumnowy z pill-tabami, nie lista obok edytora.** Poprzedni wariant
+ * (wąska kolumna listy po lewej, edytor po prawej) miał trzy niezależne problemy, które
+ * wszystkie wynikały z tej samej pomyłki — traktowania trzech pozycji jak listy:
+ * kolumna miała stałą wysokość i ~380 px pustki pod dwoma wpisami, choć limit to i tak
+ * `MAX_PROFILES`; edytor dostawał połowę szerokości, więc pole Treść — najdłuższy tekst
+ * w całej aplikacji — pokazywało kilka linii i scrollowało się WEWNĄTRZ i tak
+ * scrollowanej strony; a akcje rozjeżdżały się na dwie kolumny. Przy trzech pozycjach
+ * właściwą kontrolką jest przełącznik, nie lista — stąd te same pill-taby co w nagłówku
+ * Ustawień (`components/pill_tabs.css`), a pod nimi edytor pełnej szerokości.
+ *
+ * Identyfikator profilu zszedł z pozycji nagłówka do stopki: to metadana techniczna,
+ * a nie tytuł, więc nie ma prawa konkurować wzrokowo z nazwą.
  */
 export class WorldPromptsView {
   constructor() {
@@ -32,20 +44,11 @@ export class WorldPromptsView {
   render() {
     return `
       <div class="wp-layout" id="wp-layout">
-        <div class="wp-panel-list">
-          <div class="wp-panel-header">
-            <span class="wp-panel-title">Prompty</span>
-            <button class="btn btn-sm btn-primary" id="wp-btn-new">${Icons.Plus()} Nowy</button>
-          </div>
-          <div class="wp-list" id="wp-list">
-            <div class="wp-list-loading">Ładowanie...</div>
-          </div>
-          <div class="wp-panel-footer" id="wp-panel-footer"></div>
-        </div>
+        <nav class="pill-tabs wp-profile-tabs" id="wp-list"></nav>
         <div class="wp-panel-editor" id="wp-panel-editor">
-          <div class="wp-editor-empty">
-            <div class="wp-editor-empty-icon">${Icons.Cpu()}</div>
-            <p>Wybierz prompt z listy lub utwórz nowy.</p>
+          <div class="skeleton-stack">
+            <div class="skeleton-block skeleton-block--field"></div>
+            <div class="skeleton-block skeleton-block--section"></div>
           </div>
         </div>
       </div>
@@ -54,7 +57,6 @@ export class WorldPromptsView {
 
   async init(apiClient) {
     this.apiClient = apiClient;
-    document.getElementById('wp-btn-new')?.addEventListener('click', () => this._enterNewMode());
     await this._loadAndRender();
   }
 
@@ -90,64 +92,44 @@ export class WorldPromptsView {
   _renderListError() {
     const list = document.getElementById('wp-list');
     if (list) list.innerHTML = `<div class="wp-list-error">Błąd ładowania listy profili promptu.</div>`;
-    const footer = document.getElementById('wp-panel-footer');
-    if (footer) footer.innerHTML = '';
   }
 
+  /** Przełącznik profili — pill-taby, bo pozycji jest najwyżej `MAX_PROFILES`.
+   * Kropka aktywności siedzi w samym tabie, więc widać ją bez wchodzenia w profil. */
   _renderList() {
     const list = document.getElementById('wp-list');
-    const footer = document.getElementById('wp-panel-footer');
-    const newBtn = document.getElementById('wp-btn-new');
     if (!list) return;
 
     const atLimit = this.prompts.length >= MAX_PROFILES;
-    if (newBtn) {
-      newBtn.disabled = atLimit;
-      newBtn.title = atLimit ? `Osiągnięto limit ${MAX_PROFILES} profili` : '';
-    }
-
-    if (this.prompts.length === 0) {
-      list.innerHTML = `
-        <div class="wp-list-empty">
-          <p>Brak zapisanych profili promptu.</p>
-          <button class="btn btn-sm btn-subtle" id="wp-btn-empty-new">+ Utwórz pierwszy profil</button>
-        </div>
-      `;
-      document.getElementById('wp-btn-empty-new')?.addEventListener('click', () => this._enterNewMode());
-      if (footer) footer.innerHTML = '';
-      return;
-    }
-
-    list.innerHTML = this.prompts
+    const tabs = this.prompts
       .map((p) => {
         const isActive = p.id === this.activeId;
         const isSelected = !this.isNewMode && p.id === this.selectedId;
         return `
-          <div class="wp-list-item ${isSelected ? 'selected' : ''} ${isActive ? 'is-active' : ''}" data-id="${escapeHtml(p.id)}" role="button" tabindex="0" ${isSelected ? 'aria-current="true"' : ''}>
-            <div class="wp-list-item-row">
-              <span class="wp-list-item-dot"></span>
-              <span class="wp-list-item-name" title="${escapeAttr(p.name)}">${escapeHtml(p.name)}</span>
-              ${isActive ? '<span class="wp-badge-active">Aktywny</span>' : ''}
-            </div>
-            ${p.description ? `<span class="wp-list-item-desc" title="${escapeAttr(p.description)}">${escapeHtml(p.description)}</span>` : ''}
-          </div>
+          <button type="button" class="pill-tab wp-profile-tab ${isSelected ? 'active' : ''}"
+            data-id="${escapeAttr(p.id)}" title="${escapeAttr(p.description || p.name)}"
+            ${isSelected ? 'aria-current="true"' : ''}>
+            ${isActive ? '<span class="wp-profile-tab-dot" title="Aktywny profil"></span>' : ''}
+            <span class="wp-profile-tab-name">${escapeHtml(p.name)}</span>
+          </button>
         `;
       })
       .join('');
 
-    list.querySelectorAll('.wp-list-item').forEach((el) => {
-      el.addEventListener('click', () => this._selectPrompt(el.getAttribute('data-id')));
-      el.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          this._selectPrompt(el.getAttribute('data-id'));
-        }
-      });
-    });
+    const newTab = `
+      <button type="button" class="pill-tab wp-profile-tab wp-profile-tab--new ${this.isNewMode ? 'active' : ''}"
+        id="wp-btn-new" ${atLimit ? 'disabled' : ''}
+        title="${atLimit ? `Osiągnięto limit ${MAX_PROFILES} profili` : 'Nowy profil'}">
+        ${Icons.Plus()} Nowy
+      </button>
+    `;
 
-    if (footer) {
-      footer.textContent = `${this.prompts.length} / ${MAX_PROFILES} profili`;
-    }
+    list.innerHTML = tabs + newTab;
+
+    list.querySelectorAll('.wp-profile-tab[data-id]').forEach((el) => {
+      el.addEventListener('click', () => this._selectPrompt(el.getAttribute('data-id')));
+    });
+    document.getElementById('wp-btn-new')?.addEventListener('click', () => this._enterNewMode());
   }
 
   async _confirmDiscard() {
@@ -198,61 +180,68 @@ export class WorldPromptsView {
     `;
   }
 
+  /**
+   * Jeden szablon edytora dla obu trybów (edycja istniejącego / nowy profil) — wcześniej
+   * były to dwa niemal identyczne bloki HTML, rozjeżdżające się przy każdej zmianie.
+   * Różnią się wyłącznie zawartością stopki i paska akcji.
+   */
+  _editorMarkup({ name, description, content, footerLeft, actionsRight, activateButton = '', namePlaceholder = '' }) {
+    return `
+      <div class="wp-editor">
+        <div class="wp-editor-topline">
+          <div class="wp-editor-identity">
+            <input type="text" id="wp-input-name" class="form-control wp-input-name"
+              value="${escapeAttr(name)}" placeholder="${escapeAttr(namePlaceholder || 'Nazwa profilu')}"
+              aria-label="Nazwa profilu" />
+            <input type="text" id="wp-input-desc" class="form-control wp-input-desc"
+              value="${escapeAttr(description)}" placeholder="Opis (opcjonalny)" aria-label="Opis profilu" />
+          </div>
+          <div class="wp-editor-topline-right">
+            <span class="wp-dirty-badge hidden" id="wp-dirty-badge">Niezapisane zmiany</span>
+            ${activateButton}
+          </div>
+        </div>
+
+        <div class="wp-editor-content-wrap">
+          <div class="wp-line-gutter" id="wp-line-gutter">1</div>
+          <textarea id="wp-input-content" class="form-control wp-editor-textarea"
+            placeholder="Treść instrukcji systemowej... (może być pusta)"
+            aria-label="Treść profilu">${escapeHtml(content)}</textarea>
+        </div>
+
+        <div class="wp-editor-actions">
+          <div class="wp-editor-actions-left">${footerLeft}</div>
+          <div class="wp-editor-actions-right" id="wp-delete-zone">${actionsRight}</div>
+        </div>
+      </div>
+    `;
+  }
+
   _renderEditor(prompt) {
     const panel = document.getElementById('wp-panel-editor');
     if (!panel) return;
     this.isDirty = false;
     const isActive = prompt.id === this.activeId;
 
-    panel.innerHTML = `
-      <div class="wp-editor">
-        <div class="wp-editor-header">
-          <div class="wp-editor-header-left">
-            <span class="badge-muted" title="Wewnętrzny identyfikator profilu">ID: ${escapeHtml(prompt.id)}</span>
-            <button class="wp-btn-copy-id" id="wp-btn-copy-id" title="Skopiuj ID profilu" aria-label="Skopiuj ID profilu">${Icons.Copy()}</button>
-            <span class="wp-dirty-badge hidden" id="wp-dirty-badge">● Niezapisane zmiany</span>
-          </div>
-          ${
-            !isActive
-              ? `<button class="btn btn-sm btn-subtle" id="wp-btn-activate" title="Ustaw jako aktywny profil promptu">Ustaw jako aktywny</button>`
-              : ''
-          }
-        </div>
-        <div class="wp-editor-fields">
-          <div class="form-group wp-field-compact">
-            <label for="wp-input-name">Nazwa</label>
-            <input type="text" id="wp-input-name" class="form-control" value="${escapeAttr(prompt.name)}" />
-          </div>
-          <div class="form-group wp-field-compact">
-            <label for="wp-input-desc">Opis (opcjonalny)</label>
-            <input type="text" id="wp-input-desc" class="form-control" value="${escapeAttr(prompt.description || '')}" />
-          </div>
-          <div class="form-group wp-editor-content-group">
-            <label for="wp-input-content">Treść</label>
-            <div class="wp-editor-content-wrap">
-              <div class="wp-line-gutter" id="wp-line-gutter">1</div>
-              <textarea id="wp-input-content" class="form-control wp-editor-textarea">${escapeHtml(prompt.content)}</textarea>
-            </div>
-            <div class="wp-content-meta">
-              <span class="wp-char-count" id="wp-char-count">0 znaków</span>
-            </div>
-          </div>
-        </div>
-        <div class="wp-editor-actions">
-          <div class="wp-editor-actions-left">
-            <button class="btn btn-primary" id="wp-btn-save" disabled>Zapisz</button>
-          </div>
-          <div class="wp-editor-actions-right" id="wp-delete-zone">
-            ${
-              isActive
-                ? `<span class="wp-delete-hint">Aby usunąć, najpierw ustaw inny profil jako aktywny</span>
-                   <button class="btn wp-btn-delete" id="wp-btn-delete" disabled title="Nie można usunąć aktywnego profilu">Usuń</button>`
-                : `<button class="btn wp-btn-delete" id="wp-btn-delete">Usuń</button>`
-            }
-          </div>
-        </div>
-      </div>
-    `;
+    panel.innerHTML = this._editorMarkup({
+      name: prompt.name,
+      description: prompt.description || '',
+      content: prompt.content,
+      activateButton: isActive
+        ? '<span class="wp-badge-active" title="Ten profil trafia do promptu tury">Aktywny</span>'
+        : '<button class="btn btn-sm btn-subtle" id="wp-btn-activate" title="Ustaw jako aktywny profil promptu">Ustaw jako aktywny</button>',
+      // Identyfikator to metadana, nie tytuł — stopka, nie nagłówek.
+      footerLeft: `
+        <button class="btn btn-primary" id="wp-btn-save" disabled>Zapisz</button>
+        <span class="wp-char-count" id="wp-char-count">0 znaków</span>
+        <button class="wp-btn-copy-id" id="wp-btn-copy-id" title="Skopiuj ID profilu: ${escapeAttr(prompt.id)}"
+          aria-label="Skopiuj ID profilu">${Icons.Copy()}<span>${escapeHtml(prompt.id)}</span></button>
+      `,
+      actionsRight: isActive
+        ? `<span class="wp-delete-hint">Aby usunąć, najpierw ustaw inny profil jako aktywny</span>
+           <button class="btn wp-btn-delete" id="wp-btn-delete" disabled title="Nie można usunąć aktywnego profilu">Usuń</button>`
+        : '<button class="btn wp-btn-delete" id="wp-btn-delete">Usuń</button>',
+    });
 
     document.getElementById('wp-btn-save')?.addEventListener('click', () => this._handleSave(prompt.id));
     if (!isActive) {
@@ -269,44 +258,17 @@ export class WorldPromptsView {
     if (!panel) return;
     this.isDirty = false;
 
-    panel.innerHTML = `
-      <div class="wp-editor">
-        <div class="wp-editor-header">
-          <div class="wp-editor-header-left">
-            <span class="badge-muted">Nowy profil</span>
-            <span class="wp-dirty-badge hidden" id="wp-dirty-badge">● Niezapisane zmiany</span>
-          </div>
-        </div>
-        <div class="wp-editor-fields">
-          <div class="form-group wp-field-compact">
-            <label for="wp-input-name">Nazwa</label>
-            <input type="text" id="wp-input-name" class="form-control" placeholder="np. Dom" />
-          </div>
-          <div class="form-group wp-field-compact">
-            <label for="wp-input-desc">Opis (opcjonalny)</label>
-            <input type="text" id="wp-input-desc" class="form-control" placeholder="Krótki opis przeznaczenia profilu" />
-          </div>
-          <div class="form-group wp-editor-content-group">
-            <label for="wp-input-content">Treść</label>
-            <div class="wp-editor-content-wrap">
-              <div class="wp-line-gutter" id="wp-line-gutter">1</div>
-              <textarea id="wp-input-content" class="form-control wp-editor-textarea" placeholder="Treść instrukcji systemowej... (może być pusta)"></textarea>
-            </div>
-            <div class="wp-content-meta">
-              <span class="wp-char-count" id="wp-char-count">0 znaków</span>
-            </div>
-          </div>
-        </div>
-        <div class="wp-editor-actions">
-          <div class="wp-editor-actions-left">
-            <button class="btn btn-primary" id="wp-btn-save">Zapisz</button>
-          </div>
-          <div class="wp-editor-actions-right">
-            <button class="btn btn-ghost" id="wp-btn-cancel-new">Anuluj</button>
-          </div>
-        </div>
-      </div>
-    `;
+    panel.innerHTML = this._editorMarkup({
+      name: '',
+      description: '',
+      content: '',
+      namePlaceholder: 'np. Dom',
+      footerLeft: `
+        <button class="btn btn-primary" id="wp-btn-save">Zapisz</button>
+        <span class="wp-char-count" id="wp-char-count">0 znaków</span>
+      `,
+      actionsRight: '<button class="btn btn-ghost" id="wp-btn-cancel-new">Anuluj</button>',
+    });
 
     document.getElementById('wp-btn-save')?.addEventListener('click', () => this._handleCreate());
     document.getElementById('wp-btn-cancel-new')?.addEventListener('click', () => {

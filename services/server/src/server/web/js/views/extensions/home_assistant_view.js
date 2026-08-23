@@ -70,6 +70,9 @@ export class HomeAssistantExtensionView {
     this.catalogState = 'idle';
     this._catalogPromise = null;
     this.searchQuery = '';
+    /** Zaznaczone wiersze zadeklarowanych urzadzen — czysto efemeryczny stan UI,
+     * uzywany wylacznie do przypisania pokoju hurtem (`ha/devices_panel.js`). */
+    this.selectedDeviceIds = new Set();
     this.senders = [];
     this.rooms = [];
 

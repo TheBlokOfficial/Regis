@@ -316,47 +316,178 @@
   border-top: 1px solid var(--border-subtle);
 }
 
-/* Lista zadeklarowanych urządzeń — jeden zewnętrzny border na cały kontener
-   (nie ramka na każdym elemencie), wiersze rozdzielone cienkim separatorem.
-   Wzorowane na `.ha-search-dropdown` (ta sama sekcja, spójny wzorzec). */
-.ha-declared-list {
+/* --------------------------------------------------------------------------
+   Zadeklarowane urządzenia — TABELA z nagłówkami, pogrupowana po pokojach.
+
+   Poprzednia wersja była płaską listą kart bez nagłówków kolumn, w której przy
+   realnej instalacji (siedem żarówek tego samego modelu) każdy wiersz wyglądał
+   identycznie: ten sam ucięty entity_id, ta sama nazwa, ten sam pokój, ten sam
+   powtórzony ciąg możliwości. Trzy zmiany naraz to naprawiają: nagłówki mówią,
+   co jest czym; identyfikator skraca się od środka, więc widać różnicujący sufiks;
+   a grupowanie po pokoju porządkuje listę wzdłuż jedynego wymiaru, który ma tu
+   sens (i tego samego, którego używa `WorldEngine` renderując urządzenia do promptu).
+   -------------------------------------------------------------------------- */
+.ha-declared-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Pasek akcji masowych zajmuje miejsce ZAWSZE, tylko znika wizualnie — inaczej
+   zaznaczenie pierwszego wiersza przesuwałoby całą tabelę w dół. */
+.ha-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.ha-bulk-bar.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ha-bulk-count {
+  font-size: 0.78rem;
+  color: var(--text-muted-aa);
+  white-space: nowrap;
+}
+
+.ha-declared-table {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  /* Bez `overflow: hidden` — patrz komentarz przy `.ha-list` wyżej, ten sam
-     powód (picker pokoju per wiersz to floating dropdown). */
+  /* Bez `overflow: hidden` — picker pokoju per wiersz to floating dropdown,
+     przycięcie zabrałoby mu widoczność (patrz `.ha-list` wyżej). */
 }
 
-.ha-declared-card {
-  display: flex;
+/* Siatka zamiast flexa: kolumny mają się pokrywać między wierszami I nagłówkiem,
+   a przy flexie każdy wiersz negocjowałby szerokości osobno. */
+.ha-declared-row {
+  display: grid;
+  grid-template-columns: 32px minmax(140px, 1.4fr) minmax(150px, 1.2fr) 78px 150px minmax(90px, 0.8fr) 40px;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 9px 14px;
   transition: background-color var(--transition-fast);
 }
 
-.ha-declared-card:first-child {
-  border-top-left-radius: var(--radius-lg);
-  border-top-right-radius: var(--radius-lg);
+.ha-declared-row--head {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.ha-declared-card:last-child {
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
-}
-
-.ha-declared-card + .ha-declared-card {
-  border-top: 1px solid var(--border-subtle);
-}
-
-.ha-declared-card:hover {
+.ha-declared-row:not(.ha-declared-row--head):hover {
   background-color: var(--bg-surface-hover);
 }
 
-.ha-declared-entity-id {
-  flex: 0 1 200px;
+/* Nagłówek pokoju — separator porządkujący, nie klikalna sekcja: przy kilku
+   urządzeniach na pokój zwijanie byłoby ceremonią bez zysku. */
+.ha-room-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background-color: var(--bg-base);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ha-room-group:first-child .ha-room-group-head {
+  border-top: none;
+}
+
+.ha-room-group-name {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ha-room-group-count {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.ha-col-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+}
+
+.ha-col-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Własny przełącznik zaznaczenia — projekt nie używa natywnych checkboxów.
+   Kwadrat ma stały rozmiar, a ptaszek tylko zmienia widoczność, więc zaznaczanie
+   nigdy nie przesuwa treści wiersza. */
+.ha-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--bg-base);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.ha-check svg.icon-svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.ha-check:hover {
+  border-color: var(--text-muted-aa);
+}
+
+.ha-check.is-checked,
+.ha-group-device-option.is-checked .ha-check {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.ha-check.is-checked svg.icon-svg,
+.ha-group-device-option.is-checked .ha-check svg.icon-svg {
+  opacity: 1;
+}
+
+/* Możliwości jako zwarte znaczniki — dla urządzeń tej samej domeny są identyczne,
+   więc jako powtórzony ciąg tekstu nie niosły żadnej informacji różnicującej. */
+.ha-cap-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-hover);
+  font-size: 0.68rem;
+  color: var(--text-muted-aa);
+  white-space: nowrap;
+}
+
+.ha-declared-entity-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--text-muted-aa);
@@ -399,42 +530,10 @@
   cursor: help;
 }
 
-/* Plakietka rodzaju — wyróżniona samym tłem, bez ramki (mniejszy ciężar wizualny
-   niż `.badge-chip`, ale nadal odróżnialna od otoczenia). */
-.ha-declared-kind {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  height: 23px;
-  padding: 0 8px;
-  border-radius: var(--radius-sm);
-  background-color: var(--bg-surface-hover);
-  color: #a0a0ab;
-  font-family: var(--font-mono);
-  font-size: 0.70rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* Możliwości urządzenia — zwykły wyciszony tekst rozdzielony " · ", bez tła
-   i bez ramek (informacja drugorzędna, nie wymaga wizualnego wyróżnienia). */
-.ha-declared-caps-text {
-  flex-shrink: 0;
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  color: var(--text-muted-aa);
-}
-
 /* Picker pokoju per urządzenie — custom select (`components/select.js`),
    wariant kompaktowy osadzony w gęstym wierszu. */
 .ha-declared-room-select {
-  flex-shrink: 0;
-  width: 150px;
+  width: 100%;
 }
 
 .ha-group-device-options {
@@ -450,9 +549,25 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
   font-size: 0.86rem;
   color: var(--text-primary);
+  text-align: left;
   cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.ha-group-device-option:hover {
+  background-color: var(--bg-surface-hover);
+}
+
+.ha-group-device-option:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
 }
 
 /* --------------------------------------------------------------------------
