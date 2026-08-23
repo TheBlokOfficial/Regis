@@ -122,6 +122,18 @@ export const Icons = {
     <polyline points="6 9 12 15 18 9"></polyline>
   `, "0 0 24 24", 'width="16" height="16"'),
 
+  // Uchwyt przeciągania (dwie kolumny kropek) — konwencja "chwyć tutaj" rozpoznawalna
+  // niezależnie od języka interfejsu. Kropki jako `circle`, nie glify tekstowe: te
+  // ostatnie zależą od kroju i renderują się różnie na Windows/Linux.
+  GripVertical: () => createSvg(`
+    <circle cx="9" cy="6" r="1.6" fill="currentColor" stroke="none"></circle>
+    <circle cx="9" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>
+    <circle cx="9" cy="18" r="1.6" fill="currentColor" stroke="none"></circle>
+    <circle cx="15" cy="6" r="1.6" fill="currentColor" stroke="none"></circle>
+    <circle cx="15" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>
+    <circle cx="15" cy="18" r="1.6" fill="currentColor" stroke="none"></circle>
+  `, "0 0 24 24", 'width="16" height="16"'),
+
   // Czat i Komunikacja
   MessageSquare: () => createSvg(`
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>

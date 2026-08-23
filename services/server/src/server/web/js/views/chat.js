@@ -1,4 +1,5 @@
 import { Icons } from '../icons.js';
+import { renderSelectMarkup, initSelect } from '../components/select.js';
 import { getSenderId } from '../sender_id.js';
 import { escapeHtml, escapeAttr } from '../utils/dom.js';
 import { showToast } from '../utils/toast.js';
@@ -85,10 +86,7 @@ export class ChatView {
               
               <div class="chat-input-bottom-bar">
                 <div class="chat-input-actions-left">
-                  <div class="chat-model-indicator">
-                    <span class="status-dot-pulse"></span>
-                    <span id="chat-active-model-name">Ładowanie...</span>
-                  </div>
+                  ${renderSelectMarkup('chat-model-switch', { placeholder: 'Ładowanie...', className: 'select--compact chat-model-select' })}
                 </div>
                 <button class="btn-chat-send" id="btn-chat-send" title="Wyślij">
                   <span id="icon-btn-chat-send"></span>
@@ -233,24 +231,56 @@ export class ChatView {
     }
   }
 
+  /**
+   * Szybka zmiana presetu LLM wprost z czatu — dotąd trzeba było wejść w Ustawienia.
+   *
+   * **Przełącza globalnie aktywny preset**, nie „model tej rozmowy": w systemie jest
+   * dokładnie jeden aktywny backend (`LLMRouter`, `server/ai/llm/router.py`), z którego
+   * korzystają też satelity głosowe. Model per sesja wymagałby rozwiązywania dostawcy
+   * per turę w kernelu — osobna, dużo większa zmiana.
+   *
+   * Dawna zielona kropka obok tej etykiety **została usunięta**: była zawsze zielona,
+   * niezależnie od czegokolwiek. Uczciwy wskaźnik stanu dostawcy wymagałby realnego
+   * pingu (`check_health()` istnieje, ale dla dostawców chmurowych sprawdza wyłącznie,
+   * czy klucz API jest niepusty), więc dekoracja udająca status poszła precz.
+   */
   async loadActiveProviderInfo() {
-    const modelNameEl = document.getElementById('chat-active-model-name');
-    if (!modelNameEl || !this.apiClient) return;
+    if (!this.apiClient) return;
 
+    let providers = [];
+    let activeId = null;
     try {
-      const providersData = await this.apiClient.getLLMProviders();
-      if (providersData && providersData.providers) {
-        const active = providersData.providers.find((p) => p.is_active) || providersData.providers[0];
-        if (active) {
-          const model = active.options?.model || 'domyślny';
-          modelNameEl.textContent = `${active.name} (${model})`;
-          return;
-        }
-      }
-      modelNameEl.textContent = 'Brak aktywnego dostawcy';
+      const data = await this.apiClient.getLLMProviders();
+      providers = data?.providers || [];
+      activeId = providers.find((p) => p.is_active)?.id ?? null;
     } catch {
-      modelNameEl.textContent = 'Nieznany model';
+      // Brak połączenia z serwerem — pusty picker z czytelnym placeholderem.
     }
+
+    const label = (p) => {
+      const model = p.options?.model || '';
+      // Nazwa presetu bywa równa nazwie modelu (tak powstawały presety przed
+      // wprowadzeniem edytowalnych nazw) — nie dublujemy jej wtedy w nawiasie.
+      return model && model !== p.name ? `${p.name} · ${model}` : p.name;
+    };
+
+    this.modelSwitch = initSelect({
+      idPrefix: 'chat-model-switch',
+      options: providers.map((p) => ({ value: p.id, label: label(p) })),
+      value: activeId ?? '',
+      placeholder: providers.length ? 'Wybierz preset' : 'Brak presetów',
+      onChange: async (providerId) => {
+        if (!providerId || providerId === activeId) return;
+        try {
+          await this.apiClient.setActiveLLMProvider(providerId);
+          activeId = providerId;
+          showToast('Przełączono preset LLM.', 'success');
+        } catch (err) {
+          this.modelSwitch?.setValue(activeId ?? '');
+          showToast(`Nie udało się przełączyć presetu: ${err.message}`, 'error');
+        }
+      },
+    });
   }
 
   async loadSessionsList() {

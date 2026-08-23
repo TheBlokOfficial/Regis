@@ -35,6 +35,18 @@ class SelectSTTProviderRequest(BaseModel):
     provider_id: str = Field(..., description="ID dostawcy STT do aktywacji")
 
 
+class UpdateProviderRequest(BaseModel):
+    """Żądanie dla PUT /api/v1/voice/{stt,tts}/providers/{id} — edycja istniejącej instancji.
+
+    Wspólne dla STT i TTS (identyczny kształt, zero pól specyficznych dla typu), mirror
+    `shared.contracts.UpdateLLMProviderRequest`. Typ jest niezmienny — jego zmiana
+    unieważniłaby wszystkie opcje. Pominięte pole sekretne zachowuje obecną wartość.
+    """
+
+    name: str | None = Field(default=None, description="Nowa nazwa; pominięta zachowuje obecną")
+    options: dict[str, Any] = Field(default_factory=dict, description="Opcje do nadpisania")
+
+
 class CreateSTTProviderRequest(BaseModel):
     """Żądanie dla POST /api/v1/voice/stt/providers."""
 

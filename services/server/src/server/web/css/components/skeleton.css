@@ -1,0 +1,66 @@
+/* ==========================================================================
+   SZKIELETY ŁADOWANIA
+
+   Nie chodzi o "ładny spinner", tylko o STABILNOŚĆ UKŁADU: dawny placeholder
+   ("Ładowanie konfiguracji Świata...") był jedną niską kartą, którą po chwili
+   zastępowała pełna, wysoka treść — kontenery skakały w pionie i to właśnie
+   było widoczne jako brzydki błysk, nie samo pojawienie się tekstu.
+
+   Szkielet ma więc odwzorowywać GEOMETRIĘ docelowej treści: te same nagłówki
+   sekcji, te same wysokości bloków. Zamiana szkieletu na treść ma tylko
+   wypełniać kształt, nigdy go nie zmieniać (zasada z pamięci projektu
+   "Stabilność layoutu w UI").
+   ========================================================================== */
+
+.skeleton-block {
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sheen 1.4s ease-in-out infinite;
+}
+
+/* Wysokości odpowiadają realnym blokom, nie okrągłym liczbom — patrz miejsca
+   użycia (`home_assistant_view.js`, `world_prompt_sections_view.js`). */
+.skeleton-block--row {
+  height: 44px;
+}
+
+.skeleton-block--field {
+  height: 66px;
+}
+
+.skeleton-block--card {
+  height: 98px;
+}
+
+.skeleton-block--section {
+  height: 172px;
+}
+
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@keyframes skeleton-sheen {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Ruch bywa męczący i nie niesie tu żadnej informacji — przy `prefers-reduced-motion`
+   zostaje sam, statyczny kształt. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block {
+    animation: none;
+  }
+}

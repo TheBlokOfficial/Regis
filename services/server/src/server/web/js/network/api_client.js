@@ -40,6 +40,12 @@ export class ApiClient {
   deleteLLMProvider(...args) {
     return this._agent.deleteLLMProvider(...args);
   }
+  updateLLMProvider(...args) {
+    return this._agent.updateLLMProvider(...args);
+  }
+  getLLMProviderModels(...args) {
+    return this._agent.getLLMProviderModels(...args);
+  }
   getAgentDefaultPrompt(...args) {
     return this._agent.getAgentDefaultPrompt(...args);
   }
@@ -196,6 +202,9 @@ export class ApiClient {
   deleteSttProvider(...args) {
     return this._voice.deleteSttProvider(...args);
   }
+  updateSttProvider(...args) {
+    return this._voice.updateSttProvider(...args);
+  }
   getTtsProviderSchemas(...args) {
     return this._voice.getTtsProviderSchemas(...args);
   }
@@ -210,5 +219,8 @@ export class ApiClient {
   }
   deleteTtsProvider(...args) {
     return this._voice.deleteTtsProvider(...args);
+  }
+  updateTtsProvider(...args) {
+    return this._voice.updateTtsProvider(...args);
   }
 }

@@ -24,9 +24,7 @@ export class ExtensionsView {
   render() {
     return `
       <div class="view-shell">
-        <div id="extensions-config-mount">
-          <div class="card card-loading">Ładowanie konfiguracji Świata...</div>
-        </div>
+        <div id="extensions-config-mount"></div>
         <h3 class="section-heading section-heading--spaced-sm">Prompty</h3>
         <div class="world-prompts-panel" id="world-prompts-panel"></div>
 
@@ -39,16 +37,22 @@ export class ExtensionsView {
   async init(apiClient) {
     this.apiClient = apiClient;
 
+    // Trzy panele montujemy RÓWNOLEGLE, nie po kolei. Każdy wstawia najpierw własny
+    // szkielet o docelowej geometrii (synchronicznie), więc pełna wysokość strony jest
+    // znana od pierwszej klatki — sekwencyjne `await` powodowało, że każdy panel
+    // dokładał się osobno i przesuwał kolejne w dół.
     const configMount = document.getElementById('extensions-config-mount');
-    await this.configView.mount(configMount, apiClient, this._showToast.bind(this));
-
     const promptsPanel = document.getElementById('world-prompts-panel');
-    promptsPanel.innerHTML = this.promptsView.render();
-    await this.promptsView.init(apiClient);
-
     const sectionsPanel = document.getElementById('world-prompt-sections-panel');
+
+    promptsPanel.innerHTML = this.promptsView.render();
     sectionsPanel.innerHTML = this.sectionsView.render();
-    await this.sectionsView.init(apiClient);
+
+    await Promise.all([
+      this.configView.mount(configMount, apiClient, this._showToast.bind(this)),
+      this.promptsView.init(apiClient),
+      this.sectionsView.init(apiClient),
+    ]);
   }
 
   hasUnsavedChanges() {

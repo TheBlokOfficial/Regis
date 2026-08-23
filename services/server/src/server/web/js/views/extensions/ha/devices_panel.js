@@ -21,14 +21,39 @@ export function renderSearchResults(view) {
   const resultsContainer = document.getElementById('ha-search-results');
   if (!resultsContainer) return;
 
-  const declaredIds = new Set(view.declaredDevices.map((d) => d.entity_id));
+  const hint = (text) => {
+    resultsContainer.innerHTML = `<p class="ha-empty-hint">${escapeHtml(text)}</p>`;
+  };
+
+  if (view.catalogState === 'loading') {
+    hint('Pobieram katalog encji z Home Assistant...');
+    return;
+  }
+  if (view.catalogState === 'idle') {
+    hint('Zacznij pisać, żeby przeszukać encje Home Assistant.');
+    return;
+  }
+  if (view.catalogState === 'error' || (view.catalog || []).length === 0) {
+    hint('Skonfiguruj serwer, aby zobaczyć dostępne encje.');
+    return;
+  }
+
   const query = view.searchQuery.trim().toLowerCase();
+  // Pusta fraza NIE wysypuje całego katalogu. Wcześniej tak było i przy realnej
+  // instalacji HA dawało setki wierszy nad zadeklarowaną listą — nie do przejrzenia
+  // i nie do niczego przydatne, bo i tak szuka się konkretnej encji po nazwie.
+  if (!query) {
+    hint(`Wpisz nazwę lub entity_id — dostępnych encji: ${(view.catalog || []).length}.`);
+    return;
+  }
+
+  const declaredIds = new Set(view.declaredDevices.map((d) => d.entity_id));
   const matches = (view.catalog || [])
     .filter((entry) => !declaredIds.has(entry.entity_id))
-    .filter((entry) => !query || entry.friendly_name.toLowerCase().includes(query) || entry.entity_id.toLowerCase().includes(query));
+    .filter((entry) => entry.friendly_name.toLowerCase().includes(query) || entry.entity_id.toLowerCase().includes(query));
 
   if (matches.length === 0) {
-    resultsContainer.innerHTML = `<p class="ha-empty-hint">${view.catalog.length === 0 ? 'Skonfiguruj serwer, aby zobaczyć dostępne encje.' : 'Brak pasujących encji.'}</p>`;
+    hint('Brak pasujących encji.');
     return;
   }
   resultsContainer.innerHTML = `
@@ -98,8 +123,21 @@ export function initDeclaredRoomSelects(view) {
 
 export function bindDeviceEvents(view) {
   const searchInput = document.getElementById('ha-search-input');
+  // Katalog encji dociąga się dopiero tutaj — przy pierwszym realnym kontakcie z
+  // wyszukiwarką, a nie przy wejściu w zakładkę (patrz `home_assistant_view.js`,
+  // `ensureCatalog`). To jedyny zasób tego widoku, który kosztuje żywe zapytanie
+  // do fizycznego Home Assistant.
+  const loadCatalogThenRender = () => {
+    renderSearchResults(view);
+    view.ensureCatalog().then(() => renderSearchResults(view));
+  };
+  searchInput?.addEventListener('focus', loadCatalogThenRender, { once: true });
   searchInput?.addEventListener('input', (e) => {
     view.searchQuery = e.target.value;
+    if (view.catalogState === 'idle') {
+      loadCatalogThenRender();
+      return;
+    }
     renderSearchResults(view);
   });
 

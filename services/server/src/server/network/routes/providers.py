@@ -5,9 +5,44 @@ from shared import (
     LLMProviderDTO,
     LLMProviderListResponse,
     ProviderMetadataResponse,
+    ProviderModelsResponse,
     SelectLLMProviderRequest,
+    UpdateLLMProviderRequest,
 )
 from server.ai.llm import BackendRegistry, LLMFactory, ProviderType
+from server.ai.llm.model_catalog import discover_models, fallback_options_schema
+
+
+def _secret_field_names(provider_type: str) -> set[str]:
+    """Pola oznaczone w schemacie dostawcy jako `password` — jedno źródło prawdy zarówno
+    dla maskowania w odpowiedzi, jak i dla zachowywania wartości przy edycji."""
+    return {
+        spec.name
+        for type_spec in LLMFactory.get_all_schemas().provider_types
+        if type_spec.type == provider_type
+        for spec in type_spec.options_schema
+        if spec.type == "password"
+    }
+
+
+def _merge_preserving_secrets(
+    provider_type: str, existing: dict[str, Any], incoming: dict[str, Any]
+) -> dict[str, Any]:
+    """Pole sekretne puste/pominięte w żądaniu **zachowuje** obecną wartość.
+
+    Frontend nigdy nie zna prawdziwego klucza API (GET zwraca go zamaskowanego kropkami),
+    więc nie może go odesłać z powrotem — bez tego każdy zapis formularza edycji
+    nadpisywałby klucz ciągiem kropek. Ten sam wzorzec co token Home Assistant
+    (`world/routes.py`).
+    """
+    merged = dict(incoming)
+    for field_name in _secret_field_names(provider_type):
+        if not str(merged.get(field_name, "")).strip():
+            if field_name in existing:
+                merged[field_name] = existing[field_name]
+            else:
+                merged.pop(field_name, None)
+    return merged
 
 
 def _mask_secret_options(provider_type: str, options: dict[str, Any]) -> dict[str, Any]:
@@ -17,13 +52,7 @@ def _mask_secret_options(provider_type: str, options: dict[str, Any]) -> dict[st
     pola sekretne są rozpoznawane na podstawie tego samego schematu, którego używa
     frontend do renderowania formularzy (LLMFactory.get_all_schemas(), Single Source of Truth).
     """
-    secret_fields = {
-        spec.name
-        for type_spec in LLMFactory.get_all_schemas().provider_types
-        if type_spec.type == provider_type
-        for spec in type_spec.options_schema
-        if spec.type == "password"
-    }
+    secret_fields = _secret_field_names(provider_type)
     if not secret_fields:
         return options
 
@@ -151,5 +180,60 @@ def create_providers_router(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(err),
             )
+
+    @router.put(
+        "/api/v1/llm/providers/{provider_id}",
+        response_model=LLMProviderDTO,
+        summary="Edytuje istniejący preset LLM (nazwa + opcje; typ jest niezmienny)",
+        tags=["LLM Providers"],
+    )
+    async def update_llm_provider(provider_id: str, req: UpdateLLMProviderRequest) -> LLMProviderDTO:
+        instances = await backend_registry.load_all_instances()
+        existing = instances.get(provider_id)
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dostawca LLM o ID '{provider_id}' nie istnieje.",
+            )
+
+        type_str = existing.type.value if hasattr(existing.type, "value") else str(existing.type)
+        merged = _merge_preserving_secrets(type_str, existing.options, req.options)
+        try:
+            updated = await backend_registry.update_instance(provider_id, req.name, merged)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+
+        active_id = await backend_registry.get_active_backend_id()
+        return LLMProviderDTO(
+            id=updated.id,
+            type=type_str,
+            name=updated.name,
+            options=_mask_secret_options(type_str, updated.options),
+            is_active=(updated.id == active_id),
+        )
+
+    @router.get(
+        "/api/v1/llm/providers/{provider_id}/models",
+        response_model=ProviderModelsResponse,
+        summary="Lista modeli dostępnych dla tego presetu wraz z formularzem parametrów każdego z nich",
+        tags=["LLM Providers"],
+    )
+    async def get_llm_provider_models(provider_id: str) -> ProviderModelsResponse:
+        """Odkrywanie idzie przez SERWER, nie z przeglądarki: zapytanie o listę modeli
+        wymaga klucza API presetu, a ten nigdy nie opuszcza serwera w jawnej postaci."""
+        instances = await backend_registry.load_all_instances()
+        config = instances.get(provider_id)
+        if config is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Dostawca LLM o ID '{provider_id}' nie istnieje.",
+            )
+
+        models, detail = await discover_models(config)
+        return ProviderModelsResponse(
+            models=models,
+            detail=detail,
+            fallback_options_schema=fallback_options_schema(config.type),
+        )
 
     return router

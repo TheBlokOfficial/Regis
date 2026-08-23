@@ -16,7 +16,9 @@ export class ProvidersView {
         getList: 'getLLMProviders',
         setActive: 'setActiveLLMProvider',
         create: 'createLLMProvider',
+        update: 'updateLLMProvider',
         delete_: 'deleteLLMProvider',
+        getModels: 'getLLMProviderModels',
       },
     });
     this.stt = new ProviderCrudSection({
@@ -27,6 +29,7 @@ export class ProvidersView {
         getList: 'getSttProviders',
         setActive: 'setActiveSttProvider',
         create: 'createSttProvider',
+        update: 'updateSttProvider',
         delete_: 'deleteSttProvider',
       },
     });
@@ -38,6 +41,7 @@ export class ProvidersView {
         getList: 'getTtsProviders',
         setActive: 'setActiveTtsProvider',
         create: 'createTtsProvider',
+        update: 'updateTtsProvider',
         delete_: 'deleteTtsProvider',
       },
     });

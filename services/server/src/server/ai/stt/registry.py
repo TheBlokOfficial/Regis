@@ -93,9 +93,12 @@ class STTRegistry:
         logger.info(f"Utworzono nową instancję STT [{name}] z ID: {instance_id}")
         return STTInstanceConfig(id=instance_id, **content.model_dump())
 
-    async def update_instance(self, backend_id: str, options: Dict[str, Any]) -> STTInstanceConfig:
-        """Nadpisuje `options` istniejącej instancji (typ/nazwa zostają) — używane przez
-        shim kompatybilności `PUT /api/v1/voice/providers/config` (`voice/provider_routes.py`)."""
+    async def update_instance(
+        self, backend_id: str, options: Dict[str, Any], name: Optional[str] = None
+    ) -> STTInstanceConfig:
+        """Nadpisuje `options` (i opcjonalnie nazwę) istniejącej instancji. **Typ zostaje
+        niezmienny** — jego zmiana unieważniłaby wszystkie opcje, więc byłoby to utworzenie
+        innego presetu, nie edycja tego samego. Mirror `ai/llm/registry.py`."""
         await self._ensure_default_instances()
         sanitize_identifier(backend_id, field_name="backend_id")
         file_path = self.backends_dir / f"{backend_id}.json"
@@ -104,7 +107,7 @@ class STTRegistry:
             if not file_path.exists():
                 raise ValueError(f"Instancja STT [{backend_id}] nie istnieje.")
             existing = await asyncio.to_thread(ConfigStore(STTInstanceFileContent, file_path).load)
-            updated = existing.model_copy(update={"options": options})
+            updated = existing.model_copy(update={"name": name or existing.name, "options": options})
             await asyncio.to_thread(ConfigStore(STTInstanceFileContent, file_path).save, updated)
 
         return STTInstanceConfig(id=backend_id, **updated.model_dump())

@@ -349,15 +349,32 @@
   gap: 12px;
 }
 
-.chat-model-indicator {
-  display: flex;
-  align-items: center;
+/* Wybór presetu LLM wprost z paska wprowadzania — dawniej statyczna etykieta z
+   ozdobną, ZAWSZE zieloną kropką (usunięta: udawała status, którego nikt nie
+   sprawdzał). Wygląda jak dawna etykieta — pigułka, wyciszony tekst — dopóki się
+   jej nie dotknie; dopiero hover/otwarcie zdradza, że to kontrolka. */
+.chat-model-select .select-trigger {
+  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  color: var(--text-secondary);
   font-size: 0.8rem;
   font-weight: 500;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
-  padding: 4px 12px;
-  border-radius: 12px;
+  max-width: 320px;
+}
+
+.chat-model-select .select-trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+/* Menu otwiera się W GÓRĘ — kontrolka siedzi przy dolnej krawędzi okna, więc
+   domyślne rozwijanie w dół chowałoby listę poza ekranem. */
+.chat-model-select .select-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .btn-icon-subtle {

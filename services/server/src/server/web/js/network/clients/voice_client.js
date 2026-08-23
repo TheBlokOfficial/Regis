@@ -204,6 +204,24 @@ export class VoiceClient {
     }
   }
 
+  async updateSttProvider(providerId, providerData) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/voice/stt/providers/${providerId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(providerData),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd edycji dostawcy STT:', error);
+      throw error;
+    }
+  }
+
   async deleteSttProvider(providerId) {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/voice/stt/providers/${providerId}`, {
@@ -282,6 +300,24 @@ export class VoiceClient {
       return await response.json();
     } catch (error) {
       console.error('[ApiClient] Błąd tworzenia dostawcy TTS:', error);
+      throw error;
+    }
+  }
+
+  async updateTtsProvider(providerId, providerData) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/voice/tts/providers/${providerId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(providerData),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd edycji dostawcy TTS:', error);
       throw error;
     }
   }

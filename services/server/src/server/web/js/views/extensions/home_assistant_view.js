@@ -5,6 +5,33 @@ import { renderGroupsList, renderGroupForm, bindGroupEvents } from './ha/groups_
 import { renderSatellitesList, initSatelliteRoomSelects } from './ha/satellites_panel.js';
 
 /**
+ * Szkielet o GEOMETRII docelowego widoku — te same nagłówki sekcji i zbliżone
+ * wysokości bloków. Chodzi wyłącznie o to, żeby wejście w zakładkę nie przesuwało
+ * kontenerów w pionie: dawny placeholder był jedną niską kartą, którą zastępowała
+ * pełna, wysoka treść (patrz `css/components/skeleton.css`).
+ */
+function renderSkeleton() {
+  const section = (title, blocks) => `
+    <section class="ha-section">
+      <h3 class="section-heading">${title}</h3>
+      <div class="skeleton-stack">${blocks}</div>
+    </section>
+  `;
+  const block = (modifier, count = 1) =>
+    Array.from({ length: count }, () => `<div class="skeleton-block ${modifier}"></div>`).join('');
+
+  return `
+    <div class="ha-view" aria-busy="true">
+      ${section('Konfiguracja', block('skeleton-block--field', 2))}
+      ${section('Pokoje', block('skeleton-block--row', 2))}
+      ${section('Urządzenia', block('skeleton-block--field') + block('skeleton-block--row', 3))}
+      ${section('Grupy', block('skeleton-block--row', 2))}
+      ${section('Nadawcy', block('skeleton-block--row', 2))}
+    </div>
+  `;
+}
+
+/**
  * Widok konfiguracji silnika świata (WorldEngine) — w pełni domenowy (nie
  * generyczny/schema-driven, w przeciwieństwie do formularzy dostawców LLM).
  * Pięć sekcji: Konfiguracja (singleton Home Assistant — jeden
@@ -39,6 +66,9 @@ export class HomeAssistantExtensionView {
     this.declaredDevices = [];
     this.groups = [];
     this.catalog = [];
+    // 'idle' -> nikt jeszcze nie tknął wyszukiwarki, katalogu nie pobieramy w ogóle.
+    this.catalogState = 'idle';
+    this._catalogPromise = null;
     this.searchQuery = '';
     this.senders = [];
     this.rooms = [];
@@ -50,36 +80,70 @@ export class HomeAssistantExtensionView {
     this.container = container;
     this.apiClient = apiClient;
     this.showToast = showToast;
+    // Szkielet leci SYNCHRONICZNIE, zanim poleci pierwszy request — inaczej kontener
+    // ma przez moment zerową wysokość i cała strona podskakuje, gdy treść dojedzie.
+    this.container.innerHTML = renderSkeleton();
     await this._loadAndRender();
   }
 
   async _loadAndRender() {
-    const [config, declared, groups, catalog, senders, rooms] = await Promise.all([
+    // Katalog encji HA jest tu świadomie NIEOBECNY. To jedyny z tych zasobów, który
+    // realnie kosztuje (żywe HTTP do fizycznego Home Assistant, zero cache po stronie
+    // `WorldEngine`), a potrzebuje go wyłącznie wyszukiwarka urządzeń — dociągamy go
+    // przy pierwszym użyciu pola szukania (`ensureCatalog`), nie przy wejściu w zakładkę.
+    const [config, declared, groups, senders, rooms] = await Promise.all([
       this.apiClient.getHAConfig(),
       this.apiClient.getHADeclaredDevices(),
       this.apiClient.getHAGroups(),
-      this.apiClient.getHACatalog(),
       this.apiClient.getSenders(),
       this.apiClient.getRooms(),
     ]);
     this.config = config || { base_url: '', access_token: '' };
     this.declaredDevices = declared || [];
     this.groups = groups || [];
-    this.catalog = catalog || [];
     this.senders = senders || [];
     this.rooms = rooms || [];
     this._render();
   }
 
   /**
-   * Odświeżenie po typowej mutacji (pokój/urządzenie/grupa/nadawca) — bez
-   * `getHACatalog()`, jedynego z sześciu zasobów, który realnie kosztuje
-   * (żywe zapytanie HTTP do fizycznego Home Assistant, zero cache po stronie
-   * `WorldEngine`). Katalog nie jest potrzebny do poprawnego odświeżenia
-   * żadnej z list w tym widoku (wyszukiwarka filtruje względem świeżych
-   * `declaredDevices`, pickery pokoju budują opcje ze świeżych `rooms`) —
-   * realnie zmienia się tylko po zapisie Konfiguracji (`_loadAndRender()`
-   * tam zostaje w użyciu).
+   * Dociąga surowy katalog encji Home Assistant — dokładnie raz, przy pierwszym
+   * realnym użyciu wyszukiwarki. Kolejne wywołania zwracają tę samą, już rozpoczętą
+   * obietnicę, żeby szybkie wpisywanie nie odpaliło N równoległych zapytań do HA.
+   */
+  ensureCatalog() {
+    if (this.catalogState === 'ready') return Promise.resolve();
+    if (this._catalogPromise) return this._catalogPromise;
+
+    this.catalogState = 'loading';
+    this._catalogPromise = this.apiClient
+      .getHACatalog()
+      .then((catalog) => {
+        this.catalog = catalog || [];
+        this.catalogState = 'ready';
+      })
+      .catch((error) => {
+        this.catalogState = 'error';
+        this.showToast?.(error.message || 'Nie udało się pobrać katalogu encji.', 'error');
+      })
+      .finally(() => {
+        this._catalogPromise = null;
+      });
+    return this._catalogPromise;
+  }
+
+  /** Wołane po zapisie konfiguracji HA — patrz `ha/config_panel.js`. */
+  invalidateCatalog() {
+    this.catalog = [];
+    this.catalogState = 'idle';
+    this._catalogPromise = null;
+  }
+
+  /**
+   * Odświeżenie po typowej mutacji (pokój/urządzenie/grupa/nadawca). Nie rusza
+   * katalogu — nie jest potrzebny do poprawnego odświeżenia żadnej z list tego widoku
+   * (wyszukiwarka filtruje względem świeżych `declaredDevices`, pickery pokoju budują
+   * opcje ze świeżych `rooms`), a raz pobrany zostaje w pamięci widoku.
    */
   async _refresh() {
     const [config, declared, groups, senders, rooms] = await Promise.all([

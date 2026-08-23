@@ -43,9 +43,29 @@ class CreateLLMProviderRequest(BaseModel):
     custom_id: str | None = Field(default=None, description="Opcjonalne własne ID")
 
 
+class UpdateLLMProviderRequest(BaseModel):
+    """Żądanie dla PUT /api/v1/llm/providers/{id} — edycja istniejącego presetu.
+
+    Typ jest niezmienny (zmiana unieważniłaby wszystkie opcje), więc go tu nie ma.
+    Pole sekretne (`api_key`) pominięte w `options` **zachowuje** obecną wartość —
+    frontend nigdy nie zna jej w jawnej postaci (GET maskuje), więc nie mógłby jej
+    odesłać z powrotem; ten sam wzorzec co token Home Assistant.
+    """
+
+    name: str | None = Field(default=None, description="Nowa nazwa presetu; pominięta zachowuje obecną")
+    options: dict[str, Any] = Field(default_factory=dict, description="Opcje do nadpisania")
+
+
 # ==========================================================================
 # GENERYCZNA SPECYFIKACJA OPCJI DOSTAWCÓW LLM (CLEAN SOLID CONTRACTS)
 # ==========================================================================
+
+
+class ProviderOptionChoice(BaseModel):
+    """Jedna dopuszczalna wartość pola typu `enum` (np. reasoning_effort: low/medium/high)."""
+
+    value: str = Field(..., description="Wartość zapisywana w options")
+    label: str = Field(..., description="Etykieta w interfejsie")
 
 
 class ProviderOptionSpec(BaseModel):
@@ -53,19 +73,59 @@ class ProviderOptionSpec(BaseModel):
 
     name: str = Field(..., description="Klucz pola w dict options (np. model, base_url, api_key)")
     label: str = Field(..., description="Etykieta wyświetlana w interfejsie")
-    type: str = Field(default="string", description="Typ pola HTML (string, password, number)")
+    type: str = Field(default="string", description="Typ pola (string, password, number, enum, bool)")
     required: bool = Field(default=True, description="Czy pole jest wymagane")
     default_value: str | None = Field(default=None, description="Domyślna wartość")
     placeholder: str | None = Field(default=None, description="Tekst zastępczy (placeholder)")
+    choices: list[ProviderOptionChoice] = Field(
+        default_factory=list, description="Dopuszczalne wartości — wyłącznie dla type='enum'"
+    )
+    hint: str | None = Field(
+        default=None, description="Jednozdaniowe wyjaśnienie pod polem — po co ten parametr istnieje"
+    )
 
 
 class ProviderTypeSpecDTO(BaseModel):
-    """Specyfikacja typu dostawcy LLM zawierająca zestaw jego wymaganych opcji."""
+    """Specyfikacja typu dostawcy LLM zawierająca zestaw jego wymaganych opcji.
+
+    `options_schema` to pola NIEZALEŻNE od wybranego modelu (klucz API, adres serwera).
+    Parametry generacji są per model i przychodzą osobno, z `GET .../providers/{id}/models`
+    — bo `reasoning_effort` istnieje dla gpt-oss, a nie istnieje dla llamy, i żadna
+    wspólna lista pól nie opisze obu naraz.
+    """
 
     type: str = Field(..., description="Identyfikator typu (np. OLLAMA, OPENROUTER dla LLM, HOME_ASSISTANT dla integracji)")
     label: str = Field(..., description="Wyświetlana nazwa typu")
     options_schema: list[ProviderOptionSpec] = Field(
-        default_factory=list, description="Lista specyfikacji pól konfiguracyjnych"
+        default_factory=list, description="Pola niezależne od modelu (klucz API, base_url)"
+    )
+    supports_model_discovery: bool = Field(
+        default=False, description="Czy `GET .../providers/{id}/models` zwróci dla tego typu realną listę"
+    )
+
+
+class ModelSpecDTO(BaseModel):
+    """Jeden model dostawcy wraz z formularzem parametrów, które akurat ON rozumie."""
+
+    id: str = Field(..., description="Identyfikator modelu wysyłany do API dostawcy")
+    label: str = Field(..., description="Nazwa w interfejsie")
+    options_schema: list[ProviderOptionSpec] = Field(
+        default_factory=list, description="Parametry generacji wspierane przez ten model"
+    )
+
+
+class ProviderModelsResponse(BaseModel):
+    """Odpowiedź dla GET /api/v1/llm/providers/{id}/models.
+
+    `detail` niesie powód pustej listy (brak klucza, padnięty serwer Ollamy) — UI pokazuje
+    go zamiast udawać, że dostawca po prostu nie ma modeli.
+    """
+
+    models: list[ModelSpecDTO] = Field(default_factory=list)
+    detail: str | None = Field(default=None)
+    fallback_options_schema: list[ProviderOptionSpec] = Field(
+        default_factory=list,
+        description="Formularz dla modelu wpisanego ręcznie, spoza listy (zawsze wolno)",
     )
 
 

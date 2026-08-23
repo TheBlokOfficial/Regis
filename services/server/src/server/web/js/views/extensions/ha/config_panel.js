@@ -86,6 +86,10 @@ async function handleSaveConfig(view) {
     const payload = { base_url: baseUrl, ...(token ? { access_token: token } : {}) };
     await view.apiClient.updateHAConfig(payload);
     view.showToast('Zapisano konfigurację.', 'success');
+    // Zmiana adresu/tokenu to jedyna rzecz, która realnie unieważnia raz pobrany
+    // katalog encji — kasujemy go, żeby wyszukiwarka dociągnęła go od nowa (leniwie,
+    // przy pierwszym użyciu), zamiast filtrować listę z poprzedniego serwera.
+    view.invalidateCatalog();
     await view._loadAndRender();
   } catch (error) {
     view.showToast(error.message || 'Błąd zapisu konfiguracji.', 'error');

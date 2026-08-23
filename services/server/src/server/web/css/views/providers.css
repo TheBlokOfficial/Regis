@@ -91,29 +91,60 @@
   gap: 12px;
 }
 
+/* Karta jest kontenerem NAGŁÓWKA (zawsze widoczny) i EDYTORA (rozwijany) — dawniej
+   sama była poziomym rzędem, bo nie miała czego chować. Poziomy układ zszedł piętro
+   niżej, do `.agent-provider-card-head`. */
 .agent-provider-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px 22px;
   background-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-left: 3px solid transparent;
   border-radius: var(--radius-xl);
-  cursor: pointer;
   transition: all var(--transition-fast);
+  overflow: hidden;
+}
+
+.agent-provider-card-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  cursor: pointer;
+}
+
+/* Chevron obraca się o 90°, nie 180° — ta sama konwencja co `.thinking-chevron`
+   w czacie i `.select-chevron` w dropdownie. */
+.agent-provider-card-chevron {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+
+.agent-provider-card.is-expanded .agent-provider-card-chevron {
+  transform: rotate(90deg);
+  color: var(--text-secondary);
+}
+
+.agent-provider-card-head .agent-provider-card-main {
+  flex: 1 1 auto;
+}
+
+.agent-provider-card-activate {
+  flex-shrink: 0;
 }
 
 .agent-provider-card:hover {
   border-color: var(--border-medium);
-  background-color: var(--bg-surface-hover);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 
-.agent-provider-card:focus-visible {
+.agent-provider-card-head:hover {
+  background-color: var(--bg-surface-hover);
+}
+
+.agent-provider-card-head:focus-visible {
   outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 /* Jeden, czytelny sygnał *koloru* (akcent lewej krawędzi) — ale sama karta
@@ -121,26 +152,21 @@
    między --bg-base i --bg-surface — wystarczająco ciemne żeby odróżnić od
    klikalnych kart, ale nie "znikające" w tle) i lekko wyciszony tekst nazwy —
    standardowy język "zaznaczone = niedostępne do interakcji". */
+/* Aktywny preset zachowuje zielony akcent lewej krawędzi, ale — w odróżnieniu od
+   poprzedniej wersji — nie jest już "zablokowany": kliknięcie karty rozwija edytor,
+   a nie aktywuje (aktywacja ma własny przycisk). Stąd zniknął `cursor: default`
+   i wyciszenie nazwy. */
 .agent-provider-card.is-active {
-  cursor: default;
   background-color: var(--bg-sidebar);
   border-left-color: var(--accent-success);
-}
-
-.agent-provider-card.is-active .agent-provider-card-name {
-  color: var(--text-secondary);
 }
 
 /* Nieaktywna wizualnie na hover — karta nie reaguje, bo nie da się jej kliknąć
    (już jest aktywna). `border-color` to skrót ustawiający WSZYSTKIE cztery
    krawędzie naraz — używamy trzech osobnych właściwości, żeby świadomie
    NIE dotykać `border-left-color` (tam musi zostać zielony akcent). */
-.agent-provider-card.is-active:hover {
-  box-shadow: none;
-  background-color: var(--bg-sidebar);
-  border-top-color: var(--border-subtle);
-  border-right-color: var(--border-subtle);
-  border-bottom-color: var(--border-subtle);
+.agent-provider-card.is-active .agent-provider-card-head:hover {
+  background-color: var(--bg-active);
 }
 
 .agent-provider-card-main {
@@ -203,3 +229,93 @@
 /* Kwadratowy, czerwony kosz — wygląd z generycznych `.btn .btn-ghost-danger
    .btn-icon-square` (buttons.css); `.agent-provider-card-delete` to tylko
    hak JS (bez własnego stylu), patrz `provider_crud_section.js`. */
+
+/* --------------------------------------------------------------------------
+   Edytor presetu — rozwijany w miejscu, wewnątrz karty.
+
+   Powód takiego kształtu: preset dostał kilkanaście pól (model, klucz,
+   temperatura, głębokość rozumowania...), więc dawny composer — jeden poziomy
+   rząd inputów — przestał je mieścić. Edycja w miejscu daje jedną implementację
+   formularza dla tworzenia i edycji, zostawia listę skanowalną i nie zabiera
+   ekranu jak modal (patrz `components/provider_crud_section.js`).
+   -------------------------------------------------------------------------- */
+.provider-editor {
+  padding: 4px 22px 22px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.provider-editor-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.provider-editor-group-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted-aa);
+  margin-top: 14px;
+}
+
+/* Auto-fill, nie stała liczba kolumn: liczba pól zależy od MODELU (gpt-oss ma
+   rozumowanie, llama nie), więc siatka musi się układać pod dowolną ich liczbę. */
+.provider-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px 16px;
+}
+
+.provider-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.provider-field label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Wyjaśnienie POD polem, nie w placeholderze: placeholder znika w momencie, w
+   którym zaczyna być potrzebny, a "po co jest reasoning_effort" to pytanie, na
+   które odpowiedź musi zostać widoczna także po wpisaniu wartości. */
+.provider-field-hint {
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.provider-field-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--accent-warning);
+}
+
+.provider-field-warning svg.icon-svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.provider-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+/* Nazwa presetu w composerze — rośnie, ale nie spycha przycisku "+" poza rząd. */
+.agent-composer-name {
+  flex: 1 1 220px;
+  min-width: 160px;
+}

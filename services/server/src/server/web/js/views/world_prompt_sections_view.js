@@ -19,8 +19,17 @@ import { showToast } from '../utils/toast.js';
  * jest jednym bytem (kolejność ma znaczenie), więc zapis per pole nie miałby sensu:
  * przestawienie i usunięcie to ta sama operacja co edycja tekstu.
  *
- * Przestawianie **przyciskami góra/dół, nie drag-and-drop** — projekt nie ma build
- * stepu ani zależności, a strzałki są przewidywalne i działają z klawiatury.
+ * **Każda sekcja ma DWIE gałęzie tekstu** — co powiedzieć, gdy warunek jest spełniony,
+ * i co gdy nie jest. Wcześniej ta druga wymagała osobnej sekcji z checkboxem "NIE",
+ * przez co jedna decyzja była rozbita na dwa wpisy, które nic formalnie nie łączyło
+ * (dało się je niezależnie przestawić w odległe miejsca promptu). Przy okazji zniknął
+ * checkbox — jedna z ostatnich natywnych kontrolek przeglądarki w tym projekcie.
+ *
+ * **Przestawianie przez drag-and-drop** (HTML5 DnD, zero zależności i build stepu):
+ * strzałki góra/dół przerenderowywały całą listę na każde kliknięcie, więc przesunięcie
+ * sekcji o kilka pozycji było serią skoków z gubionym fokusem. Uchwyt jest osobnym
+ * elementem, nie całą kartą — inaczej nie dałoby się zaznaczyć tekstu w polach.
+ * Dostępność z klawiatury zostaje: uchwyt przyjmuje fokus i reaguje na strzałki.
  */
 export class WorldPromptSectionsView {
   constructor() {
@@ -32,12 +41,20 @@ export class WorldPromptSectionsView {
     this._clients = [];
     this._previewSenderId = '';
     this._dirty = false;
+    /** Indeks przeciąganej sekcji; `null` poza trwającym gestem. */
+    this._dragFrom = null;
   }
 
+  /** Szkielet o geometrii docelowej listy — patrz `css/components/skeleton.css`. */
   render() {
     return `
-      <div id="wps-root">
-        <p class="section-hint wps-intro">Ładowanie sekcji kontekstu tury...</p>
+      <div id="wps-root" aria-busy="true">
+        <div class="skeleton-stack">
+          <div class="skeleton-block skeleton-block--row"></div>
+          <div class="skeleton-block skeleton-block--section"></div>
+          <div class="skeleton-block skeleton-block--section"></div>
+          <div class="skeleton-block skeleton-block--section"></div>
+        </div>
       </div>
     `;
   }
@@ -112,35 +129,45 @@ export class WorldPromptSectionsView {
     const spec = this._conditions.find((c) => c.key === section.condition);
     const needsParam = Boolean(spec?.param_source);
     const warnings = section.warnings || [];
+    // Przy warunku "Zawsze" gałąź "gdy NIE" jest martwa z definicji — nie pokazujemy jej
+    // wcale, zamiast wyszarzać pole, którego nic nigdy nie użyje.
+    const hasNegatedBranch = section.condition !== 'always';
 
     return `
-      <div class="wps-section" data-index="${index}">
+      <div class="wps-section" data-index="${index}" draggable="false">
         <div class="wps-section-header">
+          <span class="wps-drag-handle" data-drag-handle="${index}" draggable="true" tabindex="0"
+            role="button" aria-label="Przeciągnij, żeby zmienić kolejność (strzałki góra/dół z klawiatury)"
+            title="Przeciągnij, żeby zmienić kolejność">${Icons.GripVertical()}</span>
           <input type="text" class="wps-label-input" data-field="label" value="${escapeAttr(section.label)}"
             aria-label="Nazwa sekcji" />
           <span class="wps-section-actions">
-            <button type="button" class="btn btn-ghost btn-icon-square" data-move="up" ${index === 0 ? 'disabled' : ''}
-              title="W górę" aria-label="Przesuń w górę">${Icons.ChevronDown()}</button>
-            <button type="button" class="btn btn-ghost btn-icon-square" data-move="down"
-              ${index === this._sections.length - 1 ? 'disabled' : ''} title="W dół" aria-label="Przesuń w dół">${Icons.ChevronDown()}</button>
             <button type="button" class="btn btn-ghost-danger btn-icon-square" data-remove="1"
               title="Usuń sekcję" aria-label="Usuń sekcję">${Icons.Trash2()}</button>
           </span>
         </div>
 
         <div class="wps-condition-row">
-          <span class="wps-condition-label">Pokaż gdy</span>
-          <label class="wps-negate">
-            <input type="checkbox" data-field="negated" ${section.negated ? 'checked' : ''} />
-            <span>NIE</span>
-          </label>
+          <span class="wps-condition-label">Warunek</span>
           ${renderSelectMarkup(`wps-cond-${index}`, { placeholder: 'Wybierz warunek', className: 'select--compact' })}
           ${needsParam ? renderSelectMarkup(`wps-param-${index}`, { placeholder: 'Wybierz pokój', className: 'select--compact' }) : ''}
         </div>
 
-        <div class="wps-box">
-          <textarea class="wps-textarea" data-field="text" rows="3"
-            placeholder="(puste — sekcja nie trafi do promptu)">${escapeHtml(section.text)}</textarea>
+        <div class="wps-branches ${hasNegatedBranch ? '' : 'wps-branches--single'}">
+          <div class="wps-branch">
+            <label class="wps-branch-label wps-branch-label--yes">${hasNegatedBranch ? 'Gdy spełniony' : 'Tekst sekcji'}</label>
+            <textarea class="wps-textarea" data-field="text" rows="3"
+              placeholder="(puste — przy tym wyniku sekcja nic nie dokłada)">${escapeHtml(section.text)}</textarea>
+          </div>
+          ${
+            hasNegatedBranch
+              ? `<div class="wps-branch">
+                   <label class="wps-branch-label wps-branch-label--no">Gdy niespełniony</label>
+                   <textarea class="wps-textarea" data-field="text_negated" rows="3"
+                     placeholder="(puste — przy tym wyniku sekcja nic nie dokłada)">${escapeHtml(section.text_negated || '')}</textarea>
+                 </div>`
+              : ''
+          }
         </div>
 
         ${warnings.map((w) => `<p class="wps-warning">${Icons.AlertCircle()} ${escapeHtml(w)}</p>`).join('')}
@@ -179,10 +206,9 @@ export class WorldPromptSectionsView {
       const index = Number(el.dataset.index);
       el.querySelector('[data-field="label"]')?.addEventListener('input', (e) => this._patch(index, { label: e.target.value }));
       el.querySelector('[data-field="text"]')?.addEventListener('input', (e) => this._patch(index, { text: e.target.value }));
-      el.querySelector('[data-field="negated"]')?.addEventListener('change', (e) => this._patch(index, { negated: e.target.checked }, true));
-      el.querySelector('[data-move="up"]')?.addEventListener('click', () => this._move(index, -1));
-      el.querySelector('[data-move="down"]')?.addEventListener('click', () => this._move(index, 1));
+      el.querySelector('[data-field="text_negated"]')?.addEventListener('input', (e) => this._patch(index, { text_negated: e.target.value }));
       el.querySelector('[data-remove]')?.addEventListener('click', () => this._remove(index));
+      this._bindDragHandle(el, index);
     });
 
     // Custom-select (projekt świadomie nie używa natywnego <select>) montuje się
@@ -244,14 +270,79 @@ export class WorldPromptSectionsView {
     if (btn) btn.disabled = false;
   }
 
-  _move(index, delta) {
-    const target = index + delta;
-    if (target < 0 || target >= this._sections.length) return;
+  /**
+   * Przeciąganie za uchwyt. Podświetlenie miejsca upuszczenia idzie przez klasę na
+   * elemencie pod kursorem, a nie przez podmianę listy w locie — przestawianie tablicy
+   * na każdym `dragover` przerenderowywałoby DOM w trakcie przeciągania i przeglądarka
+   * gubiłaby trwający gest.
+   */
+  _bindDragHandle(sectionEl, index) {
+    const handle = sectionEl.querySelector('[data-drag-handle]');
+    if (!handle) return;
+
+    handle.addEventListener('dragstart', (e) => {
+      this._dragFrom = index;
+      sectionEl.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox nie wystartuje przeciągania bez jakichkolwiek danych w transferze.
+      e.dataTransfer.setData('text/plain', String(index));
+      e.dataTransfer.setDragImage(sectionEl, 20, 20);
+    });
+
+    handle.addEventListener('dragend', () => {
+      this._dragFrom = null;
+      document.querySelectorAll('.wps-section').forEach((el) => {
+        el.classList.remove('is-dragging', 'is-drop-before', 'is-drop-after');
+      });
+    });
+
+    // Strzałki z klawiatury zostają jako równoważna ścieżka — uchwyt jest fokusowalny,
+    // więc przestawianie działa bez myszy (drag-and-drop sam w sobie jest niedostępny).
+    handle.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      this._moveTo(index, index + (e.key === 'ArrowUp' ? -1 : 1), { focusHandleAt: true });
+    });
+
+    sectionEl.addEventListener('dragover', (e) => {
+      if (this._dragFrom === null || this._dragFrom === undefined || this._dragFrom === index) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const rect = sectionEl.getBoundingClientRect();
+      const dropAfter = e.clientY > rect.top + rect.height / 2;
+      sectionEl.classList.toggle('is-drop-before', !dropAfter);
+      sectionEl.classList.toggle('is-drop-after', dropAfter);
+    });
+
+    sectionEl.addEventListener('dragleave', () => {
+      sectionEl.classList.remove('is-drop-before', 'is-drop-after');
+    });
+
+    sectionEl.addEventListener('drop', (e) => {
+      if (this._dragFrom === null || this._dragFrom === undefined) return;
+      e.preventDefault();
+      const rect = sectionEl.getBoundingClientRect();
+      const dropAfter = e.clientY > rect.top + rect.height / 2;
+      this._moveTo(this._dragFrom, dropAfter ? index + 1 : index);
+      this._dragFrom = null;
+    });
+  }
+
+  /** Przenosi sekcję na wskazaną POZYCJĘ (nie zamienia dwóch miejscami) — przy
+   * przeciąganiu przez kilka pozycji zamiana dałaby zupełnie inny wynik niż wstawienie. */
+  _moveTo(from, to, { focusHandleAt = false } = {}) {
     const next = [...this._sections];
-    [next[index], next[target]] = [next[target], next[index]];
+    const [moved] = next.splice(from, 1);
+    // Po wyjęciu elementu indeksy za nim przesuwają się o jeden w lewo.
+    const insertAt = Math.max(0, Math.min(next.length, to > from ? to - 1 : to));
+    if (insertAt === from) return;
+    next.splice(insertAt, 0, moved);
     this._sections = next;
     this._markDirty();
     this._render();
+    if (focusHandleAt) {
+      document.querySelector(`[data-drag-handle="${insertAt}"]`)?.focus();
+    }
   }
 
   async _remove(index) {
@@ -274,9 +365,9 @@ export class WorldPromptSectionsView {
         id: `sec_${Math.random().toString(16).slice(2, 10)}`,
         label: 'Nowa sekcja',
         text: '',
+        text_negated: '',
         condition: 'always',
         condition_param: null,
-        negated: false,
         warnings: [],
       },
     ];

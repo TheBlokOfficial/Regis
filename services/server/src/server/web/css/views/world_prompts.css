@@ -505,28 +505,57 @@
   color: var(--text-muted-aa);
 }
 
-.wps-negate {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
+/* Dwie gałęzie tekstu obok siebie — "gdy warunek spełniony" i "gdy nie". Przy
+   wąskim ekranie zwijają się w jedną kolumnę; przy warunku "Zawsze" druga gałąź
+   w ogóle nie istnieje i pole rozciąga się na całą szerokość. */
+.wps-branches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
-.wps-box {
+.wps-branches--single {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 900px) {
+  .wps-branches {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wps-branch {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
   background-color: var(--bg-base);
 }
 
-.wps-box:focus-within {
+.wps-branch:focus-within {
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+/* Kolor rozróżnia gałęzie na pierwszy rzut oka — to jedyne miejsce, gdzie pomyłka
+   jest kosztowna (tekst trafia do promptu przy odwrotnym wyniku warunku). */
+.wps-branch-label {
+  padding: 8px 14px 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wps-branch-label--yes {
+  color: var(--accent-success);
+}
+
+.wps-branch-label--no {
+  color: var(--text-muted-aa);
 }
 
 .wps-textarea {
@@ -610,4 +639,52 @@
   color: var(--text-secondary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+   Przeciąganie sekcji. Uchwyt jest osobnym elementem, nie całą kartą — inaczej
+   nie dałoby się zaznaczyć tekstu w polach sekcji. Podświetlenie miejsca
+   upuszczenia to krawędź (góra/dół) elementu pod kursorem, nie podmiana listy
+   w locie: przestawianie tablicy na każdym `dragover` przerenderowywałoby DOM
+   w trakcie gestu i przeglądarka by go zgubiła.
+   -------------------------------------------------------------------------- */
+.wps-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: grab;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.wps-drag-handle:hover {
+  color: var(--text-secondary);
+  background-color: var(--bg-surface-hover);
+}
+
+.wps-drag-handle:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
+
+.wps-drag-handle:active {
+  cursor: grabbing;
+}
+
+.wps-section.is-dragging {
+  opacity: 0.45;
+}
+
+/* Wskaźnik "tu wyląduje" — dwupikselowa krawędź zamiast przesuwania sąsiadów,
+   więc lista nie skacze pod kursorem w trakcie przeciągania. */
+.wps-section.is-drop-before {
+  box-shadow: inset 0 2px 0 0 var(--accent-primary);
+}
+
+.wps-section.is-drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--accent-primary);
 }

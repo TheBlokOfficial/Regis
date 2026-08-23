@@ -85,9 +85,9 @@ def _to_sections_response(config: PromptSectionsConfig) -> PromptSectionsRespons
                 id=section.id,
                 label=section.label,
                 text=section.text,
+                text_negated=section.text_negated,
                 condition=section.condition,
                 condition_param=section.condition_param,
-                negated=section.negated,
                 warnings=section_warnings(section),
             )
             for section in config.sections
@@ -311,9 +311,9 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
                 id=dto.id,
                 label=dto.label,
                 text=dto.text,
+                text_negated=dto.text_negated,
                 condition=dto.condition,
                 condition_param=dto.condition_param,
-                negated=dto.negated,
             )
             for dto in req.sections
         ]

@@ -13,6 +13,7 @@ configu ucina wyłącznie encje/narzędzia HA, nigdy framing kanału komunikacji
 
 import asyncio
 import uuid
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -44,13 +45,16 @@ from server.world.prompt_sections import (
     PromptSectionStore,
     TurnFacts,
     render_section,
-    section_applies,
 )
 from server.world.prompts import PromptInstanceConfig, WorldPromptStore
 from server.world.registry import DeviceRegistry
 from server.world.tools import HomeAssistantToolExecutor, TOOL_NAMES, build_tool_definitions
 
 logger = get_logger("regis.world")
+
+# Nazwy dni po polsku — `datetime.strftime("%A")` zależy od locale procesu, więc dawałoby
+# raz "Monday", raz "poniedziałek", zależnie od maszyny.
+_WEEKDAY_NAMES = ("poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela")
 
 ClientFactoryFn = Callable[[HomeAssistantConfig], HomeAssistantClient]
 
@@ -532,17 +536,35 @@ class WorldEngine:
             if (devices or groups)
             else None
         )
+        # Sam pokój nadawcy, bez nagłówków i bez grup — pozwala napisać sekcję w rodzaju
+        # "masz pod ręką: {urządzenia_w_pokoju}", nie zalewając promptu całym domem.
+        room_devices = [d for d in devices if current_room is not None and d.room_id == current_room.id]
+        room_device_list = (
+            "\n".join(
+                f"- [{d.id}] {d.name} (możliwości: {_format_capabilities(d)})" for d in room_devices
+            )
+            if room_devices
+            else None
+        )
 
         # 3. Fakty tury -> sekcje. Silnik dostarcza WYŁĄCZNIE dane; o tym, które
         #    bloki tekstu się pojawią i w jakiej kolejności, decyduje konfiguracja
         #    użytkownika (`prompt_sections.py`). Warunki są ewaluowane w Pythonie,
         #    więc użytkownik ich wybiera, a nie pisze — patrz docstring tamtego modułu.
+        now = datetime.now()
         facts = TurnFacts(
-            now=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            now=now.strftime("%Y-%m-%d %H:%M:%S"),
+            date=now.strftime("%Y-%m-%d"),
+            clock=now.strftime("%H:%M"),
+            weekday=_WEEKDAY_NAMES[now.weekday()],
             capabilities=frozenset(c.value for c in profile.capabilities) if profile else frozenset(),
             room_id=current_room.id if current_room else None,
             room_name=current_room.name if current_room else None,
+            client_name=profile.display_name if profile else None,
             device_list=device_list,
+            room_device_list=room_device_list,
+            room_names=tuple(room.name for room in rooms_by_id.values()),
+            group_names=tuple(group.name for group in groups),
             ha_configured=bool(config.base_url and config.access_token),
         )
         sections = await self._section_store.load()
@@ -691,18 +713,22 @@ def _sections_gained_after_redirect(
     Interesuje nas wyłącznie to, co się zmieniło — typowo ramowanie dostawy, bo cel
     ma głośnik, a pierwotny nadawca mógł go nie mieć.
     """
-    target_facts = TurnFacts(
-        now=original.now,
+    # Zmienia się WYŁĄCZNIE to, co zależy od celu (możliwości, pokój, nazwa); reszta
+    # faktów tej tury zostaje — stąd `replace` na istniejącym obiekcie zamiast budowania
+    # go od zera, przy którym każde nowe pole `TurnFacts` trzeba by pamiętać tu przepisać.
+    target_facts = replace(
+        original,
         capabilities=frozenset(c.value for c in target_profile.capabilities) if target_profile else frozenset(),
         room_id=target_profile.room_id if target_profile else None,
         room_name=target_room_name,
-        device_list=original.device_list,
-        ha_configured=original.ha_configured,
+        client_name=target_profile.display_name if target_profile else None,
     )
     gained: list[str] = []
     for section in sections.sections:
-        if section_applies(section, target_facts) and not section_applies(section, original):
-            rendered = render_section(section, target_facts)
-            if rendered:
-                gained.append(rendered)
+        # Porównujemy WYRENDEROWANY tekst, nie sam fakt "czy warunek zachodzi": po
+        # rozdzieleniu na dwie gałęzie sekcja obowiązuje praktycznie zawsze, a realną
+        # zmianą jest to, że mówi teraz co innego niż mówiła przed przekierowaniem.
+        rendered = render_section(section, target_facts)
+        if rendered and rendered != render_section(section, original):
+            gained.append(rendered)
     return gained

@@ -15,6 +15,7 @@ from server.voice.dto import (
     CreateTTSProviderRequest,
     SelectSTTProviderRequest,
     SelectTTSProviderRequest,
+    UpdateProviderRequest,
     STTProviderDTO,
     STTProviderListResponse,
     TTSProviderDTO,
@@ -43,6 +44,29 @@ def _mask_secret_options(schemas: ProviderMetadataResponse, provider_type: str, 
             visible = value[-4:] if len(value) > 4 else ""
             masked[field_name] = f"{'•' * (len(value) - len(visible))}{visible}"
     return masked
+
+
+def _merge_preserving_secrets(
+    schemas: ProviderMetadataResponse, provider_type: str, existing: dict[str, Any], incoming: dict[str, Any]
+) -> dict[str, Any]:
+    """Pole sekretne puste/pominięte w żądaniu **zachowuje** obecną wartość — frontend
+    nigdy nie zna prawdziwego klucza (GET maskuje go kropkami), więc nie mógłby go
+    odesłać. Mirror `network/routes/providers.py::_merge_preserving_secrets`."""
+    secret_fields = {
+        spec.name
+        for type_spec in schemas.provider_types
+        if type_spec.type == provider_type
+        for spec in type_spec.options_schema
+        if spec.type == "password"
+    }
+    merged = dict(incoming)
+    for field_name in secret_fields:
+        if not str(merged.get(field_name, "")).strip():
+            if field_name in existing:
+                merged[field_name] = existing[field_name]
+            else:
+                merged.pop(field_name, None)
+    return merged
 
 
 def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRegistry) -> APIRouter:
@@ -111,6 +135,26 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
             name=created_cfg.name,
             options=_mask_secret_options(schemas, created_cfg.type.value, created_cfg.options),
             is_active=(created_cfg.id == active_id),
+        )
+
+    @router.put("/stt/providers/{provider_id}", response_model=STTProviderDTO, tags=["STT Providers"])
+    async def update_stt_provider(provider_id: str, req: UpdateProviderRequest) -> STTProviderDTO:
+        instances = await stt_registry.load_all_instances()
+        existing = instances.get(provider_id)
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Dostawca STT o ID '{provider_id}' nie istnieje."
+            )
+        schemas = STTFactory.get_all_schemas()
+        merged = _merge_preserving_secrets(schemas, existing.type.value, existing.options, req.options)
+        updated = await stt_registry.update_instance(provider_id, merged, req.name)
+        active_id = await stt_registry.get_active_backend_id()
+        return STTProviderDTO(
+            id=updated.id,
+            type=updated.type.value,
+            name=updated.name,
+            options=_mask_secret_options(schemas, updated.type.value, updated.options),
+            is_active=(updated.id == active_id),
         )
 
     @router.delete("/stt/providers/{provider_id}", tags=["STT Providers"])
@@ -188,6 +232,26 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
             name=created_cfg.name,
             options=_mask_secret_options(schemas, created_cfg.type.value, created_cfg.options),
             is_active=(created_cfg.id == active_id),
+        )
+
+    @router.put("/tts/providers/{provider_id}", response_model=TTSProviderDTO, tags=["TTS Providers"])
+    async def update_tts_provider(provider_id: str, req: UpdateProviderRequest) -> TTSProviderDTO:
+        instances = await tts_registry.load_all_instances()
+        existing = instances.get(provider_id)
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Dostawca TTS o ID '{provider_id}' nie istnieje."
+            )
+        schemas = TTSFactory.get_all_schemas()
+        merged = _merge_preserving_secrets(schemas, existing.type.value, existing.options, req.options)
+        updated = await tts_registry.update_instance(provider_id, merged, req.name)
+        active_id = await tts_registry.get_active_backend_id()
+        return TTSProviderDTO(
+            id=updated.id,
+            type=updated.type.value,
+            name=updated.name,
+            options=_mask_secret_options(schemas, updated.type.value, updated.options),
+            is_active=(updated.id == active_id),
         )
 
     @router.delete("/tts/providers/{provider_id}", tags=["TTS Providers"])

@@ -48,10 +48,17 @@ class OllamaProvider(BaseLLMProvider):
         base_url: str = "http://localhost:11434",
         model: str = "llama3",
         max_tokens: int | None = None,
+        options: dict[str, Any] | None = None,
+        think: bool | str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._model = model
         self._max_tokens = max_tokens
+        # Ollama trzyma parametry generacji w zagnieżdżonym worku `options`, a `think`
+        # (bool albo poziom "low"/"medium"/"high"/"max") na najwyższym poziomie —
+        # składa je fabryka z presetu, patrz `ai/llm/factory.py`.
+        self._options = options or {}
+        self._think = think
 
     @property
     def model(self) -> str:
@@ -77,13 +84,17 @@ class OllamaProvider(BaseLLMProvider):
         if tools:
             payload["tools"] = _tools_to_ollama_payload(tools)
 
-        options = dict(kwargs.get("options", {}))
+        options = {**self._options, **kwargs.get("options", {})}
         max_t = kwargs.get("max_tokens", self._max_tokens)
         if max_t is not None and "num_predict" not in options:
             options["num_predict"] = max_t
 
         if options:
             payload["options"] = options
+
+        think = kwargs.get("think", self._think)
+        if think is not None:
+            payload["think"] = think
 
         logger.debug(f"Strumieniowanie z Ollamy [{url}] (model: '{payload['model']}')...")
 

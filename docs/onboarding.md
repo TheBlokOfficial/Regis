@@ -70,7 +70,7 @@ nadal wymaga restartu.
 
 ### Prompty systemowe — World jest jedynym autorem, gdy podłączony
 - **Profile promptu Świata** (`services/server/data/world/prompts/*.json`, `WorldPromptStore`): do 3 przełączalnych profili **tożsamości**, aktywny wskazuje `data/world/active_prompt.json`. Treść stabilna — trafia na pozycję zerową kontekstu i nie zmienia się między turami.
-- **Sekcje kontekstu tury** (`services/server/data/world/prompt_sections.json`, `world/prompt_sections.py`): **uporządkowana lista** bloków tekstu wstrzykiwanych tuż przed każdym pytaniem. Kolejność listy = kolejność w prompcie. Każdy blok ma warunek pojawienia się wybierany z zamkniętej listy (`always`, `client_has_speaker`, `client_in_room` z parametrem, `has_devices`, …) i opcjonalną negację. Podstawienia: `{czas}`, `{pokój}`, `{lista_urządzeń}`. Edycja w zakładce **Świat → Kontekst tury** — dodawanie, usuwanie, przestawianie, plus **podgląd** złożonego kontekstu dla wybranego klienta. `WorldEngine.build()` zwraca to osobno od tożsamości (`ContextBuild.turn_context`), kernel niczego nie skleja.
+- **Sekcje kontekstu tury** (`services/server/data/world/prompt_sections.json`, `world/prompt_sections.py`): **uporządkowana lista** bloków tekstu wstrzykiwanych tuż przed każdym pytaniem. Kolejność listy = kolejność w prompcie. Każdy blok ma warunek pojawienia się wybierany z zamkniętej listy (`always`, `client_has_speaker`, `client_in_room` z parametrem, `has_devices`, `has_devices_in_room`, `has_groups`, `client_has_name`, …) oraz **dwa teksty**: jeden używany, gdy warunek jest spełniony, drugi gdy nie jest (pusty = przy tym wyniku sekcja nic nie dokłada). Podstawienia: `{czas}`, `{data}`, `{godzina}`, `{dzień_tygodnia}`, `{pokój}`, `{lista_pokoi}`, `{nazwa_klienta}`, `{możliwości_klienta}`, `{lista_urządzeń}`, `{urządzenia_w_pokoju}`, `{lista_grup}`. Edycja w zakładce **Świat → Kontekst tury** — dodawanie, usuwanie, przestawianie **przeciąganiem za uchwyt** (strzałki z klawiatury jako ścieżka równoważna), plus **podgląd** złożonego kontekstu dla wybranego klienta. `WorldEngine.build()` zwraca to osobno od tożsamości (`ContextBuild.turn_context`), kernel niczego nie skleja.
 - **Fallback promptu kernela** (`services/server/data/agent_default_prompt.json`, `AgentDefaultPromptStore`): jedna wartość, bez CRUD — używana **wyłącznie** gdy żaden World nie jest podłączony (`NullWorldInterface`, testy headless). `DEFAULT_SYSTEM_PROMPT` w `server/agent/context/builder.py` to fallback tego fallbacku (seed przy pierwszym uruchomieniu). W normalnej pracy (World zawsze wstrzyknięty w `main.py`) to pole rzadko się uruchamia.
 
 Najwygodniejszy sposób edycji: zakładka **Ustawienia** w Web UI, wewnątrz poziome sekcje (pills) **Agent** (dostawcy LLM, REST `/api/v1/llm/providers`, + fallbackowy prompt kernela, REST `/api/v1/agent/prompt`), **Świat** (Konfiguracja HA/pokoi/nadawców, REST `/api/v1/world/*`, + pod-zakładka **Prompty** — profile tożsamości Świata, REST `/api/v1/world/prompts/*`), **Dostawcy** (CRUD dostawców LLM/STT/TTS) i **Klienci** (rejestr klientów + progi wake-worda/VAD, REST `/api/v1/voice/*`). Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami do sekcji Ustawień.
@@ -130,11 +130,13 @@ python -m uv run --package server python -m server.main
 | Moduł | Metoda & Ścieżka API v1 | Opis |
 | :--- | :--- | :--- |
 | **System** | `GET /api/v1/health` | Status zdrowia serwera i wdrożonych modułów |
-| **LLM Providers** | `GET /api/v1/llm/providers/schemas` | Specyfikacje parametrów konfiguracji dostawców |
-| | `GET /api/v1/llm/providers` | Lista skonfigurowanych dostawców LLM i aktywnego ID |
-| | `PUT /api/v1/llm/providers/active` | Wybór/przełączenie aktywnego dostawcy LLM |
-| | `POST /api/v1/llm/providers` | Utworzenie nowej instancji dostawcy (zapis JSON) |
-| | `DELETE /api/v1/llm/providers/{id}` | Usunięcie konfiguracji dostawcy LLM z dysku |
+| **LLM Providers** | `GET /api/v1/llm/providers/schemas` | Pola NIEZALEŻNE od modelu (klucz API, adres serwera) — parametry generacji są per model, patrz niżej |
+| | `GET /api/v1/llm/providers` | Lista presetów LLM i aktywnego ID (klucze API zamaskowane) |
+| | `PUT /api/v1/llm/providers/active` | Wybór/przełączenie aktywnego presetu (globalnie — także dla satelit) |
+| | `POST /api/v1/llm/providers` | Utworzenie nowego presetu (zapis JSON) |
+| | `PUT /api/v1/llm/providers/{id}` | Edycja presetu (nazwa + opcje; typ niezmienny). **Pominięte pole sekretne zachowuje obecną wartość** |
+| | `GET /api/v1/llm/providers/{id}/models` | Modele dostępne dla tego presetu + formularz parametrów każdego z nich. Brak klucza/padnięty serwer = 200 z polem `detail`, nie błąd |
+| | `DELETE /api/v1/llm/providers/{id}` | Usunięcie presetu LLM z dysku |
 | **Chat Engine** | `POST /api/v1/chat` | Synchroniczna odpowiedź Agenta w jednym zapytaniu |
 | | `POST /api/v1/chat/stream` | Strumieniowanie tokenów w czasie rzeczywistym (SSE) |
 | | `POST /api/v1/chat/send` | "Wyślij i zapomnij" (202) — używane przez Web UI; renderowanie idzie przez `.../watch` |
@@ -167,7 +169,7 @@ Wszystkie trzy wejścia odpalające turę (`/chat`, `/chat/stream`, `/chat/send`
 | **Voice (satelity)** | `WS /ws/voice/{sender_id}` | Strumień audio satelity (wake-word/VAD-signaling/STT/TTS) — patrz `shared/voice_protocol.py`. Tura kończy się albo sekwencją `tts_start`/audio/`tts_end`, albo ramką `turn_end` (nie było czego wypowiedzieć) — **zawsze jedną z nich**, bo satelita trzyma mikrofon wstrzymany do czasu powrotu do nasłuchu |
 | | `GET /api/v1/voice/status` | Co REALNIE działa w runtime (nie co skonfigurowano): klasy aktywnego STT/TTS/detektora wake-worda + `is_production_ready` — False także przy placeholderze wake-worda. Widoczne w Ustawieniach → Klienci |
 | | `GET /api/v1/voice/stt/providers/schemas` `.../tts/providers/schemas` | Specyfikacje parametrów konfiguracji dostawców STT/TTS |
-| | `GET/POST/PUT /api/v1/voice/stt/providers[/active]` `.../tts/providers[/active]` | Lista, tworzenie i przełączanie aktywnej instancji STT/TTS — pełny CRUD, mirror `/api/v1/llm/providers*` (przygotowane pod przyszłe lokalne backendy STT/TTS) |
+| | `GET/POST/PUT /api/v1/voice/stt/providers[/active]` `.../tts/providers[/active]` | Lista, tworzenie, edycja (`PUT .../{id}`) i przełączanie aktywnej instancji STT/TTS — pełny CRUD, mirror `/api/v1/llm/providers*`, z tą samą zasadą zachowywania pominiętych kluczy API |
 | | `DELETE /api/v1/voice/stt/providers/{id}` `.../tts/providers/{id}` | Usunięcie instancji STT/TTS z dysku |
 | | `GET /api/v1/voice/connected` | `sender_id` z aktualnie żywym połączeniem WS — pozwala Web UI (Świat → Nadawcy) pokazać podłączone, ale jeszcze niezarejestrowane satelity |
 

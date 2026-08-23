@@ -109,6 +109,31 @@ class BackendRegistry:
         logger.info(f"Utworzono nową instancję backendu [{name}] z ID: {instance_id}")
         return BackendInstanceConfig(id=instance_id, **content.model_dump())
 
+    async def update_instance(
+        self, backend_id: str, name: Optional[str], options: Dict[str, Any]
+    ) -> BackendInstanceConfig:
+        """Nadpisuje nazwę i opcje istniejącej instancji. **Typ zostaje niezmienny** —
+        jego zmiana unieważniłaby wszystkie opcje (inny zestaw pól, inny model), więc
+        w praktyce jest to utworzenie innego presetu, nie edycja tego samego.
+
+        `options` podmienia worek w całości; zachowanie pominiętych sekretów rozstrzyga
+        warstwa REST (`network/routes/providers.py`), która jako jedyna wie, które pola
+        są sekretne — rejestr nie interpretuje zawartości worka.
+        """
+        sanitize_identifier(backend_id, field_name="backend_id")
+        file_path = self.backends_dir / f"{backend_id}.json"
+
+        async with self._lock:
+            if not file_path.exists():
+                raise ValueError(f"Instancja backendu [{backend_id}] nie istnieje.")
+            store = ConfigStore(BackendFileContent, file_path)
+            existing = await asyncio.to_thread(store.load)
+            updated = existing.model_copy(update={"name": name or existing.name, "options": options})
+            await asyncio.to_thread(store.save, updated)
+
+        logger.info(f"Zaktualizowano instancję backendu [{updated.name}] o ID: {backend_id}")
+        return BackendInstanceConfig(id=backend_id, **updated.model_dump())
+
     async def load_all_instances(self) -> Dict[str, BackendInstanceConfig]:
         """Wczytuje i zwraca słownik wszystkich dostępnych instancji backendów {id: config}."""
         await self._ensure_default_instances()

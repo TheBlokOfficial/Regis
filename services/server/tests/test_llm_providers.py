@@ -3,6 +3,12 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from server.agent.llm import LLMMessage
 from server.ai.llm.models import BackendInstanceConfig, ProviderType
 from server.ai.llm.factory import LLMFactory
+from server.ai.llm.model_catalog import (
+    _groq_params_for,
+    _ollama_params_for,
+    _openrouter_params_for,
+    fallback_options_schema,
+)
 from server.ai.llm.providers.ollama import OllamaProvider
 from server.ai.llm.providers.openai_compatible import OpenAICompatibleProvider
 
@@ -191,8 +197,67 @@ def test_llm_factory_creates_provider_with_max_tokens():
     assert provider_groq.base_url == "https://api.groq.com/openai/v1"
 
 
-def test_llm_factory_schemas_include_max_tokens():
+def test_type_schema_holds_only_model_independent_fields():
+    """Schemat typu opisuje to, co da się powiedzieć o dostępcy NIE wiedząc jeszcze,
+    którego modelu użyje: klucz API, adres serwera. Parametry generacji są per model
+    i przychodzą z `GET .../providers/{id}/models` — wspólna lista dla wszystkich typów
+    była dokładnie tym sufitem, przez który nie dało się wystawić `reasoning_effort`."""
     schemas = LLMFactory.get_all_schemas()
+
+    assert {t.type for t in schemas.provider_types} == {"OLLAMA", "OPENROUTER", "GROQ"}
     for provider_type in schemas.provider_types:
-        opt_names = [opt.name for opt in provider_type.options_schema]
-        assert "max_tokens" in opt_names
+        opt_names = {opt.name for opt in provider_type.options_schema}
+        assert opt_names <= {"api_key", "base_url"}, provider_type.type
+        assert provider_type.supports_model_discovery is True
+
+
+def test_every_type_can_configure_output_limit_for_a_hand_typed_model():
+    """Lista modeli nigdy nie zamyka wyboru — dla modelu wpisanego z ręki też musi
+    istnieć formularz, i musi się w nim dać ustawić limit długości odpowiedzi."""
+    for provider_type in ProviderType:
+        names = {opt.name for opt in fallback_options_schema(provider_type)}
+        # Ollama nazywa ten sam parametr `num_predict` — to jej własne słownictwo, nie alias.
+        assert names & {"max_tokens", "num_predict"}, provider_type
+        assert "temperature" in names, provider_type
+
+
+def test_gpt_oss_gets_reasoning_effort_and_llama_does_not():
+    """Sedno per-modelowych formularzy: `reasoning_effort` istnieje dla gpt-oss i nie
+    istnieje dla modelu bez rozumowania — jedna wspólna lista pól nie opisałaby obu."""
+    gpt_oss = {opt.name for opt in _groq_params_for("openai/gpt-oss-120b")}
+    llama = {opt.name for opt in _groq_params_for("llama-3.3-70b-versatile")}
+
+    assert "reasoning_effort" in gpt_oss
+    assert "include_reasoning" in gpt_oss
+    assert "reasoning_effort" not in llama
+    assert "temperature" in llama
+
+
+def test_qwen_on_groq_gets_different_reasoning_values_than_gpt_oss():
+    """Ten sam parametr, inny zestaw wartości zależnie od rodziny modelu — dowód, że
+    tabela musi być per rodzina, a nie per dostawca."""
+
+    def values(model_id: str) -> set[str]:
+        spec = next(o for o in _groq_params_for(model_id) if o.name == "reasoning_effort")
+        return {choice.value for choice in spec.choices}
+
+    assert values("openai/gpt-oss-120b") == {"low", "medium", "high"}
+    assert values("qwen/qwen3-32b") == {"none", "default"}
+
+
+def test_ollama_think_offered_only_for_thinking_families():
+    assert "think" in {opt.name for opt in _ollama_params_for("qwen3:8b")}
+    assert "think" in {opt.name for opt in _ollama_params_for("custom-tag", family="deepseek-r1")}
+    assert "think" not in {opt.name for opt in _ollama_params_for("gemma4:26b")}
+
+
+def test_openrouter_form_is_built_from_supported_parameters():
+    """Formularz OpenRoutera pochodzi wprost z `supported_parameters` modelu, więc nie
+    gnije — ale bierzemy tylko te parametry, które Regis realnie umie wysłać."""
+    names = {opt.name for opt in _openrouter_params_for(["temperature", "reasoning_effort", "logit_bias", "seed"])}
+
+    assert "temperature" in names
+    assert "reasoning_effort" in names
+    # Nieobsługiwane przez Regis — pokazanie ich byłoby obietnicą bez pokrycia.
+    assert "logit_bias" not in names
+    assert "seed" not in names

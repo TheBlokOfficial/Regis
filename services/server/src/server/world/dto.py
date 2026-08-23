@@ -131,16 +131,17 @@ class SenderProfileDTO(BaseModel):
 
 
 class PromptSectionDTO(BaseModel):
-    """Jedna sekcja kontekstu tury. `warnings` liczone są po stronie serwera i
-    zwracane też na GET (nie tylko po zapisie), żeby użytkownik widział problem
-    od razu, a nie dopiero po rozmowie z agentem."""
+    """Jedna sekcja kontekstu tury — z dwiema gałęziami tekstu (gdy warunek spełniony
+    i gdy nie). `warnings` liczone są po stronie serwera i zwracane też na GET (nie tylko
+    po zapisie), żeby użytkownik widział problem od razu, a nie dopiero po rozmowie
+    z agentem."""
 
     id: str
     label: str
-    text: str
+    text: str = ""
+    text_negated: str = ""
     condition: str
     condition_param: str | None = None
-    negated: bool = False
     warnings: list[str] = Field(default_factory=list)
 
 

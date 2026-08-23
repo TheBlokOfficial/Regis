@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import AsyncIterator, Any, Literal, TypedDict
 from shared import ChatResponseDTO, Event, EventBus, get_logger
 from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse, ReasoningChunk, ToolCallRequest
-from server.ai.llm import OllamaProvider
 from server.agent.context import ContextBuilder
 from server.agent.context_provider import NullWorldInterface, WorldInterface
 from server.agent.memory import MemoryManager
@@ -78,7 +77,17 @@ class AgentEngine:
         world: WorldInterface | None = None,
         max_tool_iterations: int = 8,
     ) -> None:
-        self.llm_provider: BaseLLMProvider = llm_provider or OllamaProvider()
+        # Import dostawcy domyślnego jest LENIWY z dwóch niezależnych powodów. (1) Kierunek
+        # zależności: kernel zna wyłącznie protokół `BaseLLMProvider`, a `server.ai` to
+        # sąsiednia warstwa konkretów — trzymanie jej w imporcie modułowym czyniło z tego
+        # twardą zależność kernela od konkretnego dostawcy. (2) Praktycznie: `server.ai.llm`
+        # importuje z powrotem `server.agent.llm`, więc modułowy import tworzył cykl, który
+        # wywracał się przy każdej kolejności importów zaczynającej się od `server.ai`.
+        if llm_provider is None:
+            from server.ai.llm import OllamaProvider
+
+            llm_provider = OllamaProvider()
+        self.llm_provider: BaseLLMProvider = llm_provider
         self.memory_manager: MemoryManager = memory_manager or MemoryManager()
         self.context_builder: ContextBuilder = context_builder or ContextBuilder()
         self.event_bus: EventBus = event_bus or EventBus()
