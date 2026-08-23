@@ -100,15 +100,24 @@
   border-left: 3px solid transparent;
   border-radius: var(--radius-xl);
   transition: all var(--transition-fast);
-  overflow: hidden;
 }
 
+/* Karta NIE ma `overflow: hidden`, choć zaokrąglone rogi się o to proszą — przycinałoby
+   to rozwijane listy edytora (menu jest pozycjonowane absolutnie wewnątrz karty i po
+   prostu znikało poniżej jej krawędzi). Zamiast tego własny promień dostaje nagłówek,
+   bo to jedyny element malujący tło aż do rogów (hover). */
 .agent-provider-card-head {
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 20px 22px;
   cursor: pointer;
+  border-radius: calc(var(--radius-xl) - 1px);
+}
+
+.agent-provider-card.is-expanded .agent-provider-card-head {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 /* Chevron obraca się o 90°, nie 180° — ta sama konwencja co `.thinking-chevron`
@@ -318,4 +327,13 @@
 .agent-composer-name {
   flex: 1 1 220px;
   min-width: 160px;
+}
+
+/* `.section-hint` bazowo ma UJEMNY margines górny — jest pomyślany do doklejenia pod
+   nagłówkiem sekcji. Tutaj następuje po wierszu pól wewnątrz composera, więc ten ujemny
+   margines wciągał go pod rząd inputów, a dolny wypychał poza obrys karty (dokładnie ta
+   sama pułapka, którą opisuje `.ha-token-hint` w `extensions.css`). */
+.agent-composer .section-hint {
+  margin-top: 10px;
+  margin-bottom: 0;
 }

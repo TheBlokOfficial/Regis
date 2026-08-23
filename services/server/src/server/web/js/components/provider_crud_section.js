@@ -194,6 +194,16 @@ export class ProviderCrudSection {
 
     mount.innerHTML = `
       <div class="provider-editor">
+        <div class="provider-editor-group">
+          <div class="provider-field-grid">
+            <div class="provider-field">
+              <label for="${this.idPrefix}-name-${providerId}">Nazwa presetu</label>
+              <input type="text" class="form-control" id="${this.idPrefix}-name-${providerId}"
+                value="${escapeAttr(provider.name || '')}" placeholder="np. Dom" />
+              <p class="provider-field-hint">Twoja etykieta, nie nazwa modelu — to ona pojawia się w czacie.</p>
+            </div>
+          </div>
+        </div>
         ${this._renderFieldGrid(`${this.idPrefix}-base-${providerId}`, typeSpec?.options_schema || [])}
         ${modelsData ? this._renderModelPicker(providerId, modelsData, selectedModel) : ''}
         <div id="${this.idPrefix}-params-${providerId}">
@@ -361,8 +371,9 @@ export class ProviderCrudSection {
         if (!value || String(value).includes('•')) delete options[opt.name];
       });
 
+    const name = document.getElementById(`${this.idPrefix}-name-${providerId}`)?.value.trim();
     try {
-      await this.apiClient[this.api.update](providerId, { options });
+      await this.apiClient[this.api.update](providerId, { name: name || null, options });
       showToast('Zapisano preset.', 'success');
       this._draftOptions = {};
       this._modelsById.delete(providerId);

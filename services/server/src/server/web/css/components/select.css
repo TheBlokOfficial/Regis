@@ -60,13 +60,47 @@
   top: calc(100% + 6px);
   left: 0;
   min-width: 100%;
+  max-width: min(460px, 90vw);
   background-color: #1a1a1e;
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05);
   padding: 6px;
   z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   animation: selectFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Lista przewija się WEWNĄTRZ menu, nie rozpycha go w nieskończoność: katalog modeli
+   OpenRoutera to setki pozycji, więc bez tego limitu menu byłoby wyższe niż ekran. */
+.select-options {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Filtrowanie długiej listy (patrz `SEARCH_THRESHOLD` w `select.js`). */
+.select-search {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+  color: var(--text-primary);
+  background-color: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.select-search:focus {
+  border-color: var(--border-focus);
+}
+
+.select-empty {
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
 }
 
 @keyframes selectFadeIn {
@@ -81,6 +115,9 @@
 }
 
 .select-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   padding: 9px 12px;
   border-radius: var(--radius-sm);
   font-size: 0.88rem;
@@ -88,6 +125,29 @@
   cursor: pointer;
   white-space: nowrap;
   transition: all var(--transition-fast);
+}
+
+/* Etykieta i doprecyzowanie (np. nazwa presetu + identyfikator modelu obok).
+   Kurczy się etykieta, nie hint — przy ciasnym triggerze to nazwa jest tym, co
+   użytkownik rozpozna po fragmencie, a ID modelu i tak jest powtórzone na karcie. */
+.select-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-option-hint {
+  flex-shrink: 0;
+  font-size: 0.76rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.select-trigger-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .select-option:hover,

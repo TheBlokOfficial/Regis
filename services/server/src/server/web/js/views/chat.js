@@ -257,16 +257,18 @@ export class ChatView {
       // Brak połączenia z serwerem — pusty picker z czytelnym placeholderem.
     }
 
-    const label = (p) => {
+    // Nazwa presetu jest etykietą, identyfikator modelu doprecyzowaniem obok — stąd
+    // `hint`, renderowany mniejszym, wyszarzonym krojem (`components/select.js`).
+    // Presety utworzone przed wprowadzeniem edytowalnych nazw mają nazwę RÓWNĄ nazwie
+    // modelu; wtedy hint jest pomijany, żeby nie pokazywać tego samego dwa razy.
+    const toOption = (p) => {
       const model = p.options?.model || '';
-      // Nazwa presetu bywa równa nazwie modelu (tak powstawały presety przed
-      // wprowadzeniem edytowalnych nazw) — nie dublujemy jej wtedy w nawiasie.
-      return model && model !== p.name ? `${p.name} · ${model}` : p.name;
+      return { value: p.id, label: p.name, hint: model && model !== p.name ? model : '' };
     };
 
     this.modelSwitch = initSelect({
       idPrefix: 'chat-model-switch',
-      options: providers.map((p) => ({ value: p.id, label: label(p) })),
+      options: providers.map(toOption),
       value: activeId ?? '',
       placeholder: providers.length ? 'Wybierz preset' : 'Brak presetów',
       onChange: async (providerId) => {
