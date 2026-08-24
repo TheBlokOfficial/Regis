@@ -2,25 +2,31 @@
 
 Implementuje `server.agent.context_provider.WorldInterface` strukturalnie
 (bez importu — kernel nigdy nie importuje `server.world`, tylko odwrotnie).
-Wewnątrz woła wprost swoje własne backendy (klient Home Assistant, rejestr
-satelit) — zero protokołu między nimi, bo to jeden, konkretny silnik, nie
+Wewnątrz woła wprost swoje własne backendy (klient Home Assistant, magazyny
+plikowe) — zero protokołu między nimi, bo to jeden, konkretny silnik, nie
 generyczna kolekcja wymiennych rozszerzeń.
 
-Kolejność w `build()` jest świadoma: rejestracja satelity (kanał, lokalizacja)
-liczona jest niezależnie od dostępności Home Assistant — brak/nieosiągalność
-configu ucina wyłącznie encje/narzędzia HA, nigdy framing kanału komunikacji.
+Sam silnik jest dziś **fasadą i orkiestratorem**; rzeczy, które robi, mieszkają
+osobno i dają się testować bez niego:
+
+* `stores.py` / `shared.JsonInstanceRepository` — trwałość (pliki JSON),
+* `turn_context.py` — zamiana stanu na tekst tury (fakty, lista urządzeń),
+* `tools/` — narzędzia agenta (definicje + wykonanie),
+* `prompt_sections.py` / `prompts.py` — edytowalna treść i tożsamość.
+
+Kolejność w `build()` jest świadoma: profil klienta (lokalizacja, możliwości)
+liczony jest niezależnie od dostępności Home Assistant — brak/nieosiągalność
+configu ucina wyłącznie encje/narzędzia HA, nigdy ramowanie dostawy.
 """
 
 import asyncio
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
-from shared import ConfigStore, JsonInstanceRepository, get_logger, get_service_root
+from shared import JsonInstanceRepository, get_logger, get_service_root
 
 from server.agent.context_provider import ContextBuild
-from server.ports.llm import ToolDefinition, ToolResult
 from server.world.client import HomeAssistantClient
 from server.world.models import (
     ClientCapability,
@@ -41,23 +47,16 @@ from server.world.prompt_sections import (
     PromptSection,
     PromptSectionsConfig,
     PromptSectionStore,
-    TurnFacts,
-    render_section,
 )
 from server.world.prompts import PromptInstanceConfig, WorldPromptStore
 from server.world.registry import DeviceRegistry
-from server.world.tools import TOOL_NAMES, HomeAssistantToolExecutor, build_tool_definitions
+from server.world.stores import DeclaredDevicesStore, HomeAssistantConfigStore, SenderProfilesStore
+from server.world.tools import HomeAssistantToolExecutor, ToolSet, build_tool_definitions, get_time_tool, speak_in_room_tool
+from server.world.turn_context import build_turn_facts, render_turn_context
 
 logger = get_logger("regis.world")
 
-# Nazwy dni po polsku — `datetime.strftime("%A")` zależy od locale procesu, więc dawałoby
-# raz "Monday", raz "poniedziałek", zależnie od maszyny.
-_WEEKDAY_NAMES = ("poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela")
-
 ClientFactoryFn = Callable[[HomeAssistantConfig], HomeAssistantClient]
-
-_GET_TIME_TOOL = "get_time"
-_SPEAK_IN_ROOM_TOOL = "speak_in_room"
 
 
 class WorldEngine:
@@ -92,6 +91,12 @@ class WorldEngine:
             label="pokój",
             lock=self._lock,
         )
+        # Trzy byty trzymane w pojedynczych plikach (patrz `stores.py`) — dzielą ten sam
+        # lock co kolekcje wyżej, więc zapisy w obrębie jednego silnika pozostają
+        # serializowane dokładnie tak, jak przed wydzieleniem magazynów.
+        self._config_store = HomeAssistantConfigStore(self.config_path, self._lock)
+        self._declared_store = DeclaredDevicesStore(self.declared_devices_path, self._lock)
+        self._senders_store = SenderProfilesStore(self.senders_path, self._lock)
         # World jest jedynym autorem promptu tej tury, gdy podłączony — własny magazyn
         # profili tożsamości (do 3, przełączalne), zarządzany wewnętrznie (patrz `build()`).
         self._prompt_store = WorldPromptStore(self.base_data_dir)
@@ -117,7 +122,7 @@ class WorldEngine:
     async def get_config(self) -> HomeAssistantConfig:
         """Wczytuje konfigurację. Puste pola oznaczają brak konfiguracji."""
         await self._ensure_defaults()
-        return await asyncio.to_thread(ConfigStore(HomeAssistantConfig, self.config_path).load)
+        return await self._config_store.load()
 
     async def save_config(self, base_url: str, access_token: str | None = None) -> HomeAssistantConfig:
         """Zapisuje adres serwera i (opcjonalnie) token dostępu.
@@ -128,13 +133,9 @@ class WorldEngine:
         prawdziwej wartości i nie może jej sam odesłać z powrotem.
         """
         await self._ensure_defaults()
-        token = access_token
-        if not token:
-            current = await asyncio.to_thread(ConfigStore(HomeAssistantConfig, self.config_path).load)
-            token = current.access_token
+        token = access_token or (await self._config_store.load()).access_token
         content = HomeAssistantConfig(base_url=base_url, access_token=token)
-        async with self._lock:
-            await asyncio.to_thread(ConfigStore(HomeAssistantConfig, self.config_path).save, content)
+        await self._config_store.save(content)
         logger.info("Zaktualizowano konfigurację Home Assistant.")
         return content
 
@@ -234,7 +235,7 @@ class WorldEngine:
     async def delete_room(self, room_id: str) -> bool:
         """Usuwa plik pokoju z dysku. Urządzenia/nadawcy wskazujący na usunięty `room_id`
         po prostu przestają mieć dopasowanie (cicho traktowani jak nieprzypisani,
-        patrz `_render_devices_section`) — bez cascade delete."""
+        patrz `turn_context.render_devices_section`) — bez cascade delete."""
         await self._ensure_defaults()
         return await self._rooms.delete(room_id)
 
@@ -245,42 +246,34 @@ class WorldEngine:
     async def get_declared_devices(self) -> DeclaredDevicesFileContent:
         """Wczytuje zadeklarowaną listę urządzeń. Brak pliku = pusta lista."""
         await self._ensure_defaults()
-        return await asyncio.to_thread(ConfigStore(DeclaredDevicesFileContent, self.declared_devices_path).load)
-
-    async def _save_declared_devices(self, content: DeclaredDevicesFileContent) -> None:
-        await self._ensure_defaults()
-        async with self._lock:
-            await asyncio.to_thread(ConfigStore(DeclaredDevicesFileContent, self.declared_devices_path).save, content)
+        return await self._declared_store.load()
 
     async def add_declared_device(
         self, entity_id: str, display_name: str | None = None, room_id: str | None = None
     ) -> None:
         """Dodaje encję do zadeklarowanej listy (widoczna dla agenta od tej pory)."""
-        current = await self.get_declared_devices()
-        current.entries[entity_id] = DeclaredDeviceEntry(display_name=display_name, room_id=room_id)
-        await self._save_declared_devices(current)
+        await self._ensure_defaults()
+        await self._declared_store.upsert(entity_id, DeclaredDeviceEntry(display_name=display_name, room_id=room_id))
         logger.info(f"Zadeklarowano urządzenie [{entity_id}].")
 
     async def update_declared_device(
         self, entity_id: str, display_name: str | None, room_id: str | None = None
     ) -> DeclaredDeviceEntry:
         """Zmienia `display_name`/`room_id` istniejącego wpisu. Rzuca ValueError jeśli nie istnieje."""
-        current = await self.get_declared_devices()
-        if entity_id not in current.entries:
+        await self._ensure_defaults()
+        if entity_id not in (await self._declared_store.load()).entries:
             raise ValueError(f"Urządzenie '{entity_id}' nie jest zadeklarowane.")
-        current.entries[entity_id] = DeclaredDeviceEntry(display_name=display_name, room_id=room_id)
-        await self._save_declared_devices(current)
-        return current.entries[entity_id]
+        entry = DeclaredDeviceEntry(display_name=display_name, room_id=room_id)
+        await self._declared_store.upsert(entity_id, entry)
+        return entry
 
     async def remove_declared_device(self, entity_id: str) -> bool:
         """Usuwa encję z zadeklarowanej listy (przestaje być widoczna dla agenta)."""
-        current = await self.get_declared_devices()
-        if entity_id not in current.entries:
-            return False
-        del current.entries[entity_id]
-        await self._save_declared_devices(current)
-        logger.info(f"Usunięto deklarację urządzenia [{entity_id}].")
-        return True
+        await self._ensure_defaults()
+        removed = await self._declared_store.remove(entity_id)
+        if removed:
+            logger.info(f"Usunięto deklarację urządzenia [{entity_id}].")
+        return removed
 
     # --------------------------------------------------------------------------
     # Katalog surowy i zadeklarowane urządzenia po zjoinowaniu ze stanem HA
@@ -333,30 +326,22 @@ class WorldEngine:
     async def get_senders(self) -> SenderProfilesFileContent:
         """Wczytuje przypisania nadawców. Brak pliku = pusty rejestr."""
         await self._ensure_defaults()
-        return await asyncio.to_thread(ConfigStore(SenderProfilesFileContent, self.senders_path).load)
-
-    async def _save_senders(self, content: SenderProfilesFileContent) -> None:
-        await self._ensure_defaults()
-        async with self._lock:
-            await asyncio.to_thread(ConfigStore(SenderProfilesFileContent, self.senders_path).save, content)
+        return await self._senders_store.load()
 
     async def register_sender(self, sender_id: str, profile: SenderProfile) -> SenderProfile:
         """Rejestruje lub nadpisuje przypisanie nadawcy do pokoju."""
-        current = await self.get_senders()
-        current.entries[sender_id] = profile
-        await self._save_senders(current)
+        await self._ensure_defaults()
+        await self._senders_store.upsert(sender_id, profile)
         logger.info(f"Przypisano nadawcę [{sender_id}] do pokoju.")
         return profile
 
     async def remove_sender(self, sender_id: str) -> bool:
         """Usuwa przypisanie nadawcy."""
-        current = await self.get_senders()
-        if sender_id not in current.entries:
-            return False
-        del current.entries[sender_id]
-        await self._save_senders(current)
-        logger.info(f"Usunięto przypisanie nadawcy [{sender_id}].")
-        return True
+        await self._ensure_defaults()
+        removed = await self._senders_store.remove(sender_id)
+        if removed:
+            logger.info(f"Usunięto przypisanie nadawcy [{sender_id}].")
+        return removed
 
     async def _find_speaker_by_room(self, room: str) -> tuple[str | None, list[str]]:
         """Szuka w podanym pokoju nadawcy zdolnego **odtworzyć mowę**, w dwóch krokach:
@@ -451,239 +436,79 @@ class WorldEngine:
     # WorldInterface — budowanie wkładu na czas jednej interakcji agenta
     # --------------------------------------------------------------------------
 
+    async def _describe_target(self, sender_id: str) -> tuple[SenderProfile | None, str | None]:
+        """Profil klienta + nazwa jego pokoju — potrzebne narzędziu `speak_in_room`
+        do przeliczenia sekcji kontekstu dla nowego celu dostawy."""
+        profile = (await self.get_senders()).entries.get(sender_id)
+        if profile is None or not profile.room_id:
+            return profile, None
+        room = (await self.list_rooms()).get(profile.room_id)
+        return profile, room.name if room else None
+
     async def build(self, sender_id: str | None = None) -> ContextBuild:
-        # Prompt tury dzieli się wzdłuż osi ZMIENNOŚCI, nie tematu (patrz
-        # `agent/context_provider.py::ContextBuild`):
-        #   * tożsamość (aktywny profil) -> `system_prompt`, stabilne między turami,
-        #   * wszystko poniżej -> `turn_context`, prawdziwe tylko teraz.
-        # Wcześniej było to jednym sklejonym stringiem, przez co znacznik czasu
-        # zmieniał wiadomość zerową co turę, a tekstu faktów nie dało się edytować
-        # bez dotykania tożsamości.
-        # 1. Profil nadawcy: gdzie stoi i co potrafi. Modalność wyprowadzana jest tu,
-        #    z trwałych `capabilities` klienta — nie przenoszona przez kernel jako flaga
-        #    wywołania (dawne `voice_mode`), bo "ten klient ma głośnik" to fakt o rzeczy
-        #    w świecie, dokładnie jak `Device.capabilities`.
+        """Wkład Świata w jedną turę agenta: tożsamość, fakty i narzędzia.
+
+        Prompt tury dzieli się wzdłuż osi ZMIENNOŚCI, nie tematu (patrz
+        `agent/context_provider.py::ContextBuild`): tożsamość (aktywny profil) trafia
+        do `system_prompt` i jest stabilna między turami, a wszystko poniżej do
+        `turn_context` — prawdziwego tylko teraz. Wcześniej był to jeden sklejony
+        string, przez co znacznik czasu zmieniał wiadomość zerową co turę, a tekstu
+        faktów nie dało się edytować bez dotykania tożsamości.
+        """
+        # 1. Profil klienta: gdzie stoi i co potrafi. Liczony PRZED Home Assistantem,
+        #    żeby jego niedostępność nigdy nie ucięła ramowania dostawy.
         rooms_by_id = await self.list_rooms()
         profile: SenderProfile | None = None
         if sender_id is not None:
-            senders = await self.get_senders()
-            profile = senders.entries.get(sender_id)
+            profile = (await self.get_senders()).entries.get(sender_id)
         current_room = rooms_by_id.get(profile.room_id) if (profile and profile.room_id) else None
 
-        # 2. Home Assistant — łagodna degradacja, nie wpływa na framing z kroku 1.
+        # 2. Home Assistant — łagodna degradacja: brak configu ucina wyłącznie urządzenia.
         config = await self.get_config()
+        ha_configured = bool(config.base_url and config.access_token)
         devices: list[Device] = []
         groups: list[DeviceGroup] = []
         client: HomeAssistantClient | None = None
-        if config.base_url and config.access_token:
+        if ha_configured:
             client = self._build_client(config)
             devices = await self.resolve_devices(client=client)
-            group_instances = await self.list_groups()
-            groups = [DeviceGroup(id=cfg.id, name=cfg.name, device_ids=cfg.device_ids) for cfg in group_instances.values()]
+            groups = [
+                DeviceGroup(id=cfg.id, name=cfg.name, device_ids=cfg.device_ids)
+                for cfg in (await self.list_groups()).values()
+            ]
 
-        device_list = (
-            self._render_devices_section(
-                devices,
-                groups,
-                rooms_by_id=rooms_by_id,
-                current_room_id=current_room.id if current_room else None,
-            )
-            if (devices or groups)
-            else None
-        )
-        # Sam pokój nadawcy, bez nagłówków i bez grup — pozwala napisać sekcję w rodzaju
-        # "masz pod ręką: {urządzenia_w_pokoju}", nie zalewając promptu całym domem.
-        room_devices = [d for d in devices if current_room is not None and d.room_id == current_room.id]
-        room_device_list = (
-            "\n".join(
-                f"- [{d.id}] {d.name} (możliwości: {_format_capabilities(d)})" for d in room_devices
-            )
-            if room_devices
-            else None
-        )
-
-        # 3. Fakty tury -> sekcje. Silnik dostarcza WYŁĄCZNIE dane; o tym, które
-        #    bloki tekstu się pojawią i w jakiej kolejności, decyduje konfiguracja
-        #    użytkownika (`prompt_sections.py`). Warunki są ewaluowane w Pythonie,
-        #    więc użytkownik ich wybiera, a nie pisze — patrz docstring tamtego modułu.
-        now = datetime.now()
-        facts = TurnFacts(
-            now=now.strftime("%Y-%m-%d %H:%M:%S"),
-            date=now.strftime("%Y-%m-%d"),
-            clock=now.strftime("%H:%M"),
-            weekday=_WEEKDAY_NAMES[now.weekday()],
-            capabilities=frozenset(c.value for c in profile.capabilities) if profile else frozenset(),
-            room_id=current_room.id if current_room else None,
-            room_name=current_room.name if current_room else None,
-            client_name=profile.display_name if profile else None,
-            device_list=device_list,
-            room_device_list=room_device_list,
-            room_names=tuple(room.name for room in rooms_by_id.values()),
-            group_names=tuple(group.name for group in groups),
-            ha_configured=bool(config.base_url and config.access_token),
+        # 3. Stan -> tekst. Silnik dostarcza WYŁĄCZNIE dane; o tym, które bloki się
+        #    pojawią i w jakiej kolejności, decyduje konfiguracja użytkownika.
+        facts = build_turn_facts(
+            now=datetime.now(),
+            profile=profile,
+            current_room=current_room,
+            rooms_by_id=rooms_by_id,
+            devices=devices,
+            groups=groups,
+            ha_configured=ha_configured,
         )
         sections = await self._section_store.load()
-        context_parts = [
-            rendered for section in sections.sections if (rendered := render_section(section, facts)) is not None
-        ]
 
-        # 4. Narzędzia + dispatch
-        tool_definitions: list[ToolDefinition] = [
-            ToolDefinition(
-                name=_GET_TIME_TOOL,
-                description="Zwraca aktualną datę i godzinę.",
-                parameters={"type": "object", "properties": {}},
-            ),
-            ToolDefinition(
-                name=_SPEAK_IN_ROOM_TOOL,
-                description=(
-                    "Przełącza dalszą część TEJ odpowiedzi na odbiornik przypisany do podanego pokoju "
-                    "(np. przekierowanie mowy na inny głośnik). Użyj gdy użytkownik prosi o ogłoszenie/"
-                    "odpowiedź w innym pokoju niż ten, z którego przyszło pytanie."
+        # 4. Narzędzia tej tury: własne Świata + (gdy są urządzenia) Home Assistant.
+        tools = ToolSet(
+            [
+                get_time_tool(facts.now),
+                speak_in_room_tool(
+                    find_speaker=self._find_speaker_by_room,
+                    describe_target=self._describe_target,
+                    sections=sections,
+                    facts=facts,
                 ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "room": {
-                            "type": "string",
-                            "description": "Nazwa pokoju — ta sama etykieta co w nagłówkach listy urządzeń/lokalizacji.",
-                        }
-                    },
-                    "required": ["room"],
-                },
-            ),
-        ]
-        executor: HomeAssistantToolExecutor | None = None
-        if devices or groups:
-            tool_definitions.extend(build_tool_definitions())
-            device_registry = DeviceRegistry(devices, groups)
-            executor = HomeAssistantToolExecutor(device_registry, client) if client is not None else None
-
-        async def dispatch(name: str, arguments: dict[str, Any]) -> ToolResult:
-            if name == _GET_TIME_TOOL:
-                return ToolResult(content=facts.now)
-            if name == _SPEAK_IN_ROOM_TOOL:
-                room = str(arguments.get("room", ""))
-                target_sender_id, candidates = await self._find_speaker_by_room(room)
-                if target_sender_id is None:
-                    if candidates:
-                        return ToolResult(
-                            is_error=True,
-                            content=f"W pokoju '{room}' jest zarejestrowanych wielu odbiorników — nie można jednoznacznie wybrać.",
-                        )
-                    return ToolResult(is_error=True, content=f"Brak odbiornika z głośnikiem w pokoju '{room}'.")
-                target_profile = (await self.get_senders()).entries.get(target_sender_id)
-                target_room = (await self.list_rooms()).get(target_profile.room_id) if target_profile and target_profile.room_id else None
-                target_room_name = target_room.name if target_room else None
-                # Treść wyniku niesie NOWE ramowanie dostawy — cel zmienił się w połowie
-                # tury, a kontekst tury powstał przed jej startem i już tego nie nadgoni.
-                # Wyniki narzędzi wracają do modelu w pętli ReAct, więc to naturalny
-                # kanał na tę korektę.
-                #
-                # Nie hardkodujemy tu zdania: przeliczamy sekcje użytkownika dla NOWEGO
-                # celu i dokładamy tylko te, które wcześniej nie obowiązywały. Dzięki
-                # temu tekst pochodzi z tej samej konfiguracji co start tury, a model
-                # nie dostaje po raz drugi rzeczy, które już wie (np. listy urządzeń).
-                content = f"Przełączono dalszą odpowiedź na pokój '{room}'."
-                added = _sections_gained_after_redirect(sections, facts, target_profile, target_room_name)
-                if added:
-                    content = "\n\n".join([content, *added])
-                return ToolResult(content=content, redirect_sender_id=target_sender_id)
-            if executor is not None:
-                try:
-                    return await executor.execute(name, arguments)
-                except Exception as e:
-                    logger.error(f"Błąd podczas wykonania narzędzia [{name}]: {e}")
-                    return ToolResult(is_error=True, content=f"Błąd wykonania narzędzia '{name}': {e}")
-            return ToolResult(is_error=True, content=f"Nieznane narzędzie: '{name}'.")
-
-        active_profile_content = await self._prompt_store.get_active_content()
-        return ContextBuild(
-            tool_definitions=tool_definitions,
-            system_prompt=active_profile_content or None,
-            turn_context="\n\n".join(context_parts) if context_parts else None,
-            dispatch=dispatch,
+            ]
         )
+        if devices or groups:
+            executor = HomeAssistantToolExecutor(DeviceRegistry(devices, groups), client) if client else None
+            tools.add_home_assistant(executor, build_tool_definitions())
 
-    @staticmethod
-    def _render_devices_section(
-        devices: list[Device],
-        groups: list[DeviceGroup],
-        rooms_by_id: dict[str, RoomInstanceConfig],
-        current_room_id: str | None,
-    ) -> str:
-        """Renderuje SAMĄ listę urządzeń posegregowaną wg `Device.room_id` (pełnoprawny
-        pokój World, niezależny od Home Assistant) — pełna adresowalność zawsze
-        zachowana, segregacja to wyłącznie prezentacja. Urządzenie wskazujące na
-        usunięty/nieznany `room_id` traktowane jest jak nieprzypisane (bez cascade
-        delete przy usuwaniu pokoju).
-
-        **Bez zdania wprowadzającego** — to należy do edytowalnej sekcji `devices`
-        (`prompt_sections.py`), która wstawia tę listę w miejsce `{lista_urządzeń}`.
-        Trzymanie nagłówka w obu miejscach dawało go w prompcie dwukrotnie."""
-        by_room: dict[str, list[Device]] = {}
-        unassigned: list[Device] = []
-        for device in devices:
-            if device.room_id and device.room_id in rooms_by_id:
-                by_room.setdefault(device.room_id, []).append(device)
-            else:
-                unassigned.append(device)
-
-        lines: list[str] = []
-        for room_id, room_devices in sorted(by_room.items(), key=lambda item: item[0] != current_room_id):
-            is_current = room_id == current_room_id
-            header = f"### {rooms_by_id[room_id].name}" + (" (Twoja lokalizacja)" if is_current else "")
-            lines.append(header)
-            for device in room_devices:
-                lines.append(f"- [{device.id}] {device.name} (możliwości: {_format_capabilities(device)})")
-        if unassigned:
-            lines.append("### (bez przypisanego pokoju)")
-            for device in unassigned:
-                lines.append(f"- [{device.id}] {device.name} (możliwości: {_format_capabilities(device)})")
-        if groups:
-            lines.append("### Grupy")
-            group_capabilities = ", ".join(TOOL_NAMES)
-            for group in groups:
-                lines.append(f"- [{group.id}] {group.name} (możliwości: {group_capabilities})")
-        return "\n".join(lines)
-
-
-def _format_capabilities(device: Device) -> str:
-    labels = []
-    for tool_name, features in sorted(device.capabilities.items()):
-        labels.append(f"{tool_name}[{', '.join(sorted(features))}]" if features else tool_name)
-    return ", ".join(labels) if labels else "brak"
-
-
-def _sections_gained_after_redirect(
-    sections: PromptSectionsConfig,
-    original: TurnFacts,
-    target_profile: SenderProfile | None,
-    target_room_name: str | None,
-) -> list[str]:
-    """Sekcje, które zaczynają obowiązywać dopiero po przekierowaniu na inny cel.
-
-    Zwracamy RÓŻNICĘ, nie cały kontekst: model dostał już fakty tej tury na starcie,
-    więc powtarzanie ich (zwłaszcza listy urządzeń) tylko zaśmiecałoby pętlę ReAct.
-    Interesuje nas wyłącznie to, co się zmieniło — typowo ramowanie dostawy, bo cel
-    ma głośnik, a pierwotny nadawca mógł go nie mieć.
-    """
-    # Zmienia się WYŁĄCZNIE to, co zależy od celu (możliwości, pokój, nazwa); reszta
-    # faktów tej tury zostaje — stąd `replace` na istniejącym obiekcie zamiast budowania
-    # go od zera, przy którym każde nowe pole `TurnFacts` trzeba by pamiętać tu przepisać.
-    target_facts = replace(
-        original,
-        capabilities=frozenset(c.value for c in target_profile.capabilities) if target_profile else frozenset(),
-        room_id=target_profile.room_id if target_profile else None,
-        room_name=target_room_name,
-        client_name=target_profile.display_name if target_profile else None,
-    )
-    gained: list[str] = []
-    for section in sections.sections:
-        # Porównujemy WYRENDEROWANY tekst, nie sam fakt "czy warunek zachodzi": po
-        # rozdzieleniu na dwie gałęzie sekcja obowiązuje praktycznie zawsze, a realną
-        # zmianą jest to, że mówi teraz co innego niż mówiła przed przekierowaniem.
-        rendered = render_section(section, target_facts)
-        if rendered and rendered != render_section(section, original):
-            gained.append(rendered)
-    return gained
+        return ContextBuild(
+            tool_definitions=tools.definitions,
+            system_prompt=(await self._prompt_store.get_active_content()) or None,
+            turn_context=render_turn_context(sections, facts),
+            dispatch=tools.dispatch,
+        )
