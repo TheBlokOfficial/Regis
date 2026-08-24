@@ -13,11 +13,10 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from shared import ChatMessageDTO
-
 from server.agent.context.builder import ContextBuilder
 from server.world.engine import WorldEngine
 from server.world.models import ClientCapability, SenderProfile
+from shared import ChatMessageDTO
 
 IDENTITY = "Jesteś Regis."
 

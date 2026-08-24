@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
+from shared import ProviderMetadataResponse
 
 from server.ai.stt import STTFactory, STTProviderType, STTRegistry
 from server.ai.tts import TTSFactory, TTSProviderType, TTSRegistry
@@ -15,13 +17,12 @@ from server.voice.dto import (
     CreateTTSProviderRequest,
     SelectSTTProviderRequest,
     SelectTTSProviderRequest,
-    UpdateProviderRequest,
     STTProviderDTO,
     STTProviderListResponse,
     TTSProviderDTO,
     TTSProviderListResponse,
+    UpdateProviderRequest,
 )
-from shared import ProviderMetadataResponse
 
 
 def _mask_secret_options(schemas: ProviderMetadataResponse, provider_type: str, options: dict[str, Any]) -> dict[str, Any]:
@@ -119,13 +120,13 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Niewspierany typ dostawcy STT: '{req.type}'. Dozwolone: {supported}.",
-            )
+            ) from None
         try:
             created_cfg = await stt_registry.create_instance(
                 provider_type=p_type, name=req.name, options=req.options, custom_id=req.custom_id
             )
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
         active_id = await stt_registry.get_active_backend_id()
         schemas = STTFactory.get_all_schemas()
@@ -168,7 +169,7 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
                 )
             return {"success": True, "deleted_id": provider_id}
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
     # -- TTS ------------------------------------------------------------------
 
@@ -216,13 +217,13 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Niewspierany typ dostawcy TTS: '{req.type}'. Dozwolone: {supported}.",
-            )
+            ) from None
         try:
             created_cfg = await tts_registry.create_instance(
                 provider_type=p_type, name=req.name, options=req.options, custom_id=req.custom_id
             )
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
         active_id = await tts_registry.get_active_backend_id()
         schemas = TTSFactory.get_all_schemas()
@@ -265,6 +266,6 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
                 )
             return {"success": True, "deleted_id": provider_id}
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
     return router

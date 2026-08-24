@@ -17,7 +17,6 @@ from typing import Iterator
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from server.ai.llm import BackendRegistry
 from server.network.routes.providers import create_providers_router
 

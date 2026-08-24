@@ -1,7 +1,7 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from server.agent.llm import LLMMessage
-from server.ai.llm.models import BackendInstanceConfig, ProviderType
 from server.ai.llm.factory import LLMFactory
 from server.ai.llm.model_catalog import (
     _groq_params_for,
@@ -9,6 +9,7 @@ from server.ai.llm.model_catalog import (
     _openrouter_params_for,
     fallback_options_schema,
 )
+from server.ai.llm.models import BackendInstanceConfig, ProviderType
 from server.ai.llm.providers.ollama import OllamaProvider
 from server.ai.llm.providers.openai_compatible import OpenAICompatibleProvider
 

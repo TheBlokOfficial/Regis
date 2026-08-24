@@ -1,5 +1,5 @@
-from fastapi import APIRouter
 import shared
+from fastapi import APIRouter
 from shared import HealthResponse
 
 

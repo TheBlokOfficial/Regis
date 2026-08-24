@@ -10,11 +10,10 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from shared import ConfigStore, Event, EventBus
-
 from server.config import Settings
 from server.voice.events import VoiceEventType
 from server.voice.routes import create_voice_status_router
+from shared import ConfigStore, Event, EventBus
 
 
 def _make_client(tmp_path: Path, sender_states: dict[str, str], event_bus: EventBus) -> TestClient:

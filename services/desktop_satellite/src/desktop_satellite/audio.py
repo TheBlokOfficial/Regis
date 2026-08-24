@@ -19,7 +19,6 @@ from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
-
 from shared import CHANNELS, SAMPLE_RATE_HZ, get_logger
 
 logger = get_logger("regis.desktop_satellite.audio")

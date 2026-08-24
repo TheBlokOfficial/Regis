@@ -1,4 +1,5 @@
-from shared import get_logger, ProviderMetadataResponse, ProviderTypeSpecDTO, ProviderOptionSpec
+from shared import ProviderMetadataResponse, ProviderOptionSpec, ProviderTypeSpecDTO, get_logger
+
 from server.ai.stt.models import STTInstanceConfig, STTProviderType
 from server.ai.stt.providers import GroqSTTProvider
 from server.voice.stt import BaseSTTProvider

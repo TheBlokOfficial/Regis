@@ -1,9 +1,11 @@
 from pathlib import Path
+
 from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
+
 from server.agent import AgentEngine
-from server.ai.llm import BackendRegistry
 from server.agent.prompts import AgentDefaultPromptStore
+from server.ai.llm import BackendRegistry
 from server.network.routes import create_api_router
 from server.network.routes.chat import RegistrationCheck
 from server.world import WorldEngine

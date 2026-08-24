@@ -1,15 +1,15 @@
 import tempfile
 from pathlib import Path
 from typing import AsyncIterator, List
+
 import pytest
 from fastapi.testclient import TestClient
-
 from server.agent import AgentEngine
 from server.agent.context_provider import ContextBuild
 from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse, ToolCallRequest, ToolDefinition, ToolResult
-from server.ai.llm.registry import BackendRegistry
 from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
+from server.ai.llm.registry import BackendRegistry
 from server.network.gateway import create_gateway_app
 
 
@@ -168,7 +168,6 @@ class SlowMockLLMProvider(BaseLLMProvider):
 
 @pytest.mark.anyio
 async def test_async_background_generation_and_status():
-    import asyncio
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         memory_manager = MemoryManager(data_dir=tmp_path / "sessions")
@@ -270,7 +269,7 @@ async def test_disconnect_does_not_cancel_background_task():
         engine = AgentEngine(llm_provider=slow_provider, memory_manager=memory_manager)
         backend_registry = BackendRegistry(data_dir=tmp_path / "backends")
         prompt_store = AgentDefaultPromptStore(data_dir=tmp_path)
-        app = create_gateway_app(agent_engine=engine, backend_registry=backend_registry, prompt_store=prompt_store)
+        create_gateway_app(agent_engine=engine, backend_registry=backend_registry, prompt_store=prompt_store)
 
         # 1. Rozpoczynamy interakcję strumieniową
         stream_gen = engine.interact_stream(session_id="session_default", prompt="Test rozłączenia klienta")

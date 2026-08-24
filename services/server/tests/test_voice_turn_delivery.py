@@ -15,14 +15,13 @@ import json
 from typing import Any
 
 import pytest
-from shared import Event, EventBus, ServerMessageType
-
 from server.ai.stt import MockSTTProvider
 from server.config import Settings
 from server.events import ServerEventType
 from server.voice.gateway import VoiceConnection
 from server.voice.tts import BaseTTSProvider
 from server.voice.wakeword import ThresholdEnergyWakeWordDetector
+from shared import Event, EventBus, ServerMessageType
 
 SENDER = "snd_gateway"
 

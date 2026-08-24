@@ -1,10 +1,13 @@
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import AsyncIterator, Any, Literal, TypedDict
+from typing import Any, AsyncIterator, Literal, TypedDict
+
 from shared import ChatResponseDTO, Event, EventBus, get_logger
-from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse, ReasoningChunk, ToolCallRequest
+
 from server.agent.context import ContextBuilder
 from server.agent.context_provider import NullWorldInterface, WorldInterface
+from server.agent.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest
 from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
 from server.events import ServerEventType
@@ -187,7 +190,9 @@ class AgentEngine:
         """
         target_client_id = sender_id if sender_id is not None else session_id
 
-        async def _publish(event_type: ServerEventType, payload_extra: dict[str, Any]) -> None:
+        # `Mapping`, nie `dict` — wywołujący podaje też `ToolStepPayload` (TypedDict),
+        # który nie jest przypisywalny do niezmiennego `dict[str, Any]`.
+        async def _publish(event_type: ServerEventType, payload_extra: Mapping[str, Any]) -> None:
             await self.event_bus.publish(
                 Event(
                     type=event_type,
@@ -266,7 +271,7 @@ class AgentEngine:
                 turn_context=context_build.turn_context,
             )
 
-            for iteration in range(self.max_tool_iterations):
+            for _iteration in range(self.max_tool_iterations):
                 turn_text = ""
                 pending_calls: list[ToolCallRequest] = []
 

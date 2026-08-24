@@ -5,9 +5,8 @@ współdzielony przez `server` i `desktop_satellite`), `select_server_url`
 w `desktop_satellite.discovery` (budowa adresu WS po stronie klienta).
 """
 
-from shared import decode_beacon, encode_beacon
-
 from desktop_satellite.discovery import select_server_url
+from shared import decode_beacon, encode_beacon
 
 
 def test_encode_decode_beacon_round_trip() -> None:

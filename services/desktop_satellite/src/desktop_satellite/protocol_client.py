@@ -12,8 +12,8 @@ import json
 from typing import Protocol, Union
 
 import websockets
-
 from shared import SatelliteMessageType, ServerMessageType
+from websockets.asyncio.client import ClientConnection
 
 ServerFrame = Union[bytes, dict]
 
@@ -37,7 +37,11 @@ class ProtocolClient:
 
     def __init__(self, server_url: str, sender_id: str) -> None:
         self._url = f"{server_url.rstrip('/')}/{sender_id}"
-        self._ws: websockets.WebSocketClientProtocol | None = None
+        # `websockets.connect()` zwraca `ClientConnection` (implementacja asyncio).
+        # Dawna adnotacja wskazywała na `websockets.WebSocketClientProtocol` — klasę
+        # z przestarzałej gałęzi `legacy`, której `connect()` już nie zwraca; nie
+        # wysypywała się w runtime tylko dzięki `from __future__ import annotations`.
+        self._ws: ClientConnection | None = None
 
     async def connect(self) -> None:
         self._ws = await websockets.connect(self._url)

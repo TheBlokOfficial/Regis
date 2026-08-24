@@ -17,7 +17,6 @@ from typing import Iterator
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from server.world.engine import WorldEngine
 from server.world.routes import create_world_router
 

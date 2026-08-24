@@ -2,7 +2,8 @@ import asyncio
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
-from shared import ConfigStore, get_service_root, get_logger, sanitize_identifier
+
+from shared import ConfigStore, get_logger, get_service_root, sanitize_identifier
 
 from server.ai.stt.factory import STTFactory
 from server.ai.stt.models import ActiveSTTBackendConfig, STTInstanceConfig, STTInstanceFileContent, STTProviderType

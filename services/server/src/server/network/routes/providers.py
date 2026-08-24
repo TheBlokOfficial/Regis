@@ -1,4 +1,5 @@
 from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
 from shared import (
     CreateLLMProviderRequest,
@@ -9,6 +10,7 @@ from shared import (
     SelectLLMProviderRequest,
     UpdateLLMProviderRequest,
 )
+
 from server.ai.llm import BackendRegistry, LLMFactory, ProviderType
 from server.ai.llm.model_catalog import discover_models, fallback_options_schema
 
@@ -138,7 +140,7 @@ def create_providers_router(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Niewspierany typ dostawcy LLM: '{req.type}'. Dozwolone: {supported}.",
-            )
+            ) from None
 
         try:
             created_cfg = await backend_registry.create_instance(
@@ -148,7 +150,7 @@ def create_providers_router(
                 custom_id=req.custom_id,
             )
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
         active_id = await backend_registry.get_active_backend_id()
         type_str = created_cfg.type.value if hasattr(created_cfg.type, "value") else str(created_cfg.type)
@@ -179,7 +181,7 @@ def create_providers_router(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(err),
-            )
+            ) from err
 
     @router.put(
         "/api/v1/llm/providers/{provider_id}",
@@ -201,7 +203,7 @@ def create_providers_router(
         try:
             updated = await backend_registry.update_instance(provider_id, req.name, merged)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
         active_id = await backend_registry.get_active_backend_id()
         return LLMProviderDTO(

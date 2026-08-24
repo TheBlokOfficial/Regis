@@ -1,5 +1,6 @@
 import json
 import time
+
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -9,6 +10,7 @@ from shared import (
     ChatSessionListResponse,
     ChatSessionSummaryDTO,
 )
+
 from server.agent import AgentEngine
 
 
@@ -50,7 +52,7 @@ def create_sessions_router(agent_engine: AgentEngine) -> APIRouter:
                 custom_id=req.custom_id,
             )
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
         return session.to_summary()
 
     @router.get(
@@ -63,7 +65,7 @@ def create_sessions_router(agent_engine: AgentEngine) -> APIRouter:
         try:
             session = agent_engine.memory_manager.get_or_create_session(session_id)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
         messages = list(session.get_history())
         is_generating = agent_engine.is_session_busy(session_id)
         if is_generating:
@@ -112,7 +114,7 @@ def create_sessions_router(agent_engine: AgentEngine) -> APIRouter:
         try:
             deleted = agent_engine.memory_manager.delete_session(session_id)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

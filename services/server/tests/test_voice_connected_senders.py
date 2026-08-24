@@ -5,19 +5,17 @@ znika po rozłączeniu; `GET /connected` odzwierciedla ten stan."""
 from __future__ import annotations
 
 import json
-
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from shared import ConfigStore, EventBus
-
+from server.ai.stt import MockSTTProvider
+from server.ai.tts import MockTTSProvider
 from server.config import Settings
 from server.voice.gateway import create_voice_router
 from server.voice.routes import create_voice_status_router
-from server.ai.stt import MockSTTProvider
-from server.ai.tts import MockTTSProvider
 from server.voice.wakeword import ThresholdEnergyWakeWordDetector
+from shared import ConfigStore, EventBus
 
 
 class FakeAgentEngine:

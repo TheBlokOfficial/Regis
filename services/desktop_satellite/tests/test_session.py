@@ -4,10 +4,8 @@
 from __future__ import annotations
 
 import pytest
-
-from shared import SatelliteMessageType, ServerMessageType
-
 from desktop_satellite.session import SatelliteSession, SessionState
+from shared import SatelliteMessageType, ServerMessageType
 
 
 class FakeLink:

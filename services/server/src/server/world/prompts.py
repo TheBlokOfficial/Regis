@@ -12,7 +12,6 @@ liczby przełączalnych profili, tylko garści (dom/praca/gość itp.).
 import asyncio
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel, Field
 from shared import ConfigStore, get_logger, sanitize_identifier

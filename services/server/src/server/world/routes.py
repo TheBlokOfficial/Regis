@@ -13,11 +13,11 @@ from shared import CreatePromptRequest, PromptDTO, PromptListResponse, UpdatePro
 from server.world.dto import (
     AddDeclaredDeviceRequest,
     CatalogEntryDTO,
+    ConditionSpecDTO,
     CreateHAGroupRequest,
     CreateRoomRequest,
     DeclaredDeviceDTO,
     HAGroupDTO,
-    ConditionSpecDTO,
     HomeAssistantConfigDTO,
     PlaceholderSpecDTO,
     PromptPreviewResponse,
@@ -35,6 +35,7 @@ from server.world.dto import (
     UpdateRoomRequest,
 )
 from server.world.engine import WorldEngine
+from server.world.models import DeclaredDeviceEntry, Device, HomeAssistantConfig, RoomInstanceConfig, SenderProfile
 from server.world.prompt_sections import (
     CONDITION_SPECS,
     PLACEHOLDER_SPECS,
@@ -42,7 +43,6 @@ from server.world.prompt_sections import (
     PromptSectionsConfig,
     section_warnings,
 )
-from server.world.models import DeclaredDeviceEntry, Device, HomeAssistantConfig, RoomInstanceConfig, SenderProfile
 
 
 def _mask_token(token: str) -> str:
@@ -166,7 +166,7 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         try:
             updated = await engine.update_room(room_id=room_id, name=req.name)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
         return _to_room_dto(updated)
 
     @router.delete("/rooms/{room_id}", tags=["World"])
@@ -207,7 +207,7 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         try:
             entry = await engine.update_declared_device(entity_id=entity_id, display_name=req.display_name, room_id=req.room_id)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
         resolved_by_id = {d.id: d for d in await engine.resolve_devices()}
         rooms_by_id = await engine.list_rooms()
         return _to_declared_dto(entity_id, entry, resolved_by_id.get(entity_id), rooms_by_id)
@@ -241,7 +241,7 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         try:
             updated = await engine.update_group(group_id=group_id, name=req.name, device_ids=req.device_ids)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
         return HAGroupDTO(id=updated.id, name=updated.name, device_ids=updated.device_ids)
 
     @router.delete("/groups/{group_id}", tags=["World"])
@@ -320,7 +320,7 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         try:
             config = await engine.save_prompt_sections(sections)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
         return _to_sections_response(config)
 
     @router.post("/prompt-sections/reset", response_model=PromptSectionsResponse, tags=["World"])
@@ -355,7 +355,7 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
                 custom_id=req.custom_id, set_active=req.set_active,
             )
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
         active_id = await engine.get_active_prompt_id()
         return PromptDTO(is_active=(instance.id == active_id), **instance.model_dump())
 
@@ -364,7 +364,7 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         try:
             instance = await engine.update_prompt(prompt_id, name=req.name, content=req.content, description=req.description)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
         active_id = await engine.get_active_prompt_id()
         return PromptDTO(is_active=(instance.id == active_id), **instance.model_dump())
 
@@ -373,7 +373,7 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         try:
             deleted = await engine.delete_prompt(prompt_id)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
         if not deleted:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Profil promptu '{prompt_id}' nie istnieje.")
         return {"success": True, "prompt_id": prompt_id}
@@ -383,7 +383,7 @@ def create_world_router(engine: WorldEngine) -> APIRouter:
         try:
             await engine.set_active_prompt(prompt_id)
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
         instance = await engine.get_prompt(prompt_id)
         return PromptDTO(is_active=True, **instance.model_dump())  # type: ignore[union-attr]
 

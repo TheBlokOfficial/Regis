@@ -4,7 +4,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from server.agent.context.builder import DEFAULT_SYSTEM_PROMPT
 from server.agent.prompts import AgentDefaultPromptStore
 from server.world.prompts import WorldPromptStore

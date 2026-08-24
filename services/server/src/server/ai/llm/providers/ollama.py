@@ -1,11 +1,12 @@
 import json
 import uuid
 from typing import Any, AsyncIterator
+
 import httpx
 from shared import get_logger
 
-from server.config import load_settings
 from server.agent.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest, ToolDefinition
+from server.config import load_settings
 
 logger = get_logger("regis.ai.llm.providers.ollama")
 

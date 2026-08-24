@@ -17,7 +17,6 @@ from typing import Protocol
 
 import numpy as np
 from livekit.wakeword import WakeWordModel
-
 from shared import SAMPLE_RATE_HZ, get_logger
 
 logger = get_logger("regis.voice.wakeword")

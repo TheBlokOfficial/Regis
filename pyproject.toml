@@ -17,6 +17,8 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "anyio>=4.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
 ]
 
 [tool.uv]
@@ -39,4 +41,56 @@ pythonpath = [
     "services/desktop_satellite/src",
     "packages/shared/src",
 ]
+
+# --------------------------------------------------------------------------
+# Kontrola jakości — `AGENTS.md` wymaga ścisłego typowania, ale do tej pory
+# nic tego nie egzekwowało (efekt: adnotacje potrafiły rozjechać się z kodem,
+# np. `LLMRouter.generate_stream` nie wymieniał `ReasoningChunk` przez dwa dni
+# po jego wprowadzeniu). Oba narzędzia są celowo w trybie RAPORTUJĄCYM, nie
+# blokującym — mają wskazywać dryf, a nie zatrzymywać pracy na dzień
+# przepisywania adnotacji w kodzie, który działa.
+#     python -m uv run ruff check .
+#     python -m uv run mypy
+# --------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 125
+target-version = "py311"
+exclude = [".venv", "**/__pycache__", "services/server/src/server/web"]
+
+[tool.ruff.lint]
+# Zestaw celowo wąski: błędy realne (F), higiena importów (I), oczywiste
+# pułapki (B). Bez reguł stylistycznych — projekt ma spójny, świadomy styl
+# i przeformatowanie 8 tysięcy linii nie jest celem tego audytu.
+select = ["E4", "E7", "E9", "F", "I", "B"]
+ignore = [
+    "B008",  # wywołanie funkcji w domyślnym argumencie — wzorzec Depends() z FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+# `__init__.py` re-eksportuje publiczne API pakietu — nieużywane importy są tu celem, nie błędem.
+"**/__init__.py" = ["F401"]
+
+[tool.mypy]
+# Bez `python_version` — przypięcie do 3.11 (deklarowana podłoga projektu) wywraca
+# analizę na stubach numpy, które używają składni 3.12+. Sprawdzamy więc pod
+# interpreterem środowiska; podłogę wersji pilnuje `requires-python` wyżej.
+files = [
+    "packages/shared/src",
+    "services/server/src",
+    "services/desktop_satellite/src",
+]
+mypy_path = "packages/shared/src:services/server/src:services/desktop_satellite/src"
+ignore_missing_imports = true
+# Świadomie BEZ `--strict`: celem jest wychwytywanie rozjazdu adnotacji z kodem,
+# nie wymuszenie pełnego pokrycia typami od pierwszego dnia. Zaostrzać stopniowo.
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# Testy używają atrap o celowo uproszczonych sygnaturach — sprawdzanie ich
+# ciał dawałoby szum bez wartości.
+module = "tests.*"
+check_untyped_defs = false
 

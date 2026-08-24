@@ -1,7 +1,8 @@
 from fastapi import APIRouter
+
 from server.agent import AgentEngine
-from server.ai.llm import BackendRegistry
 from server.agent.prompts import AgentDefaultPromptStore
+from server.ai.llm import BackendRegistry
 
 from .chat import RegistrationCheck, create_chat_router
 from .health import create_health_router

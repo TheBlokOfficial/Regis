@@ -7,13 +7,12 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from shared import ConfigStore, EventBus
-
 from server.config import Settings
 from server.main import _build_wakeword_detector_factory
 from server.voice.routes import create_voice_status_router
 from server.voice.stt import BaseSTTProvider
 from server.voice.tts import BaseTTSProvider
+from shared import ConfigStore, EventBus
 
 
 def _make_client(tmp_path: Path) -> tuple[TestClient, ConfigStore[Settings]]:

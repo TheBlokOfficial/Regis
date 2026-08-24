@@ -2,6 +2,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+
 from pydantic import BaseModel, Field
 from shared import ChatMessageDTO, ChatSessionSummaryDTO, ConfigStore, get_logger, get_service_root, sanitize_identifier
 

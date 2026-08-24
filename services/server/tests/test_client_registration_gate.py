@@ -17,8 +17,6 @@ from typing import Any, AsyncIterator, List
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from shared import ConfigStore, EventBus
-
 from server.agent import AgentEngine
 from server.agent.llm import BaseLLMProvider, LLMMessage
 from server.agent.memory import MemoryManager
@@ -30,6 +28,7 @@ from server.config import Settings
 from server.network.gateway import create_gateway_app
 from server.voice.gateway import create_voice_router
 from server.voice.wakeword import ThresholdEnergyWakeWordDetector
+from shared import EventBus
 
 REGISTERED = "znany_klient"
 UNKNOWN = "obcy_klient"

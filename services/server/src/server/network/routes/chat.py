@@ -1,6 +1,7 @@
 import asyncio
 import json
 from typing import Awaitable, Callable
+
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from shared import (
@@ -8,6 +9,7 @@ from shared import (
     ChatResponseDTO,
     SendChatMessageRequest,
 )
+
 from server.agent import AgentEngine
 
 RegistrationCheck = Callable[[str], Awaitable[bool]]
@@ -57,12 +59,12 @@ def create_chat_router(agent_engine: AgentEngine, is_registered: RegistrationChe
                 sender_id=req.sender_id,
             )
         except ValueError as err:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
         except Exception as err:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Błąd generowania odpowiedzi przez Agenta: {err}",
-            )
+            ) from err
 
     @router.post(
         "/api/v1/chat/stream",
@@ -114,7 +116,7 @@ def create_chat_router(agent_engine: AgentEngine, is_registered: RegistrationChe
                 session_id=req.session_id, prompt=req.message, sender_id=req.sender_id
             )
         except RuntimeError as err:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(err))
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(err)) from err
         return {"success": True, "session_id": req.session_id}
 
     @router.post(

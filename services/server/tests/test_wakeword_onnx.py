@@ -10,7 +10,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from server.voice.wakeword import OnnxWakeWordDetector
 
 MODEL_PATH = Path(__file__).parent.parent / "data" / "wakeword" / "regis.onnx"

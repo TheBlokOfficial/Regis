@@ -1,5 +1,8 @@
+from typing import cast
+
 from shared import ChatMessageDTO, get_logger
-from server.agent.llm import LLMMessage
+
+from server.agent.llm import LLMMessage, LLMRole
 
 logger = get_logger("regis.agent.context")
 
@@ -90,8 +93,10 @@ class ContextBuilder:
             )
 
         for msg in trimmed_history:
-            # Mapujemy tylko znane role LLM (user, assistant, system)
-            role = msg.role if msg.role in ("user", "assistant", "system") else "user"
+            # Mapujemy tylko znane role LLM (user, assistant, system). `ChatMessageDTO.role`
+            # to zwykły `str`, więc zawężenie do `Literal` musi być jawne — inaczej dowolna
+            # przyszła rola z pamięci sesji przeszłaby do dostawcy LLM bez ostrzeżenia.
+            role: LLMRole = cast(LLMRole, msg.role) if msg.role in ("user", "assistant", "system") else "user"
             messages.append(LLMMessage(role=role, content=msg.content))
 
         # 3. Dodanie nowego promptu jeśli nie było go jeszcze w historii

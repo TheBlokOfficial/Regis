@@ -17,7 +17,6 @@ import json
 from typing import Any, Awaitable, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
 from shared import Event, EventBus, SatelliteMessageType, ServerMessageType, get_logger
 
 from server.agent import AgentEngine

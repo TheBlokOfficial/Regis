@@ -64,11 +64,17 @@ class ToolResult:
     przekierowano") to wyłączna wiedza silnika świata, który je ustawił."""
 
 
+LLMRole = Literal["system", "user", "assistant", "tool"]
+"""Role, jakie rozumie dostawca LLM. Alias, a nie literał w miejscu użycia —
+`ContextBuilder` musi jawnie zawęzić do niego `str` z pamięci sesji, a bez
+wspólnej nazwy to zawężenie kopiowałoby listę wartości."""
+
+
 @dataclass
 class LLMMessage:
     """Struktura pojedynczej wiadomości w konwersacji z dostawcą LLM."""
 
-    role: Literal["system", "user", "assistant", "tool"]
+    role: LLMRole
     content: str
     tool_calls: list[ToolCallRequest] | None = None
     tool_call_id: str | None = None

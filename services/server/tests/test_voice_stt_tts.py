@@ -6,9 +6,8 @@ from __future__ import annotations
 import io
 import wave
 
-from shared import CHANNELS, SAMPLE_RATE_HZ, SAMPLE_WIDTH_BYTES
-
 from server.ai.stt.providers import _pcm_to_wav
+from shared import CHANNELS, SAMPLE_RATE_HZ, SAMPLE_WIDTH_BYTES
 
 
 def test_pcm_to_wav_round_trip() -> None:

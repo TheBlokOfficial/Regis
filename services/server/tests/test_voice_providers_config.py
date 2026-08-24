@@ -14,7 +14,6 @@ pełny CRUD w zakładce Dostawcy, a endpoint pozostawał martwy.
 from __future__ import annotations
 
 import pytest
-
 from server.voice.config import VoiceProvidersConfig, load_voice_providers_config, save_voice_providers_config
 
 

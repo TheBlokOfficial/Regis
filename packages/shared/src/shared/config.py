@@ -1,8 +1,9 @@
-import json
 import re
 from pathlib import Path
 from typing import Any, Callable, Generic, Type, TypeVar
+
 from pydantic import BaseModel
+
 from shared.logging import get_logger
 
 logger = get_logger("regis.shared.config")

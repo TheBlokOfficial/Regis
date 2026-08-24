@@ -1,4 +1,3 @@
-from pathlib import Path
 from pydantic import BaseModel, Field
 from shared import ConfigStore, get_service_root
 

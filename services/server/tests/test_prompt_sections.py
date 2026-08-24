@@ -11,7 +11,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from server.world.prompt_sections import (
     PLACEHOLDER_DEVICES,
     PLACEHOLDER_ROOM,
