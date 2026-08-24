@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 from shared import CreatePromptRequest, PromptDTO, PromptListResponse, UpdatePromptRequest
 
+from server.ai.provider_crud import mask_secret_value
 from server.world.dto import (
     AddDeclaredDeviceRequest,
     CatalogEntryDTO,
@@ -46,11 +47,14 @@ from server.world.prompt_sections import (
 
 
 def _mask_token(token: str) -> str:
-    """Maskuje token dostępu do ostatnich 4 widocznych znaków."""
+    """Maskuje token dostępu do ostatnich 4 widocznych znaków.
+
+    Ta sama maska co dla kluczy API dostawców AI (`ai/provider_crud.py`) — token
+    Home Assistant to jedyny sekret poza nimi, który opuszcza serwer w postaci
+    podglądowej, więc nie ma powodu, żeby wyglądał inaczej."""
     if not token:
         return token
-    visible = token[-4:] if len(token) > 4 else ""
-    return f"{'•' * (len(token) - len(visible))}{visible}"
+    return mask_secret_value(token)
 
 
 def _to_config_dto(cfg: HomeAssistantConfig) -> HomeAssistantConfigDTO:
