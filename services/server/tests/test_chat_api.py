@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 from pathlib import Path
 from typing import AsyncIterator, List
@@ -8,9 +9,14 @@ from server.agent import AgentEngine
 from server.agent.context_provider import ContextBuild
 from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
+from server.agent.tasks import SessionTaskRegistry
+from server.agent.turn import TurnRunner
+from server.agent.turn_events import TurnAddress, TurnEventPublisher
 from server.ai.llm.registry import BackendRegistry
+from server.events import ServerEventType
 from server.network.gateway import create_gateway_app
 from server.ports.llm import BaseLLMProvider, LLMMessage, LLMResponse, ToolCallRequest, ToolDefinition, ToolResult
+from shared import EventBus
 
 
 class MockLLMProvider(BaseLLMProvider):
@@ -411,14 +417,26 @@ async def test_error_after_tool_call_preserves_partial_text_prefix():
         provider = TextThenToolThenFailingProvider()
         engine = AgentEngine(llm_provider=provider, memory_manager=memory_manager, world=SingleToolWorld())
 
-        # Wołamy `_generate_in_background` bezpośrednio (nie `interact_stream`/
-        # `start_interaction`) — to jedyna jednostka kodu istotna dla tej regresji
-        # (zachowanie gałęzi `except Exception`), a ominięcie fire-and-forget
-        # `asyncio.create_task` unika sztucznego "Task exception was never retrieved"
-        # (anyio traktuje nieodebrany wyjątek zadania w tle jako błąd testu, niezależnie
-        # od tego, że produkcyjnie jest on i tak w pełni obsłużony przez CHAT_ERROR/logi).
-        with pytest.raises(RuntimeError):
-            await engine._generate_in_background(session_id="session_default", prompt="Test")
+        # Budujemy `TurnRunner` wprost, bez `asyncio.create_task` — to jedyna jednostka
+        # kodu istotna dla tej regresji (zachowanie gałęzi `except Exception`), a ominięcie
+        # zadania w tle utrzymuje test synchronicznym. Przed wydzieleniem `agent/turn.py`
+        # trzeba było w tym celu sięgać do prywatnego `engine._generate_in_background`.
+        runner = TurnRunner(
+            llm_provider=provider,
+            memory_manager=memory_manager,
+            context_builder=engine.context_builder,
+            context_factory=engine._build_world_context,
+            fallback_prompt=engine.prompt_store.get_content,
+            tasks=SessionTaskRegistry(),
+            publisher=TurnEventPublisher(
+                engine.event_bus,
+                TurnAddress(session_id="session_default", target_client_id="session_default"),
+            ),
+            max_tool_iterations=engine.max_tool_iterations,
+        )
+        # Błąd tury jest w pełni obsłużony w miejscu wystąpienia (log + pamięć + CHAT_ERROR),
+        # więc `run()` kończy się normalnie — nie propaguje wyjątku dostawcy.
+        await runner.run(prompt="Test", sender_id=None)
 
         history = memory_manager.get_history("session_default")
         assert history[1].role == "assistant"
@@ -431,3 +449,37 @@ async def test_error_after_tool_call_preserves_partial_text_prefix():
         # końcowy (przycięty) offset zupełnie innej, podmienionej treści błędu.
         assert tool_call_step["text_offset"] == len("Analizuję sytuację. ")
         assert content[: tool_call_step["text_offset"]] == "Analizuję sytuację. "
+
+
+@pytest.mark.anyio
+async def test_failed_turn_completes_task_normally_and_still_reports_error():
+    """Regresja: nieudana tura odpalona przez `start_interaction()` (satelita głosowa,
+    POST /chat/send) zostawiała w zadaniu w tle nieodebrany wyjątek — przy każdym błędzie
+    dostawcy rósł w logach "Task exception was never retrieved", opisujący problem, który
+    system właśnie w pełni obsłużył (log + pamięć sesji + CHAT_ERROR).
+
+    Dziś zadanie kończy się normalnie, a błąd nadal dociera wszystkimi trzema kanałami."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        memory_manager = MemoryManager(data_dir=Path(tmp_dir) / "sessions")
+        event_bus = EventBus()
+        errors: list[dict] = []
+
+        async def on_error(event) -> None:
+            errors.append(event.payload)
+
+        event_bus.subscribe(ServerEventType.CHAT_ERROR, on_error)
+        engine = AgentEngine(
+            llm_provider=FailingLLMProvider(), memory_manager=memory_manager, event_bus=event_bus
+        )
+
+        engine.start_interaction(session_id="session_default", prompt="Zgaś światła", sender_id="snd_sat")
+        while engine.is_session_busy("session_default"):
+            await asyncio.sleep(0.01)
+
+        assert len(errors) == 1
+        assert errors[0]["target_client_id"] == "snd_sat"
+        assert "org_supertajne_konto_id" not in errors[0]["error"]
+
+        history = memory_manager.get_history("session_default")
+        assert history[1].metadata.get("is_error") is True
+        assert "org_supertajne_konto_id" not in history[1].content
