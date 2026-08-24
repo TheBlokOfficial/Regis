@@ -419,9 +419,6 @@ async def test_agent_engine_default_world_is_null_and_has_no_tools():
         async def generate_stream(self, messages, tools=None, **kwargs) -> AsyncIterator[Any]:
             yield "ok"
 
-        async def check_health(self) -> bool:
-            return True
-
     with tempfile.TemporaryDirectory() as tmp_dir:
         memory_manager = MemoryManager(data_dir=Path(tmp_dir) / "sessions")
         engine = AgentEngine(llm_provider=EchoProvider(), memory_manager=memory_manager)
@@ -450,10 +447,6 @@ class ToolCallingMockProvider(BaseLLMProvider):
             yield ToolCallRequest(id="call_1", name=self._tool_name, arguments={"entity_id": self._entity_id})
         else:
             yield "Włączyłem światło."
-
-    async def check_health(self) -> bool:
-        return True
-
 
 @pytest.mark.anyio
 async def test_agent_engine_react_loop_turns_on_device_via_world_engine():

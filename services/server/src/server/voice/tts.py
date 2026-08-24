@@ -21,7 +21,7 @@ class BaseTTSProvider(ABC):
     odtwarzacz satelity od dawna umiały pracować strumieniowo; tylko nic pomiędzy nimi
     z tego nie korzystało. `synthesize()` zostaje jako wygodna, konkretna metoda
     zbierająca strumień w jeden bufor (mirror `BaseLLMProvider.generate()`) — dla
-    wywołujących, którym strumieniowanie jest obojętne (np. `check_health`)."""
+    wywołujących, którym strumieniowanie jest obojętne (dziś: testy i skrypty)."""
 
     @abstractmethod
     def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:

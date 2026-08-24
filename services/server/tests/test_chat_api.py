@@ -32,10 +32,6 @@ class MockLLMProvider(BaseLLMProvider):
         for word in words:
             yield f" {word}"
 
-    async def check_health(self) -> bool:
-        return True
-
-
 @pytest.fixture
 def test_client():
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -162,10 +158,6 @@ class SlowMockLLMProvider(BaseLLMProvider):
             await asyncio.sleep(0.05)
             yield f" {word}"
 
-    async def check_health(self) -> bool:
-        return True
-
-
 @pytest.mark.anyio
 async def test_async_background_generation_and_status():
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -230,10 +222,6 @@ class FailingLLMProvider(BaseLLMProvider):
             '{"error":{"message":"...","org":"org_supertajne_konto_id"}}'
         )
         yield  # pragma: no cover - nieosiągalne, ale czyni z tego async generator
-
-    async def check_health(self) -> bool:
-        return True
-
 
 @pytest.mark.anyio
 async def test_llm_error_does_not_leak_raw_detail_to_user_facing_content():
@@ -409,10 +397,6 @@ class TextThenToolThenFailingProvider(BaseLLMProvider):
         else:
             raise RuntimeError("Błąd API dostawcy - szczegół techniczny")
 
-    async def check_health(self):
-        return True
-
-
 @pytest.mark.anyio
 async def test_error_after_tool_call_preserves_partial_text_prefix():
     """Regresja: błąd występujący PO co najmniej jednym wywołaniu narzędzia musi
@@ -447,6 +431,3 @@ async def test_error_after_tool_call_preserves_partial_text_prefix():
         # końcowy (przycięty) offset zupełnie innej, podmienionej treści błędu.
         assert tool_call_step["text_offset"] == len("Analizuję sytuację. ")
         assert content[: tool_call_step["text_offset"]] == "Analizuję sytuację. "
-
-
-

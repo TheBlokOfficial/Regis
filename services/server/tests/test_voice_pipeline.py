@@ -390,10 +390,6 @@ class _TextOnlyMockProvider(BaseLLMProvider):
         del messages, tools, kwargs
         yield "ok"
 
-    async def check_health(self) -> bool:
-        return True
-
-
 class _RedirectMockProvider(BaseLLMProvider):
     """Pierwsza tura woła redirect_tool, druga zwraca finalny tekst (po przekierowaniu)."""
 
@@ -409,10 +405,6 @@ class _RedirectMockProvider(BaseLLMProvider):
             yield ToolCallRequest(id="c1", name="redirect_tool", arguments={})
         else:
             yield "Hello after redirect"
-
-    async def check_health(self) -> bool:
-        return True
-
 
 @pytest.mark.anyio
 async def test_redirect_changes_delivery_address_but_never_session_id():

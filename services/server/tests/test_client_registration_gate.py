@@ -42,10 +42,6 @@ class _EchoProvider(BaseLLMProvider):
         del messages, tools, kwargs
         yield "ok"
 
-    async def check_health(self) -> bool:
-        return True
-
-
 async def _is_registered(sender_id: str) -> bool:
     return sender_id == REGISTERED
 

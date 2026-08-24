@@ -95,7 +95,7 @@ class STTRegistry:
         return STTInstanceConfig(id=instance_id, **content.model_dump())
 
     async def update_instance(
-        self, backend_id: str, options: Dict[str, Any], name: Optional[str] = None
+        self, backend_id: str, name: Optional[str], options: Dict[str, Any]
     ) -> STTInstanceConfig:
         """Nadpisuje `options` (i opcjonalnie nazwę) istniejącej instancji. **Typ zostaje
         niezmienny** — jego zmiana unieważniłaby wszystkie opcje, więc byłoby to utworzenie

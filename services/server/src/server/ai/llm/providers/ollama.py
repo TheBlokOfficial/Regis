@@ -151,13 +151,3 @@ class OllamaProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"Błąd podczas strumieniowania odpowiedzi przez OllamaProvider: {e}")
             raise
-
-    async def check_health(self) -> bool:
-        """Sprawdza dostępność serwera Ollama wysyłając zapytanie GET /api/tags."""
-        url = f"{self.base_url}/api/tags"
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                response = await client.get(url)
-                return response.status_code == 200
-        except Exception:
-            return False

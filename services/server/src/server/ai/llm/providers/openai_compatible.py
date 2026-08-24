@@ -194,10 +194,3 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"Błąd podczas strumieniowania odpowiedzi przez OpenAICompatibleProvider [{self.base_url}]: {e}")
             raise
-
-    async def check_health(self) -> bool:
-        """Sprawdza dostępność dostawcy (weryfikacja czy podano klucz API)."""
-        if not self.api_key:
-            logger.debug(f"Healthcheck [{self.base_url}]: brak skonfigurowanego klucza API.")
-            return False
-        return True

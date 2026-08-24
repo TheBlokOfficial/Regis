@@ -4,11 +4,12 @@ instancję przez `STTRegistry` (mirror `ai.llm.router.LLMRouter`), więc
 `PUT /api/v1/voice/stt/providers/active` (albo shim `PUT
 /api/v1/voice/providers/config`) działa od razu, bez restartu serwera.
 
-Cache klucz to `(active_id, options)`, nie sam `active_id` — w odróżnieniu od
-LLM (gdzie REST nigdy nie edytuje pól istniejącej instancji, tylko
-create/switch/delete), shim kompatybilności potrafi nadpisać `options`
-aktywnej instancji w miejscu (`STTRegistry.update_instance`), więc sam
-niezmieniony `active_id` nie gwarantuje niezmienionej konfiguracji."""
+Cache klucz to `(active_id, options)`, nie sam `active_id`: `PUT
+.../stt/providers/{id}` nadpisuje `options` aktywnej instancji w miejscu
+(`STTRegistry.update_instance`), więc sam niezmieniony `active_id` nie
+gwarantuje niezmienionej konfiguracji. Ten sam klucz ma dziś `LLMRouter` —
+dawna uwaga „w odróżnieniu od LLM" przestała być prawdziwa, gdy LLM też
+dostał edycję presetu w miejscu."""
 
 from __future__ import annotations
 
@@ -27,7 +28,11 @@ class STTRouter(BaseSTTProvider):
 
     async def _resolve(self) -> BaseSTTProvider:
         active_id = await self._registry.get_active_backend_id()
-        active_options = (await self._registry.load_all_instances())[active_id].options
+        # `.get()`, nie `[...]` — wskaźnik aktywnego ID może wskazywać na plik
+        # skasowany z dysku poza aplikacją; awaryjne przełączenie na pierwszą
+        # dostępną instancję należy do rejestru, nie tutaj.
+        active_instance = (await self._registry.load_all_instances()).get(active_id)
+        active_options = active_instance.options if active_instance is not None else None
         if (
             self._cached_provider is None
             or active_id != self._cached_active_id

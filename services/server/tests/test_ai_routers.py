@@ -31,21 +31,22 @@ class _FakeProvider(BaseLLMProvider):
     ) -> AsyncIterator[str | ToolCallRequest]:
         yield self.name
 
-    async def check_health(self) -> bool:
-        return True
-
-
 class _FakeRegistry:
     """Duck-typowany `BackendRegistry` — liczy wywołania `get_active_provider()`,
-    żeby zweryfikować, że `LLMRouter` cache'uje, dopóki `active_id` się nie zmieni."""
+    żeby zweryfikować, że `LLMRouter` cache'uje, dopóki aktywny preset (ID **i**
+    jego opcje) się nie zmieni."""
 
     def __init__(self) -> None:
         self.active_id = "bk_a"
         self.providers = {"bk_a": _FakeProvider("A"), "bk_b": _FakeProvider("B")}
+        self.options = {"bk_a": {"marker": "a"}, "bk_b": {"marker": "b"}}
         self.get_active_provider_calls = 0
 
     async def get_active_backend_id(self) -> str:
         return self.active_id
+
+    async def load_all_instances(self) -> dict[str, SimpleNamespace]:
+        return {bid: SimpleNamespace(options=opts) for bid, opts in self.options.items()}
 
     async def get_active_provider(self) -> _FakeProvider:
         self.get_active_provider_calls += 1
@@ -85,6 +86,28 @@ async def test_llm_router_caches_provider_while_active_id_unchanged():
         pass
 
     assert registry.get_active_provider_calls == 1
+
+
+@pytest.mark.anyio
+async def test_llm_router_rebuilds_when_active_instance_options_change_in_place():
+    """Regresja: `PUT /api/v1/llm/providers/{id}` edytuje `options` aktywnego presetu
+    (`BackendRegistry.update_instance`) bez zmiany jego ID — cache musi to wykryć.
+
+    Wcześniej klucz cache to był sam `active_id`, opierając się na nieaktualnym już
+    założeniu, że REST nigdy nie edytuje pól istniejącej instancji. Skutek na żywo:
+    zmiana modelu albo klucza API aktywnego presetu zapisywała się na dysk i była
+    potwierdzana w UI, a agent do restartu serwera używał starej konfiguracji.
+    Lustro `test_stt_router_rebuilds_when_active_instance_options_change_in_place`."""
+    registry = _FakeRegistry()
+    router = LLMRouter(registry)
+
+    async for _ in router.generate_stream([LLMMessage(role="user", content="hi")]):
+        pass
+    registry.options["bk_a"] = {"marker": "changed"}
+    async for _ in router.generate_stream([LLMMessage(role="user", content="hi")]):
+        pass
+
+    assert registry.get_active_provider_calls == 2
 
 
 class _FakeSTTRegistry:

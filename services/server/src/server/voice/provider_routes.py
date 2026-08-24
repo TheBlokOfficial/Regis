@@ -148,7 +148,7 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
             )
         schemas = STTFactory.get_all_schemas()
         merged = _merge_preserving_secrets(schemas, existing.type.value, existing.options, req.options)
-        updated = await stt_registry.update_instance(provider_id, merged, req.name)
+        updated = await stt_registry.update_instance(provider_id, req.name, merged)
         active_id = await stt_registry.get_active_backend_id()
         return STTProviderDTO(
             id=updated.id,
@@ -245,7 +245,7 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
             )
         schemas = TTSFactory.get_all_schemas()
         merged = _merge_preserving_secrets(schemas, existing.type.value, existing.options, req.options)
-        updated = await tts_registry.update_instance(provider_id, merged, req.name)
+        updated = await tts_registry.update_instance(provider_id, req.name, merged)
         active_id = await tts_registry.get_active_backend_id()
         return TTSProviderDTO(
             id=updated.id,

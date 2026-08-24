@@ -143,11 +143,3 @@ class BaseLLMProvider(ABC):
         full_content = "".join(chunks)
         model_name = getattr(self, "model", "unknown")
         return LLMResponse(content=full_content, model=model_name)
-
-    @abstractmethod
-    async def check_health(self) -> bool:
-        """Sprawdza dostępność dostawcy LLM.
-
-        :return: True jeśli połączenie z dostawcą jest aktywne i gotowe, w przeciwnym razie False.
-        """
-        pass

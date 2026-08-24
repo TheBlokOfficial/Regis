@@ -47,10 +47,6 @@ class _ReasoningThenTextProvider(BaseLLMProvider):
         yield ReasoningChunk(text="pogodę.")
         yield "Jest słonecznie."
 
-    async def check_health(self) -> bool:
-        return True
-
-
 class _ToolThenAnswerProvider(BaseLLMProvider):
     """Pełny przebieg ReAct: myślenie -> narzędzie -> myślenie -> odpowiedź.
 
@@ -74,10 +70,6 @@ class _ToolThenAnswerProvider(BaseLLMProvider):
             self.second_call_messages = list(messages)
             yield ReasoningChunk(text="Mam wynik.")
             yield "Gotowe."
-
-    async def check_health(self) -> bool:
-        return True
-
 
 class _ProbeWorld:
     async def build(self, sender_id: str | None = None) -> ContextBuild:
@@ -215,9 +207,6 @@ async def test_turn_without_reasoning_has_no_reasoning_metadata() -> None:
         ) -> AsyncIterator[Any]:
             del messages, tools, kwargs
             yield "Bez myślenia."
-
-        async def check_health(self) -> bool:
-            return True
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         engine, memory = _engine(_PlainProvider(), tmp_dir)

@@ -114,14 +114,6 @@ class AgentEngine:
             return self._generation_buffers.get(session_id, "")
         return None
 
-    def get_session_generation_status(self, session_id: str) -> dict[str, Any]:
-        """Zwraca metadane określające status trwającej generacji w sesji."""
-        busy = self.is_session_busy(session_id)
-        return {
-            "is_generating": busy,
-            "buffer": self._generation_buffers.get(session_id, "") if busy else None,
-        }
-
     async def cancel_interaction(self, session_id: str) -> bool:
         """Anuluje aktywne zadanie generowania odpowiedzi dla podanej sesji (dla wszystkich interfejsów).
 
