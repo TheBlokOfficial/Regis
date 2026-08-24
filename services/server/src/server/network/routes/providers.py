@@ -5,11 +5,10 @@ maskowanie sekretów) mieszka w `ai/provider_crud.py` — tutaj zostaje sam
 transport plus jedyny endpoint specyficzny dla LLM: odkrywanie modeli.
 """
 
-from typing import Any
-
 from fastapi import APIRouter, HTTPException, status
 from shared import (
     CreateLLMProviderRequest,
+    DeletionResponse,
     LLMProviderDTO,
     LLMProviderListResponse,
     ProviderMetadataResponse,
@@ -77,17 +76,18 @@ def create_providers_router(
 
     @router.delete(
         "/api/v1/llm/providers/{provider_id}",
+        response_model=DeletionResponse,
         summary="Usuwa plik instancji dostawcy LLM z dysku",
         tags=["LLM Providers"],
     )
-    async def delete_llm_provider(provider_id: str) -> dict[str, Any]:
+    async def delete_llm_provider(provider_id: str) -> DeletionResponse:
         try:
             await crud.delete(provider_id)
         except ProviderNotFoundError as err:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err)) from err
         except ValueError as err:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
-        return {"success": True, "deleted_id": provider_id}
+        return DeletionResponse(deleted_id=provider_id)
 
     @router.put(
         "/api/v1/llm/providers/{provider_id}",

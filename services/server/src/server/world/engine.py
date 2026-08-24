@@ -20,6 +20,7 @@ configu ucina wyłącznie encje/narzędzia HA, nigdy ramowanie dostawy.
 """
 
 import asyncio
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -329,11 +330,50 @@ class WorldEngine:
         return await self._senders_store.load()
 
     async def register_sender(self, sender_id: str, profile: SenderProfile) -> SenderProfile:
-        """Rejestruje lub nadpisuje przypisanie nadawcy do pokoju."""
+        """Zapisuje profil klienta w całości — nadpisuje wszystkie pola.
+
+        Do wywołań z UI służy `upsert_sender()`, które zna regułę „pominięte pole
+        zachowuje obecną wartość"; ta metoda jest surowym zapisem."""
         await self._ensure_defaults()
         await self._senders_store.upsert(sender_id, profile)
         logger.info(f"Przypisano nadawcę [{sender_id}] do pokoju.")
         return profile
+
+    async def upsert_sender(
+        self,
+        sender_id: str,
+        *,
+        room_id: str | None,
+        display_name: str | None = None,
+        capabilities: Sequence[ClientCapability | str] | None = None,
+    ) -> SenderProfile:
+        """Rejestruje klienta albo aktualizuje istniejącego, zachowując pominięte pola.
+
+        Jedno wywołanie służy dwóm scenariuszom o **różnej wiedzy o kliencie**:
+        rejestracji z zakładki Klienci (zna `capabilities` z handshake WS) i zmianie
+        pokoju z zakładki Świat (nie zna ani możliwości, ani nazwy). Stąd reguła:
+
+        * `capabilities` puste/pominięte -> zachowaj obecne (nigdy „wyczyść"),
+        * `display_name is None` -> zachowaj obecną; pusty string -> wyczyść jawnie,
+        * `room_id` **nie** ma tej semantyki: `None` to legalne „— brak pokoju —"
+          z pickera, więc zapisuje się dosłownie.
+
+        Reguła mieszka tutaj, a nie w routerze REST, bo to decyzja domenowa: obowiązuje
+        każdego wywołującego, nie tylko HTTP, i daje się przetestować bez podnoszenia API.
+        """
+        existing = (await self.get_senders()).entries.get(sender_id)
+        merged_capabilities = (
+            frozenset(ClientCapability(c) for c in capabilities)
+            if capabilities
+            else (existing.capabilities if existing is not None else frozenset())
+        )
+        merged_name = (
+            (existing.display_name if existing is not None else None)
+            if display_name is None
+            else (display_name.strip() or None)
+        )
+        profile = SenderProfile(display_name=merged_name, room_id=room_id, capabilities=merged_capabilities)
+        return await self.register_sender(sender_id, profile)
 
     async def remove_sender(self, sender_id: str) -> bool:
         """Usuwa przypisanie nadawcy."""

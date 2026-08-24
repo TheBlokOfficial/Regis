@@ -17,8 +17,8 @@ from typing import Iterator
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from server.world.api import create_world_router
 from server.world.engine import WorldEngine
-from server.world.routes import create_world_router
 
 SENDER = "snd_desktop_1"
 

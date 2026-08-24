@@ -6,7 +6,7 @@ tworzenie/edycja/usuwanie, ta sama walidacja typu, to samo maskowanie pól
 sekretnych i ta sama reguła „pominięty sekret zachowuje obecną wartość".
 Same funkcje maskowania istniały w kodzie **trzykrotnie**
 (`network/routes/providers.py`, `voice/provider_routes.py`, plus wariant
-`_mask_token` w `world/routes.py`).
+`_mask_token` w `world/api/mappers.py`).
 
 Ten moduł **nie zna HTTP** — rzuca zwykłe wyjątki domenowe, a tłumaczenie ich na
 kody odpowiedzi zostaje w routerach, które jako jedyne wiedzą, jaki status pasuje
@@ -181,7 +181,7 @@ def _type_to_str(value: Any) -> str:
 
 def mask_secret_value(value: str) -> str:
     """Kropki + cztery ostatnie znaki. Wydzielone, bo tej samej maski używa
-    `world/routes.py` dla tokenu Home Assistant — jedyne miejsce poza dostawcami AI,
+    `world/api/mappers.py` dla tokenu Home Assistant — jedyne miejsce poza dostawcami AI,
     gdzie sekret opuszcza serwer w postaci podglądowej."""
     visible = value[-4:] if len(value) > 4 else ""
     return f"{'•' * (len(value) - len(visible))}{visible}"

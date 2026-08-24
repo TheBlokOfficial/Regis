@@ -261,3 +261,15 @@ class AgentDefaultPromptDTO(BaseModel):
 # pakietach (`server/extensions/home_assistant/dto.py`), nie tutaj.
 
 
+
+
+class DeletionResponse(BaseModel):
+    """Odpowiedź każdego endpointu DELETE w API v1.
+
+    Osiem endpointów usuwania zwracało wcześniej ad-hoc słowniki bez `response_model`
+    — i to nie te same słowniki (`deleted_id` w większości, ale `prompt_id` w usuwaniu
+    profilu promptu). Jeden kształt oznacza jeden sposób obsługi po stronie klienta
+    i sensowny wpis w dokumentacji zamiast pustego schematu."""
+
+    success: bool = Field(default=True, description="Czy usunięcie się powiodło")
+    deleted_id: str = Field(..., description="Identyfikator usuniętego zasobu")

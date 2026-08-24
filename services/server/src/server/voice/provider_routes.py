@@ -12,10 +12,8 @@ Montowany osobno od `voice/routes.py` (status/klienci), pod tym samym prefiksem
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, HTTPException, status
-from shared import ProviderMetadataResponse
+from shared import DeletionResponse, ProviderMetadataResponse
 
 from server.ai.provider_crud import ProviderCrud, ProviderNotFoundError, UnsupportedProviderTypeError
 from server.ai.stt import STTFactory, STTProviderType, STTRegistry
@@ -83,15 +81,17 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
         except ProviderNotFoundError as err:
             raise _not_found(err) from err
 
-    @router.delete("/stt/providers/{provider_id}", tags=["STT Providers"])
-    async def delete_stt_provider(provider_id: str) -> dict[str, Any]:
+    @router.delete(
+        "/stt/providers/{provider_id}", response_model=DeletionResponse, tags=["STT Providers"]
+    )
+    async def delete_stt_provider(provider_id: str) -> DeletionResponse:
         try:
             await stt.delete(provider_id)
         except ProviderNotFoundError as err:
             raise _not_found(err) from err
         except ValueError as err:
             raise _bad_request(err) from err
-        return {"success": True, "deleted_id": provider_id}
+        return DeletionResponse(deleted_id=provider_id)
 
     # -- TTS ------------------------------------------------------------------
 
@@ -128,14 +128,16 @@ def create_voice_providers_router(stt_registry: STTRegistry, tts_registry: TTSRe
         except ProviderNotFoundError as err:
             raise _not_found(err) from err
 
-    @router.delete("/tts/providers/{provider_id}", tags=["TTS Providers"])
-    async def delete_tts_provider(provider_id: str) -> dict[str, Any]:
+    @router.delete(
+        "/tts/providers/{provider_id}", response_model=DeletionResponse, tags=["TTS Providers"]
+    )
+    async def delete_tts_provider(provider_id: str) -> DeletionResponse:
         try:
             await tts.delete(provider_id)
         except ProviderNotFoundError as err:
             raise _not_found(err) from err
         except ValueError as err:
             raise _bad_request(err) from err
-        return {"success": True, "deleted_id": provider_id}
+        return DeletionResponse(deleted_id=provider_id)
 
     return router

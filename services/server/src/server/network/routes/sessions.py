@@ -9,6 +9,7 @@ from shared import (
     ChatSessionHistoryResponse,
     ChatSessionListResponse,
     ChatSessionSummaryDTO,
+    DeletionResponse,
 )
 
 from server.agent import AgentEngine
@@ -107,10 +108,11 @@ def create_sessions_router(agent_engine: AgentEngine) -> APIRouter:
 
     @router.delete(
         "/api/v1/chat/sessions/{session_id}",
+        response_model=DeletionResponse,
         summary="Usuwa historię i plik sesji z dysku serwera",
         tags=["Chat & Sessions"],
     )
-    async def delete_chat_session(session_id: str):
+    async def delete_chat_session(session_id: str) -> DeletionResponse:
         try:
             deleted = agent_engine.memory_manager.delete_session(session_id)
         except ValueError as err:
@@ -120,6 +122,6 @@ def create_sessions_router(agent_engine: AgentEngine) -> APIRouter:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Sesja o ID '{session_id}' nie istnieje.",
             )
-        return {"success": True, "deleted_id": session_id}
+        return DeletionResponse(deleted_id=session_id)
 
     return router

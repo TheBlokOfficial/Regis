@@ -9,7 +9,7 @@ from server.ai.llm import BackendRegistry
 from server.network.routes import create_api_router
 from server.network.routes.chat import RegistrationCheck
 from server.world import WorldEngine
-from server.world.routes import create_world_router
+from server.world.api import create_world_router
 
 
 def create_gateway_app(
