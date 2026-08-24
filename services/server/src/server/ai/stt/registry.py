@@ -5,9 +5,10 @@ from typing import Any, Dict, Optional
 
 from shared import ConfigStore, get_logger, get_service_root, sanitize_identifier
 
+from server.ai.legacy_config import VoiceProvidersConfig
 from server.ai.stt.factory import STTFactory
 from server.ai.stt.models import ActiveSTTBackendConfig, STTInstanceConfig, STTInstanceFileContent, STTProviderType
-from server.voice.stt import BaseSTTProvider
+from server.ports.stt import BaseSTTProvider
 
 logger = get_logger("regis.ai.stt.registry")
 
@@ -52,8 +53,6 @@ class STTRegistry:
                 options: dict[str, Any] = {"api_key": "", "model": "whisper-large-v3-turbo"}
                 legacy_path = self.base_data_dir / "voice" / "config.json"
                 if legacy_path.exists():
-                    from server.voice.config import VoiceProvidersConfig
-
                     legacy = await asyncio.to_thread(ConfigStore(VoiceProvidersConfig, legacy_path).load)
                     if legacy.groq_api_key:
                         logger.info("Migracja klucza Groq z legacy data/voice/config.json do rejestru STT.")

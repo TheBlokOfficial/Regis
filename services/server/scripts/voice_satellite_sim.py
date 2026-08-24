@@ -19,7 +19,7 @@ import websockets
 
 DEFAULT_URL = "ws://127.0.0.1:8000/ws/voice"
 # Dowolna, wystarczająco "głośna" ramka PCM16 mono, żeby przekroczyć próg
-# ThresholdEnergyWakeWordDetector (patrz server/voice/wakeword.py) — placeholder
+# ThresholdEnergyWakeWordDetector (patrz server/ai/wakeword/detectors.py) — placeholder
 # do czasu podłączenia realnego modelu .onnx.
 _LOUD_FRAME = (30000).to_bytes(2, byteorder="little", signed=True) * 160  # ~10ms przy 16kHz
 _QUIET_FRAME = (10).to_bytes(2, byteorder="little", signed=True) * 160

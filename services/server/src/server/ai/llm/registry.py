@@ -5,9 +5,9 @@ from typing import Any, Dict, Optional
 
 from shared import ConfigStore, get_logger, get_service_root, sanitize_identifier
 
-from server.agent.llm import BaseLLMProvider
 from server.ai.llm.factory import LLMFactory
 from server.ai.llm.models import ActiveBackendConfig, BackendFileContent, BackendInstanceConfig, ProviderType
+from server.ports.llm import BaseLLMProvider
 
 logger = get_logger("regis.ai.llm.registry")
 

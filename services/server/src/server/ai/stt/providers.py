@@ -1,4 +1,4 @@
-"""Konkretni dostawcy STT. Protokół (`BaseSTTProvider`) zostaje w `server.voice.stt`.
+"""Konkretni dostawcy STT. Protokół (`BaseSTTProvider`) mieszka w `server.ports.stt`.
 
 `GroqSTTProvider` woła Groq (Whisper przez ich API, `AsyncGroq`) — kontrakt
 zweryfikowany bezpośrednio (dokumentacja + inspekcja zainstalowanego SDK, nie
@@ -16,7 +16,7 @@ import wave
 
 from shared import CHANNELS, SAMPLE_RATE_HZ, SAMPLE_WIDTH_BYTES
 
-from server.voice.stt import BaseSTTProvider
+from server.ports.stt import BaseSTTProvider
 
 
 class MockSTTProvider(BaseSTTProvider):

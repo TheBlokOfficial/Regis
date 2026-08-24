@@ -1,4 +1,8 @@
-"""Detektor wake-word — jeden, świeży detektor per połączenie (własny bufor/stan).
+"""Konkretne detektory wake-word — jeden, świeży detektor per połączenie (własny bufor/stan).
+
+Sam kontrakt (`WakeWordDetector`) mieszka w `server.ports.wakeword`; te klasy to
+adaptery, dokładnie jak `GroqSTTProvider` czy `OllamaProvider` — model `.onnx` jest
+takim samym konkretem dostawcy, tylko uruchamianym lokalnie.
 
 `OnnxWakeWordDetector` to realny detektor oparty o wytrenowany model `.onnx`
 (biblioteka `livekit-wakeword` — ekstrakcja cech mel-spektrogram+embedding jest
@@ -13,33 +17,12 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
-from typing import Protocol
 
 import numpy as np
 from livekit.wakeword import WakeWordModel
 from shared import SAMPLE_RATE_HZ, get_logger
 
-logger = get_logger("regis.voice.wakeword")
-
-
-class WakeWordDetector(Protocol):
-    """Kontrakt detektora — implementacje trzymają własny, mutowalny stan/bufor."""
-
-    def process(self, pcm_chunk: bytes) -> bool:
-        """Karmi detektor kolejną porcją PCM16 mono; zwraca True dokładnie raz przy wykryciu."""
-        ...
-
-    def reset(self) -> None:
-        """Czyści wewnętrzny bufor/stan — wywoływane po powrocie do nasłuchu wake-wordu."""
-        ...
-
-    @property
-    def last_score(self) -> float | None:
-        """Wynik (0-1) ostatniego inference, `None` gdy detektor nie ma pojęcia ciągłego
-        score (np. `ThresholdEnergyWakeWordDetector`). Czytane przez `VoiceSession` przy
-        wykryciu, do rozgłoszenia pewności detekcji (`VoiceEventType.SATELLITE_WAKE_WORD_DETECTED`,
-        Web UI zakładka Klienci) — samo `process()` zwraca tylko bool."""
-        ...
+logger = get_logger("regis.ai.wakeword")
 
 
 class ThresholdEnergyWakeWordDetector:

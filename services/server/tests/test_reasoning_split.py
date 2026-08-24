@@ -16,7 +16,9 @@ from typing import Any, AsyncIterator, List
 import pytest
 from server.agent import AgentEngine
 from server.agent.context_provider import ContextBuild
-from server.agent.llm import (
+from server.agent.memory import MemoryManager
+from server.events import ServerEventType
+from server.ports.llm import (
     BaseLLMProvider,
     LLMMessage,
     ReasoningChunk,
@@ -24,8 +26,6 @@ from server.agent.llm import (
     ToolDefinition,
     ToolResult,
 )
-from server.agent.memory import MemoryManager
-from server.events import ServerEventType
 
 
 @pytest.fixture

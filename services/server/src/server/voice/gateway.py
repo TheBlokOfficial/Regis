@@ -22,11 +22,11 @@ from shared import Event, EventBus, SatelliteMessageType, ServerMessageType, get
 from server.agent import AgentEngine
 from server.config import Settings
 from server.events import ServerEventType
+from server.ports.stt import BaseSTTProvider
+from server.ports.tts import BaseTTSProvider
+from server.ports.wakeword import WakeWordDetector
 from server.voice.events import VoiceEventType
 from server.voice.session import VoiceSession
-from server.voice.stt import BaseSTTProvider
-from server.voice.tts import BaseTTSProvider
-from server.voice.wakeword import WakeWordDetector
 
 logger = get_logger("regis.voice.gateway")
 
@@ -131,7 +131,7 @@ class VoiceConnection:
 
     async def _on_chunk(self, event: Event[Any]) -> None:
         """Bufor mowy zbiera WYŁĄCZNIE tekst odpowiedzi. Rozumowanie modelu przychodzi tym
-        samym kanałem, ale oznaczone `kind: "reasoning"` (patrz `agent/llm.py::ReasoningChunk`)
+        samym kanałem, ale oznaczone `kind: "reasoning"` (patrz `ports/llm.py::ReasoningChunk`)
         — dopóki nie było tego rozróżnienia, satelita czytała na głos cały chain of thought."""
         if event.payload.get("kind") == "reasoning":
             return

@@ -2,7 +2,7 @@ from shared import ProviderMetadataResponse, ProviderOptionSpec, ProviderTypeSpe
 
 from server.ai.stt.models import STTInstanceConfig, STTProviderType
 from server.ai.stt.providers import GroqSTTProvider
-from server.voice.stt import BaseSTTProvider
+from server.ports.stt import BaseSTTProvider
 
 logger = get_logger("regis.ai.stt.factory")
 

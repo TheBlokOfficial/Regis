@@ -18,16 +18,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from server.agent import AgentEngine
-from server.agent.llm import BaseLLMProvider, LLMMessage
 from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
 from server.ai.llm.registry import BackendRegistry
 from server.ai.stt import MockSTTProvider
 from server.ai.tts import MockTTSProvider
+from server.ai.wakeword import ThresholdEnergyWakeWordDetector
 from server.config import Settings
 from server.network.gateway import create_gateway_app
+from server.ports.llm import BaseLLMProvider, LLMMessage
 from server.voice.gateway import create_voice_router
-from server.voice.wakeword import ThresholdEnergyWakeWordDetector
 from shared import EventBus
 
 REGISTERED = "znany_klient"

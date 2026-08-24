@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from server.agent.llm import LLMMessage
 from server.ai.llm.factory import LLMFactory
 from server.ai.llm.model_catalog import (
     _groq_params_for,
@@ -12,6 +11,7 @@ from server.ai.llm.model_catalog import (
 from server.ai.llm.models import BackendInstanceConfig, ProviderType
 from server.ai.llm.providers.ollama import OllamaProvider
 from server.ai.llm.providers.openai_compatible import OpenAICompatibleProvider
+from server.ports.llm import LLMMessage
 
 
 @pytest.mark.anyio

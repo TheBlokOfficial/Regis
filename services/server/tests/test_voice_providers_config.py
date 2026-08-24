@@ -1,4 +1,4 @@
-"""Testy legacy configu dostawców STT/TTS (`server/voice/config.py`).
+"""Testy legacy configu dostawców STT/TTS (`server/ai/legacy_config.py`).
 
 Plik `data/voice/config.json` pochodzi sprzed wprowadzenia rejestrów wielu
 instancji (`STTRegistry`/`TTSRegistry`) i **nie jest już zapisywany przez żadną
@@ -14,13 +14,13 @@ pełny CRUD w zakładce Dostawcy, a endpoint pozostawał martwy.
 from __future__ import annotations
 
 import pytest
-from server.voice.config import VoiceProvidersConfig, load_voice_providers_config, save_voice_providers_config
+from server.ai.legacy_config import VoiceProvidersConfig, load_voice_providers_config, save_voice_providers_config
 
 
 @pytest.fixture
 def voice_config_path(monkeypatch, tmp_path):
     path = tmp_path / "voice" / "config.json"
-    monkeypatch.setattr("server.voice.config._CONFIG_PATH", path)
+    monkeypatch.setattr("server.ai.legacy_config._CONFIG_PATH", path)
     return path
 
 

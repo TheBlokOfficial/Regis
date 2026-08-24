@@ -2,9 +2,9 @@ from typing import Any
 
 from shared import ProviderMetadataResponse, ProviderOptionSpec, ProviderTypeSpecDTO, get_logger
 
-from server.agent.llm import BaseLLMProvider
 from server.ai.llm.models import BackendInstanceConfig, ProviderType
 from server.ai.llm.providers import OllamaProvider, OpenAICompatibleProvider
+from server.ports.llm import BaseLLMProvider
 
 logger = get_logger("regis.ai.llm.factory")
 

@@ -9,9 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from server.config import Settings
 from server.main import _build_wakeword_detector_factory
+from server.ports.stt import BaseSTTProvider
+from server.ports.tts import BaseTTSProvider
 from server.voice.routes import create_voice_status_router
-from server.voice.stt import BaseSTTProvider
-from server.voice.tts import BaseTTSProvider
 from shared import ConfigStore, EventBus
 
 

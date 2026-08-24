@@ -1,6 +1,6 @@
 """Konkretne backendy i logika selekcji dostawców modeli LLM.
 
-Protokół (`BaseLLMProvider` i wspólne dataclassy) zostaje w `server.agent.llm` —
+Protokół (`BaseLLMProvider` i wspólne dataclassy) mieszka w `server.ports.llm` —
 to kernel jest jego właścicielem, dokładnie jak `WorldInterface`
 (`agent/context_provider.py`). Ten pakiet trzyma wyłącznie konkrety
 (`OllamaProvider`, `OpenAICompatibleProvider` — wspólna implementacja dla

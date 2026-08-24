@@ -5,9 +5,10 @@ from typing import Any, Dict, Optional
 
 from shared import ConfigStore, get_logger, get_service_root, sanitize_identifier
 
+from server.ai.legacy_config import VoiceProvidersConfig
 from server.ai.tts.factory import TTSFactory
 from server.ai.tts.models import ActiveTTSBackendConfig, TTSInstanceConfig, TTSInstanceFileContent, TTSProviderType
-from server.voice.tts import BaseTTSProvider
+from server.ports.tts import BaseTTSProvider
 
 logger = get_logger("regis.ai.tts.registry")
 
@@ -55,8 +56,6 @@ class TTSRegistry:
                 }
                 legacy_path = self.base_data_dir / "voice" / "config.json"
                 if legacy_path.exists():
-                    from server.voice.config import VoiceProvidersConfig
-
                     legacy = await asyncio.to_thread(ConfigStore(VoiceProvidersConfig, legacy_path).load)
                     if legacy.elevenlabs_api_key:
                         logger.info("Migracja klucza ElevenLabs z legacy data/voice/config.json do rejestru TTS.")

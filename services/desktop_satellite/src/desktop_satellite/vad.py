@@ -6,7 +6,7 @@ nagrywać/strumieniować, więc scentralizowanie tej decyzji po stronie serwera 
 eliminowałoby potrzeby logiki lokalnej, tylko dodawało drugą bez korzyści.
 
 Czysta klasa (mirror stylu `ThresholdEnergyWakeWordDetector` z
-`server/voice/wakeword.py`) — zero zależności od audio I/O, testowalna w izolacji.
+`server/ai/wakeword/detectors.py`) — zero zależności od audio I/O, testowalna w izolacji.
 """
 
 from __future__ import annotations

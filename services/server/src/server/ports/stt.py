@@ -1,7 +1,9 @@
-"""STT — transkrypcja audio -> tekst. `BaseSTTProvider` to mirror `BaseLLMProvider`
-(`agent/llm.py`). Konkretni dostawcy (`GroqSTTProvider`, `MockSTTProvider`) oraz
-logika wyboru (`STTRegistry`/`STTFactory`) mieszkają w `server.ai.stt` — ten moduł
-trzyma wyłącznie protokół, dokładnie jak Kernel trzyma `BaseLLMProvider`.
+"""Port STT — transkrypcja audio -> tekst. Mirror `ports/llm.py`.
+
+Konkretni dostawcy (`GroqSTTProvider`, `MockSTTProvider`) i logika wyboru
+(`STTRegistry`/`STTFactory`) mieszkają w `server.ai.stt`; konsumentem jest
+`server.voice`. Protokół stoi między nimi, w `ports/`, żeby żadna ze stron
+nie musiała importować drugiej (patrz `ports/__init__.py`).
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ class BaseSTTProvider(ABC):
 
     @abstractmethod
     async def transcribe(self, pcm_audio: bytes) -> str:
-        """Transkrybuje surowe PCM16 mono (parametry próbkowania: `voice/protocol.py`)."""
+        """Transkrybuje surowe PCM16 mono (parametry próbkowania: `shared/voice_protocol.py`)."""
         ...
 
     async def get_active_provider_class_name(self) -> str:

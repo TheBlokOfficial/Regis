@@ -9,13 +9,14 @@ from server.agent.prompts import AgentDefaultPromptStore
 from server.ai.llm import BackendRegistry, LLMRouter
 from server.ai.stt import STTRegistry, STTRouter
 from server.ai.tts import TTSRegistry, TTSRouter
+from server.ai.wakeword import OnnxWakeWordDetector, ThresholdEnergyWakeWordDetector
 from server.config import Settings, config_store, load_settings
 from server.discovery import DiscoveryBroadcaster
 from server.network.gateway import create_gateway_app
+from server.ports.wakeword import WakeWordDetector
 from server.voice.gateway import WakeWordDetectorFactory, create_voice_router
 from server.voice.provider_routes import create_voice_providers_router
 from server.voice.routes import create_voice_status_router
-from server.voice.wakeword import OnnxWakeWordDetector, ThresholdEnergyWakeWordDetector, WakeWordDetector
 from server.world import WorldEngine
 
 # 1. Konfiguracja jednolitych, minimalistycznych logów — konsola + plik z rotacją
@@ -24,7 +25,7 @@ from server.world import WorldEngine
 #    pokazuje wprost użytkownikowi (patrz agent/engine.py, obsługa błędów tury).
 # Wczytanie configu musi poprzedzić setup_logging — `Settings.debug` (dotąd martwe pole)
 # steruje poziomem: true = DEBUG, m.in. score wake-worda przy każdym inference
-# (`voice/wakeword.py::OnnxWakeWordDetector.process()`), false (domyślnie) = INFO.
+# (`ai/wakeword/detectors.py::OnnxWakeWordDetector.process()`), false (domyślnie) = INFO.
 _startup_settings = load_settings()
 setup_logging(
     level="DEBUG" if _startup_settings.debug else "INFO",
@@ -37,7 +38,7 @@ def _build_wakeword_detector_factory(settings: Settings) -> tuple[WakeWordDetect
     """Wybiera realny detektor `.onnx` (`Settings.wakeword_model_path` ustawiony i plik
     istnieje) albo placeholder progu amplitudy — łagodna degradacja, ten sam wzorzec co
     brak konfiguracji Home Assistant w `WorldEngine`. Zwraca fabrykę (nowa instancja per
-    połączenie, patrz `server/voice/wakeword.py`) i nazwę klasy do statusu `/voice/status`.
+    połączenie, patrz `server/ai/wakeword/detectors.py`) i nazwę klasy do statusu `/voice/status`.
 
     `threshold` NIE jest zamykany w closure przy starcie procesu — `factory()` woła
     `load_settings()` na świeżo przy każdym połączeniu, więc zmiana progu przez

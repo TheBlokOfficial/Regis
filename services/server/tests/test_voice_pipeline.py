@@ -11,13 +11,14 @@ from typing import Any, AsyncIterator, List
 import pytest
 from server.agent import AgentEngine
 from server.agent.context_provider import ContextBuild
-from server.agent.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
 from server.agent.memory import MemoryManager
+from server.ai.wakeword import ThresholdEnergyWakeWordDetector
 from server.events import ServerEventType
+from server.ports.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
+from server.ports.stt import BaseSTTProvider
+from server.ports.tts import BaseTTSProvider
+from server.ports.wakeword import WakeWordDetector
 from server.voice.session import VoiceSession
-from server.voice.stt import BaseSTTProvider
-from server.voice.tts import BaseTTSProvider
-from server.voice.wakeword import ThresholdEnergyWakeWordDetector, WakeWordDetector
 from shared import ServerMessageType
 
 # --------------------------------------------------------------------------

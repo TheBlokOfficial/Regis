@@ -1,7 +1,8 @@
-"""TTS — synteza tekst -> audio. `BaseTTSProvider` to mirror `BaseLLMProvider`
-(`agent/llm.py`). Konkretni dostawcy (`ElevenLabsTTSProvider`, `MockTTSProvider`)
-oraz logika wyboru (`TTSRegistry`/`TTSFactory`) mieszkają w `server.ai.tts` — ten
-moduł trzyma wyłącznie protokół, dokładnie jak Kernel trzyma `BaseLLMProvider`.
+"""Port TTS — synteza tekst -> audio. Mirror `ports/llm.py`.
+
+Konkretni dostawcy (`ElevenLabsTTSProvider`, `MockTTSProvider`) i logika wyboru
+(`TTSRegistry`/`TTSFactory`) mieszkają w `server.ai.tts`; konsumentem jest
+`server.voice`. Protokół stoi między nimi, w `ports/` (patrz `ports/__init__.py`).
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ class BaseTTSProvider(ABC):
     @abstractmethod
     def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         """Strumieniuje syntezowane audio (PCM16 mono, parametry próbkowania:
-        `voice/protocol.py`) w kolejnych fragmentach, w miarę ich powstawania."""
+        `shared/voice_protocol.py`) w kolejnych fragmentach, w miarę ich powstawania."""
         ...
 
     async def synthesize(self, text: str) -> bytes:

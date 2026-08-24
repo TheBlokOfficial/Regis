@@ -6,11 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 from server.agent import AgentEngine
 from server.agent.context_provider import ContextBuild
-from server.agent.llm import BaseLLMProvider, LLMMessage, LLMResponse, ToolCallRequest, ToolDefinition, ToolResult
 from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
 from server.ai.llm.registry import BackendRegistry
 from server.network.gateway import create_gateway_app
+from server.ports.llm import BaseLLMProvider, LLMMessage, LLMResponse, ToolCallRequest, ToolDefinition, ToolResult
 
 
 class MockLLMProvider(BaseLLMProvider):

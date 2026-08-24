@@ -1,6 +1,5 @@
 """Konkretni dostawcy STT i logika wyboru. Protokół (`BaseSTTProvider`) zostaje
-w `server.voice.stt` — `voice/` trzyma go dokładnie jak Kernel trzyma
-`BaseLLMProvider` (`server.agent.llm`)."""
+w `server.ports.stt`, wspólnie dla dostawcy i konsumenta (`server.voice`)."""
 
 from server.ai.stt.factory import STTFactory, STTNotConfiguredError
 from server.ai.stt.models import ActiveSTTBackendConfig, STTInstanceConfig, STTInstanceFileContent, STTProviderType

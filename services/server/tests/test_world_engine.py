@@ -5,8 +5,8 @@ from typing import Any, AsyncIterator, List
 import pytest
 from server.agent import AgentEngine
 from server.agent.context_provider import NullWorldInterface
-from server.agent.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
 from server.agent.memory import MemoryManager
+from server.ports.llm import BaseLLMProvider, LLMMessage, ToolCallRequest, ToolDefinition, ToolResult
 from server.world.engine import WorldEngine
 from server.world.models import ClientCapability, Device, DeviceGroup, HomeAssistantConfig, SenderProfile
 from server.world.registry import DeviceRegistry

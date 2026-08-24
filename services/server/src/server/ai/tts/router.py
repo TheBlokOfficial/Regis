@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any, AsyncIterator
 
 from server.ai.tts.registry import TTSRegistry
-from server.voice.tts import BaseTTSProvider
+from server.ports.tts import BaseTTSProvider
 
 
 class TTSRouter(BaseTTSProvider):

@@ -1,9 +1,15 @@
-"""Konfiguracja dostawców chmurowych STT/TTS (Groq/ElevenLabs) — pojedynczy plik
-JSON, mirror wzorca `HomeAssistantConfig`/`WorldEngine` (singleton, `ConfigStore`).
+"""LEGACY: jednoslotowa konfiguracja dostawców STT/TTS sprzed rejestrów instancji.
 
-Puste `*_api_key` = brak konfiguracji, `main.py` degraduje się łagodnie do
-`MockSTTProvider`/`MockTTSProvider` (ten sam wzorzec co Home Assistant i
-`Settings.wakeword_model_path`) — bez osobnego przełącznika `enabled`.
+Plik `data/voice/config.json` był jedynym miejscem na klucze Groq/ElevenLabs, zanim
+`STTRegistry`/`TTSRegistry` wprowadziły wiele nazwanych instancji. Dziś ten moduł
+istnieje **wyłącznie** po to, żeby `_ensure_default_instances()` w obu rejestrach
+mogło przy pierwszym uruchomieniu przenieść istniejące klucze użytkownika do nowego
+formatu, zamiast je zgubić.
+
+Mieszka w `server.ai`, nie w `server.voice`, bo migracja jest sprawą warstwy
+konkretów AI (to ona czyta i zapisuje instancje) — `voice/` nie ma z nim już
+żadnego kontaktu. Do usunięcia razem z blokiem migracji, gdy okno migracyjne
+zostanie uznane za zamknięte.
 """
 
 from __future__ import annotations

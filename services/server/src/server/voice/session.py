@@ -23,10 +23,10 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from shared import ServerMessageType, get_logger
 
+from server.ports.stt import BaseSTTProvider
+from server.ports.tts import BaseTTSProvider
+from server.ports.wakeword import WakeWordDetector
 from server.voice.events import VoiceEventType
-from server.voice.stt import BaseSTTProvider
-from server.voice.tts import BaseTTSProvider
-from server.voice.wakeword import WakeWordDetector
 
 logger = get_logger("regis.voice.session")
 

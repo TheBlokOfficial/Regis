@@ -29,9 +29,9 @@ from pydantic import BaseModel, Field
 from shared import ConfigStore, Event, EventBus
 
 from server.config import Settings
+from server.ports.stt import BaseSTTProvider
+from server.ports.tts import BaseTTSProvider
 from server.voice.events import VoiceEventType
-from server.voice.stt import BaseSTTProvider
-from server.voice.tts import BaseTTSProvider
 
 
 class VoiceStatusDTO(BaseModel):
@@ -73,7 +73,7 @@ class ConnectedSendersDTO(BaseModel):
 
 class VoiceClientConfigDTO(BaseModel):
     """Konfiguracja "klientów" głosowych — próg wake-worda (100% serwerowa detekcja,
-    patrz `voice/wakeword.py`) i parametry VAD (algorytm lokalny na satelicie, próg
+    patrz `ai/wakeword/detectors.py`) i parametry VAD (algorytm lokalny na satelicie, próg
     centralnie skonfigurowany tutaj i wysyłany przy handshake, patrz `gateway.py`
     `send_client_config`/`ServerMessageType.CLIENT_CONFIG`)."""
 
@@ -112,7 +112,7 @@ def create_voice_status_router(
             tts_provider=tts_name,
             wakeword_detector=wakeword_detector_class_name,
             # Placeholder wake-worda liczy się tak samo jak Mock STT/TTS — jest
-            # dev-providerem wprost wg własnego docstringu (`voice/wakeword.py`) i
+            # dev-providerem wprost wg własnego docstringu (`ai/wakeword/detectors.py`) i
             # reaguje na sekwencję głośnych ramek, nie na słowo. Bez tego
             # `is_production_ready` mogło zwrócić True dla pipeline'u, który nigdy
             # nie rozpozna "Regis", bo model .onnx się nie załadował.

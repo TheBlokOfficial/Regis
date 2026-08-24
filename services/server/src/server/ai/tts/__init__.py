@@ -1,6 +1,5 @@
 """Konkretni dostawcy TTS i logika wyboru. Protokół (`BaseTTSProvider`) zostaje
-w `server.voice.tts` — `voice/` trzyma go dokładnie jak Kernel trzyma
-`BaseLLMProvider` (`server.agent.llm`)."""
+w `server.ports.tts`, wspólnie dla dostawcy i konsumenta (`server.voice`)."""
 
 from server.ai.tts.factory import TTSFactory
 from server.ai.tts.models import ActiveTTSBackendConfig, TTSInstanceConfig, TTSInstanceFileContent, TTSProviderType

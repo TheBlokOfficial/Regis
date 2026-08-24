@@ -1,3 +1,12 @@
+"""Port LLM oraz "język", w jakim cały system rozmawia o narzędziach.
+
+Konkretni dostawcy (`OllamaProvider`, `OpenAICompatibleProvider`) i logika wyboru
+(`BackendRegistry`/`LLMFactory`/`LLMRouter`) mieszkają w `server.ai.llm`;
+konsumentem protokołu jest kernel (`server.agent`), a `ToolDefinition`/`ToolResult`
+używa też `server.world`. Protokół stoi w `ports/`, żeby żadna z tych stron nie
+musiała importować pozostałych (patrz `ports/__init__.py`).
+"""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Literal

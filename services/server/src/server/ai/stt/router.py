@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from server.ai.stt.registry import STTRegistry
-from server.voice.stt import BaseSTTProvider
+from server.ports.stt import BaseSTTProvider
 
 
 class STTRouter(BaseSTTProvider):

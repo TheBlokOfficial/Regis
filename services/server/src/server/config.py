@@ -11,7 +11,7 @@ class Settings(BaseModel):
     port: int = Field(default=8000, description="Port serwera HTTP/WebSocket")
     debug: bool = Field(
         default=False,
-        description="Podnosi poziom logowania konsoli/pliku do DEBUG (np. score wake-worda przy każdym inference, patrz voice/wakeword.py). Domyślnie INFO.",
+        description="Podnosi poziom logowania konsoli/pliku do DEBUG (np. score wake-worda przy każdym inference, patrz ai/wakeword/detectors.py). Domyślnie INFO.",
     )
     llm_timeout: float = Field(default=30.0, description="Globalny limit czasu zapytań do LLM w sekundach")
     llm_default_max_tokens: int = Field(default=4096, description="Domyślna maksymalna liczba tokenów wyjściowych dla modeli LLM")

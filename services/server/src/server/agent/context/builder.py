@@ -2,7 +2,7 @@ from typing import cast
 
 from shared import ChatMessageDTO, get_logger
 
-from server.agent.llm import LLMMessage, LLMRole
+from server.ports.llm import LLMMessage, LLMRole
 
 logger = get_logger("regis.agent.context")
 

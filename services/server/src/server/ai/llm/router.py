@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator
 
-from server.agent.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest, ToolDefinition
 from server.ai.llm.registry import BackendRegistry
+from server.ports.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest, ToolDefinition
 
 
 class LLMRouter(BaseLLMProvider):

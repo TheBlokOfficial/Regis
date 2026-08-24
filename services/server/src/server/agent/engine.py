@@ -7,10 +7,10 @@ from shared import ChatResponseDTO, Event, EventBus, get_logger
 
 from server.agent.context import ContextBuilder
 from server.agent.context_provider import NullWorldInterface, WorldInterface
-from server.agent.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest
 from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
 from server.events import ServerEventType
+from server.ports.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest
 
 logger = get_logger("regis.agent")
 
@@ -47,7 +47,7 @@ class ReasoningRunPayload(TypedDict):
     bytu: coś, co wydarzyło się w konkretnym momencie pomiędzy fragmentami finalnego
     tekstu. Trafia do `ChatMessageDTO.metadata["reasoning"]` — **nigdy** do `content`
     wiadomości, bo `content` jest odsyłany do modelu w kolejnych turach i czytany na
-    głos przez TTS (patrz `agent/llm.py::ReasoningChunk`).
+    głos przez TTS (patrz `ports/llm.py::ReasoningChunk`).
     """
 
     seq: int
@@ -80,12 +80,12 @@ class AgentEngine:
         world: WorldInterface | None = None,
         max_tool_iterations: int = 8,
     ) -> None:
-        # Import dostawcy domyślnego jest LENIWY z dwóch niezależnych powodów. (1) Kierunek
-        # zależności: kernel zna wyłącznie protokół `BaseLLMProvider`, a `server.ai` to
-        # sąsiednia warstwa konkretów — trzymanie jej w imporcie modułowym czyniło z tego
-        # twardą zależność kernela od konkretnego dostawcy. (2) Praktycznie: `server.ai.llm`
-        # importuje z powrotem `server.agent.llm`, więc modułowy import tworzył cykl, który
-        # wywracał się przy każdej kolejności importów zaczynającej się od `server.ai`.
+        # Import LENIWY już wyłącznie z powodu KIERUNKU ZALEŻNOŚCI: kernel zna sam
+        # protokół (`server.ports.llm`), a `server.ai` to sąsiednia warstwa konkretów —
+        # modułowy import czyniłby z niej twardą zależność kernela od jednego dostawcy.
+        # Dawny drugi powód (cykl `server.ai.llm` -> `server.agent.llm`) zniknął wraz
+        # z wydzieleniem `server/ports/`; ten import mógłby dziś stać na górze pliku
+        # bez wywracania się, ale nadal nie powinien.
         if llm_provider is None:
             from server.ai.llm import OllamaProvider
 

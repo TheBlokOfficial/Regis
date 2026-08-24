@@ -1,4 +1,4 @@
-"""Konkretni dostawcy TTS. Protokół (`BaseTTSProvider`) zostaje w `server.voice.tts`.
+"""Konkretni dostawcy TTS. Protokół (`BaseTTSProvider`) mieszka w `server.ports.tts`.
 
 `ElevenLabsTTSProvider` woła ElevenLabs (`AsyncElevenLabs`) — kontrakt
 zweryfikowany bezpośrednio (dokumentacja + inspekcja zainstalowanego SDK, nie
@@ -12,7 +12,7 @@ from typing import AsyncIterator
 
 from shared import SAMPLE_RATE_HZ, SAMPLE_WIDTH_BYTES
 
-from server.voice.tts import BaseTTSProvider
+from server.ports.tts import BaseTTSProvider
 
 _MIN_DURATION_SECONDS = 0.2
 _MAX_DURATION_SECONDS = 10.0

@@ -2,7 +2,7 @@ from shared import ProviderMetadataResponse, ProviderOptionSpec, ProviderTypeSpe
 
 from server.ai.tts.models import TTSInstanceConfig, TTSProviderType
 from server.ai.tts.providers import ElevenLabsTTSProvider, MockTTSProvider
-from server.voice.tts import BaseTTSProvider
+from server.ports.tts import BaseTTSProvider
 
 logger = get_logger("regis.ai.tts.factory")
 
