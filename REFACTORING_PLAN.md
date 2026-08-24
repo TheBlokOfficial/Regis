@@ -9,6 +9,64 @@
 
 ---
 
+## STATUS — 2026-08-24
+
+**Wdrożone: E0-E7** (osiem commitów, `7fc882e`..`690754e`). Testy 209 → **229**,
+`ruff` bez trafień, `mypy` bez błędów na 104 plikach, serwer zweryfikowany na żywo.
+
+| Etap | Stan | Dowód weryfikacji |
+| :-- | :-- | :--- |
+| E0 narzędzia jakości | ✅ | baza doprowadzona do zera |
+| E1 naprawa F1 + martwy kod | ✅ | test regresyjny na prawdziwym rejestrze |
+| E2 `server/ports/` | ✅ | oba cykle: 0 trafień grep-em |
+| E3 wspólny magazyn instancji | ✅ | round-trip na kopii realnych danych: 0 zmienionych plików |
+| E4 jedna logika CRUD dostawców | ✅ | diff OpenAPI + pełny przebieg CRUD przez `TestClient` |
+| E5 rozbicie `WorldEngine` | ✅ | złoty wzorzec `build()`: prompt tury bajt w bajt |
+| E6 rozbicie routera World | ✅ | 65 operacji → 65, zero zmian kodów odpowiedzi |
+| E7 rozbicie `AgentEngine` | ✅ | złoty wzorzec tury: 14 zdarzeń + `metadata` bajt w bajt |
+| **E8 voice: kodek ramek + obecność klienta** | ⬜ | — |
+| **E9 Web UI** | ⬜ | — |
+| E10 dokumentacja | 🟡 | `manifest.md`/`onboarding.md`/`AGENTS.md` zaktualizowane dla E0-E7 |
+
+**Bilans E0-E7** — liczby netto, żeby nie wprowadzały w błąd:
+
+| | zmiana |
+| :--- | ---: |
+| Linie **wykonywalne** kodu produkcyjnego | 6212 → 6278 (**+66**, +1%) |
+| Komentarze i docstringi | 1887 → 2293 (+406) |
+| Plików `.py` (produkcyjnych) | 82 → 104, średnio 98 → 82 linii |
+| Plików > 500 linii | 2 → 1 (największy: 734 → 554) |
+| Kopii magazynu instancji / routera CRUD | 6 → 1 / 3 → 1 |
+| Cykli zależności między pakietami | 2 → 0 |
+
+Kod wykonywalny jest **praktycznie płaski**: usunięta duplikacja została niemal
+dokładnie zjedzona przez dodane abstrakcje. Zysk nie jest w objętości, tylko
+w liczbie miejsc, które trzeba edytować przy jednej zmianie, i w klasie błędów,
+która zniknęła razem z kopiami (dwa z trzech naprawionych błędów wynikały
+bezpośrednio z tego, że kod istniał w kilku egzemplarzach).
+
+**Trzy błędy naprawione po drodze:**
+
+1. **F1** — edycja aktywnego presetu LLM nie działała do restartu serwera (E1).
+2. Halucynowana nazwa narzędzia trafiała do egzekutora Home Assistant, który
+   odpowiadał „Nie znaleziono pasującej encji" zamiast „nie ma takiego narzędzia" (E5).
+3. Każda nieudana tura zostawiała `Task exception was never retrieved` w logach,
+   opisujący błąd, który system właśnie w pełni obsłużył (E7).
+
+**Dwie świadome zmiany widoczne dla użytkownika:** wspólny komunikat przy próbie
+usunięcia aktywnego dostawcy (zamiast trzech wariantów tego samego zdania) oraz
+`DELETE /world/prompts/{id}` zwracające `deleted_id` zamiast `prompt_id`
+(ujednolicone z pozostałymi siedmioma; Web UI nie czyta żadnego z tych pól).
+
+**Decyzje D1-D4 rozstrzygnięte:** D1 tak (`ports/`), D2 tak (konsolidacja rejestrów),
+D3 usunąć (`check_health`), **D4 nie** — bez `vitest`/Node; projekt zostaje czysto
+pythonowy, a czysta logika z `step_rail.js` ma zostać wydzielona tak, żeby dało się
+ją otestować później, gdyby decyzja się zmieniła.
+
+Poniższy audyt i plan zostają w niezmienionej formie jako opis stanu wyjściowego
+i zakresu E8-E9. **Po ich wdrożeniu ten plik znika** — trwała treść idzie do
+`docs/manifest.md`/`docs/onboarding.md` (reguła z `AGENTS.md`, sekcja „Dokumentacja").
+
 ## 0. Streszczenie
 
 **Werdykt: architektura jest zdrowa na poziomie granic, a uciążliwa na poziomie ziarnistości.**

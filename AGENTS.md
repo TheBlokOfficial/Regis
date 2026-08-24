@@ -24,10 +24,19 @@ Kernel (`server/agent/`) **nie zna z góry konkretnej implementacji** silnika
 konkretnego dostawcy LLM. Jedyny konkretny silnik, `server/world/`
 (`WorldEngine`), wstrzykiwany jest jawnie w kompozycji aplikacji (`main.py`).
 
+Od 2026-08-24 protokoły dostawców AI (`BaseLLMProvider`, `BaseSTTProvider`,
+`BaseTTSProvider`, `WakeWordDetector`) mieszkają w `server/ports/` — między
+konsumentem a konkretem. Wcześniej stały u konsumenta, przez co `ai/` musiało
+importować go z powrotem; powstawały cykle łatane leniwymi importami.
+`WorldInterface` **zostaje** w `agent/context_provider.py`, bo `world -> agent`
+jest jednokierunkowe i cyklu tam nie ma.
+
 ```bash
 grep -rn "from server.world" services/server/src/server/agent/
+grep -rn "from server.voice" services/server/src/server/ai/
+grep -rn "from server.agent" services/server/src/server/ai/
 ```
-(poprawny wynik: brak trafień — to jedyna granica, która musi zostać nienaruszona)
+(poprawny wynik każdej: brak trafień — to granice, które muszą zostać nienaruszone)
 
 **Świadomie porzucona generyczność**: wcześniejszy model "N niezależnych,
 wzajemnie nieświadomych rozszerzeń" (`PluginProvider`/`Gateway`/
@@ -47,7 +56,18 @@ Uzasadnienie i konsekwencje: `docs/manifest.md`, sekcje 3 i 5.
 - SOLID, DRY, KISS, YAGNI, Boy Scout Rule.
 - Ścisłe typowanie: pełne adnotacje typów w sygnaturach funkcji i metod.
 - Logowanie przez wspólny helper: `logger = get_logger("regis.nazwa_modułu")`.
-- Testy: `python -m uv run python -m pytest -q`.
+- Warstwa REST jest cienka: przyjmuje żądanie, woła domenę, tłumaczy wyjątek
+  domenowy na kod odpowiedzi. Reguły biznesowe („pominięte pole zachowuje obecną
+  wartość" itp.) należą do domeny — obowiązują każdego wywołującego, nie tylko HTTP.
+- Przed commitem, komplet:
+  ```bash
+  python -m uv run ruff check .
+  python -m uv run mypy
+  python -m uv run python -m pytest -q
+  ```
+  Stan oczekiwany: ruff bez trafień, mypy bez błędów, wszystkie testy zielone.
+  Oba narzędzia raportują, nie blokują — ale zostawianie po sobie nowych trafień
+  jest cofaniem się.
 
 ## Dokumentacja
 `docs/` dzieli się na dwie kategorie o różnym cyklu życia — nie myl ich:

@@ -127,6 +127,12 @@ python -m uv run --package server python -m server.main
 - **Interaktywna dokumentacja Swagger UI**: `http://127.0.0.1:8000/docs`
 - **Lokalny Interfejs Web UI**: `http://127.0.0.1:8000/`
 
+> **Każdy `DELETE` zwraca ten sam kształt**: `{"success": true, "deleted_id": "<id>"}`
+> (`shared.DeletionResponse`). Wcześniej było to osiem ad-hoc słowników bez
+> `response_model`, i nie te same — usunięcie profilu promptu zwracało `prompt_id`
+> zamiast `deleted_id`. Nieistniejący zasób to zawsze `404`, próba usunięcia zasobu
+> aktywnego (dostawca, profil promptu) — `400`.
+
 | Moduł | Metoda & Ścieżka API v1 | Opis |
 | :--- | :--- | :--- |
 | **System** | `GET /api/v1/health` | Status zdrowia serwera i wdrożonych modułów |
@@ -205,13 +211,16 @@ go automatycznie, bez ręcznego wpisywania IP. `sender_id` to trwały UUID4
 wygenerowany przy pierwszym uruchomieniu i zapisany w
 `services/desktop_satellite/config/settings.json` (`desktop_satellite/config.py`)
 — kolejne starty używają tego samego ID. Zarejestruj wygenerowany `sender_id`
-(widoczny w logu startowym) w Web UI (zakładka **Świat → Nadawcy**), żeby
-satelita miała przypisany pokój. Opcje `--server-url`/`--sender-id` pozwalają
-pominąć auto-discovery/trwały UUID (np. inna podsieć, testy). Wake-word
-wykrywa dziś serwer, realnym modelem `.onnx` gdy skonfigurowany
-(`wakeword_model_path` wyżej), a STT/TTS to nadal dev-providerzy Mock —
-realna rozmowa głosowa wymaga podłączenia docelowych dostawców chmurowych
-(patrz sekcja 2, "Zaplanowane" w `manifest.md`).
+(widoczny w logu startowym) w Web UI — zakładka **Ustawienia → Klienci**, gdzie
+podłączona satelita pojawia się na liście oczekujących; pokój przypisuje się jej
+potem w zakładce **Świat**. Opcje `--server-url`/`--sender-id` pozwalają pominąć
+auto-discovery/trwały UUID (np. inna podsieć, testy).
+
+Wake-word wykrywa **wyłącznie serwer**, realnym modelem `.onnx` gdy skonfigurowany
+(`wakeword_model_path` wyżej). STT/TTS są realne (Groq/ElevenLabs) i wymagają
+wyłącznie wklejenia własnych kluczy API w zakładce **Dostawcy** — bez klucza TTS
+działa łagodna degradacja do ciszy, bez klucza STT tura jest odrzucana z komunikatem
+zamiast fabrykować fałszywą transkrypcję (patrz `docs/manifest.md`, sekcja 3.5).
 
 ### Uruchomienie testów:
 Przed zgłoszeniem zmian obowiązkowo uruchom pełny zestaw testów (`services/server/tests/`):
@@ -227,6 +236,25 @@ w `anyio` — `pytest-asyncio` nie jest potrzebny.
 > **Uwaga**: uruchamiaj testy przez `uv run`, a nie gołym `python -m pytest` —
 > tylko wtedy masz gwarancję, że używasz środowiska workspace, a nie
 > przypadkowego interpretera systemowego.
+
+### Kontrola jakości: `ruff` i `mypy`
+
+Oba narzędzia są w grupie `dev` i instalują się razem z resztą przy `uv sync`:
+
+```bash
+python -m uv run ruff check .
+python -m uv run mypy
+```
+
+Stan oczekiwany po każdej zmianie: **ruff bez trafień, mypy bez błędów**. Oba są
+skonfigurowane w głównym `pyproject.toml` w trybie raportującym, nie blokującym —
+mają wskazywać dryf adnotacji i oczywiste pułapki, a nie zatrzymywać pracy na
+przepisywaniu typów w kodzie, który działa. Zestaw reguł ruff jest celowo wąski
+(`E4/E7/E9/F/I/B`): błędy realne, higiena importów, znane pułapki. Reguł
+stylistycznych nie ma — projekt ma spójny, świadomy styl i przeformatowanie go
+nie jest celem.
+
+`ruff check . --fix` sam posortuje importy i usunie martwe; reszta wymaga decyzji.
 
 ---
 
