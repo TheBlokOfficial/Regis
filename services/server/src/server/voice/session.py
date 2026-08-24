@@ -149,34 +149,56 @@ class VoiceSession:
     async def speak(self, text: str) -> None:
         """Syntezuje i odtwarza odpowiedź — wołane przez gateway po odebraniu CHAT_DONE.
 
+        **Strumieniowo**: `tts_start` i pierwsza ramka audio lecą do satelity, gdy tylko
+        dostawca zwróci PIERWSZY fragment — nie po zakończeniu całej syntezy. Wcześniej
+        `synthesize()` czekało na komplet audio, mimo że i ElevenLabs (`convert()` zwraca
+        `AsyncIterator[bytes]`), i protokół WS (`tts_start` -> N ramek -> `tts_end`), i
+        odtwarzacz satelity od dawna umiały pracować strumieniowo — po prostu nic
+        pomiędzy nimi z tego nie korzystało. Przy dłuższej odpowiedzi to różnica między
+        "cisza przez kilka sekund" a dźwiękiem od razu po zakończeniu tury.
+
         `SYNTHESIZING` i `SPEAKING` to dwa różne stany, bo to dwa różne oczekiwania:
-        pierwsze trwa tyle, ile zapytanie do dostawcy TTS, drugie tyle, ile realne
-        odtwarzanie u klienta. Dopóki oba nazywały się `SPEAKING`, dashboard pokazywał
-        "Odpowiada" także wtedy, gdy nic jeszcze nie grało — i nie dało się odróżnić
-        wolnej syntezy od zawieszonego odtwarzania.
+        pierwsze trwa tyle, ile zapytanie do dostawcy TTS DO PIERWSZEGO FRAGMENTU
+        (dziś: pojedyncze żądanie HTTP, docelowo — pierwszy bajt strumienia), drugie
+        tyle, ile realne odtwarzanie u klienta.
 
         Wyjątek dostawcy TTS **musi** być złapany tutaj: `speak()` jest wołane z handlera
         `EventBus`, a ten połyka wyjątki (`shared/event_bus.py::publish`), więc bez tego
-        sesja zostawałaby w `SPEAKING` na zawsze, a satelita — z wstrzymanym mikrofonem.
+        sesja zostawałaby w `SPEAKING`/`SYNTHESIZING` na zawsze, a satelita — z
+        wstrzymanym mikrofonem. Wyjątek W TRAKCIE strumienia (część audio już poszła do
+        satelity) jest traktowany inaczej niż przed pierwszym fragmentem: satelita ma już
+        czym karmić głośnik, więc kończymy `tts_end` jak przy normalnym zakończeniu —
+        `handle_playback_done()` i tak wróci do nasłuchu, gdy satelita doigra to, co
+        dostała. Ucinanie w pół zdania jest gorsze od próby dokończenia, ale wciąż
+        lepsze niż wieczne milczenie satelity czekającej na `tts_start`, który nigdy
+        nie przyjdzie.
         """
         await self._set_state(SessionState.SYNTHESIZING)
+        started = False
         try:
-            audio = await self._tts_provider.synthesize(text)
+            async for chunk in self._tts_provider.synthesize_stream(text):
+                if not chunk:
+                    continue
+                if not started:
+                    started = True
+                    await self._set_state(SessionState.SPEAKING)
+                    await self._link.send_control(ServerMessageType.TTS_START)
+                await self._link.send_audio(chunk)
         except Exception as err:
             # Sanityzacja jak wszędzie indziej: szczegół dostawcy tylko do logu.
             logger.error(f"Synteza mowy nie powiodła się [sender_id: '{self.sender_id}']: {err}")
-            await self._link.send_error("Synteza mowy nieskonfigurowana lub niedostępna.")
-            await self.reset_to_listening()
-            return
+            if not started:
+                await self._link.send_error("Synteza mowy nieskonfigurowana lub niedostępna.")
+                await self.reset_to_listening()
+                return
+            # Część audio już dotarła — kończymy strumień normalnie zamiast zostawiać
+            # satelitę czekającą na ramki, których już nie będzie.
 
-        if not audio:
+        if not started:
             logger.warning(f"Dostawca TTS zwrócił puste audio [sender_id: '{self.sender_id}'].")
             await self.end_turn_without_speech()
             return
 
-        await self._set_state(SessionState.SPEAKING)
-        await self._link.send_control(ServerMessageType.TTS_START)
-        await self._link.send_audio(audio)
         await self._link.send_control(ServerMessageType.TTS_END)
 
     async def end_turn_without_speech(self) -> None:

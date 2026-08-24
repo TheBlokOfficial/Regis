@@ -53,9 +53,9 @@ class EchoTTS(BaseTTSProvider):
     def __init__(self) -> None:
         self.synthesized: list[str] = []
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize_stream(self, text: str):
         self.synthesized.append(text)
-        return f"audio:{text}".encode()
+        yield f"audio:{text}".encode()
 
 
 class FakeAgentEngine:

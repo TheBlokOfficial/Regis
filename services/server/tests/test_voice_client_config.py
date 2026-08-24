@@ -115,8 +115,10 @@ class _RealisticSTT(BaseSTTProvider):
 
 
 class _RealisticTTS(BaseTTSProvider):
-    async def synthesize(self, text: str) -> bytes:
-        return b""
+    async def synthesize_stream(self, text: str):
+        del text
+        return
+        yield b""  # nieosiągalne — czyni funkcję generatorem; provider tu nigdy nie syntezuje
 
 
 def _status_for_detector(tmp_path: Path, detector_name: str) -> dict:

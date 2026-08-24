@@ -87,8 +87,21 @@ class MicCapture:
 
 
 class SpeakerPlayback:
-    """Odtwarza bufor PCM16 przez głośnik — blokujące wywołanie PortAudio wykonywane
-    w wątku wykonawczym, żeby nie blokować pętli asyncio."""
+    """Odtwarza audio przez głośnik — blokujące wywołania PortAudio wykonywane w wątku
+    wykonawczym, żeby nie blokować pętli asyncio.
+
+    `start_stream()`/`write_chunk()`/`stop_stream()` to ścieżka STRUMIENIOWA (patrz
+    `SatelliteSession`, protokół `tts_start` -> N ramek binarnych -> `tts_end`): kolejne
+    fragmenty audio od serwera grają w miarę nadejścia, przez otwarty `RawOutputStream`,
+    zamiast czekać na dogranie się wszystkich ramek do bufora i dopiero wtedy odtwarzać
+    `play()` na komplecie (jak działało to wcześniej) — przy dłuższej odpowiedzi to
+    różnica między dźwiękiem od razu a ciszą przez kilka sekund. `play()` zostaje jako
+    prostsza ścieżka NIEstrumieniowa, używana wyłącznie do lokalnych dźwięków
+    wake/stop-tone (`play_cue`), gdzie cały bufor i tak powstaje lokalnie w jednej
+    chwili — otwieranie dla nich osobnego strumienia byłoby zbędnym narzutem."""
+
+    def __init__(self) -> None:
+        self._stream: sd.RawOutputStream | None = None
 
     async def play(self, pcm_audio: bytes) -> None:
         if not pcm_audio:
@@ -96,6 +109,56 @@ class SpeakerPlayback:
         samples = np.frombuffer(pcm_audio, dtype=np.int16)
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._play_blocking, samples)
+
+    async def start_stream(self) -> None:
+        """Otwiera wyjściowy strumień audio — wołane raz po odebraniu `tts_start`,
+        zanim przyjdzie pierwsza ramka binarna.
+
+        Defensywnie zamyka POPRZEDNI strumień, jeśli jakiś został otwarty, a nigdy nie
+        doczekał się `stop_stream()` (np. WS padł w połowie odtwarzania, satelita
+        wznowiła połączenie i serwer zaczął nową turę) — bez tego uchwyt PortAudio
+        poprzedniego strumienia by przeciekł, nadpisany bez zamknięcia."""
+        if self._stream is not None:
+            await self._abort_leftover_stream()
+        loop = asyncio.get_running_loop()
+        stream = sd.RawOutputStream(samplerate=SAMPLE_RATE_HZ, channels=CHANNELS, dtype="int16")
+        await loop.run_in_executor(None, stream.start)
+        self._stream = stream
+
+    async def _abort_leftover_stream(self) -> None:
+        stream = self._stream
+        self._stream = None
+        if stream is None:
+            return
+        loop = asyncio.get_running_loop()
+        # `abort()`, nie `stop()`: ten strumień jest osierocony (nikt już nie czeka na
+        # dogranie jego bufora), więc czekanie na jego naturalny koniec tylko opóźniałoby
+        # start nowej odpowiedzi bez żadnej korzyści.
+        await loop.run_in_executor(None, stream.abort)
+        await loop.run_in_executor(None, stream.close)
+
+    async def write_chunk(self, pcm_audio: bytes) -> None:
+        """Dokłada fragment do strumienia — blokuje tylko do momentu, aż PortAudio
+        przyjmie dane do WEWNĘTRZNEGO bufora (nie do końca ich odegrania), więc nie
+        wstrzymuje odbioru kolejnych ramek WS na dłużej niż to konieczne."""
+        if not pcm_audio or self._stream is None:
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._stream.write, pcm_audio)
+
+    async def stop_stream(self) -> None:
+        """Zamyka strumień — `stream.stop()` **czeka, aż wszystkie już przyjęte ramki
+        dograją się do końca**, więc `playback_done` (wysyłane zaraz po tym wywołaniu
+        przez `SatelliteSession`) naprawdę oznacza koniec odtwarzania, nie tylko koniec
+        odbierania danych. Gdyby użyć `abort()` zamiast `stop()`, ostatni fragment
+        odpowiedzi ucinałby się w połowie dźwięku."""
+        stream = self._stream
+        if stream is None:
+            return
+        self._stream = None
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, stream.stop)
+        await loop.run_in_executor(None, stream.close)
 
     async def play_cue(self, windows_sound_name: str, fallback_pcm: bytes) -> None:
         """Odtwarza dźwięk systemowy Windows (`windows_sound_name`, patrz

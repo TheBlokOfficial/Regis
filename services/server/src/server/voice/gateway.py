@@ -172,9 +172,11 @@ class VoiceConnection:
 
         `EventBus.publish()` woła handlery sekwencyjnie i czeka na każdy — trzymanie tu
         `await session.speak(...)` blokowało publikację `CHAT_DONE` do wszystkich
-        pozostałych subskrybentów (m.in. kanału SSE Web UI) na cały czas syntezy TTS,
-        czyli kilka sekund. Referencja jest trzymana, bo `asyncio` nie gwarantuje życia
-        zadania, do którego nikt się nie odwołuje."""
+        pozostałych subskrybentów (m.in. kanału SSE Web UI) na cały czas trwania
+        odpowiedzi głosowej (synteza + strumieniowe wysyłanie audio), czyli realnie
+        kilka sekund nawet przy streamingu TTS (`voice/session.py::speak()`). Referencja
+        jest trzymana, bo `asyncio` nie gwarantuje życia zadania, do którego nikt się
+        nie odwołuje."""
         task = asyncio.create_task(self.session.speak(text))
         self._speak_task = task
 

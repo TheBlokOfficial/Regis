@@ -12,7 +12,7 @@ niezmieniony `active_id` nie gwarantuje niezmienionej konfiguracji."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, AsyncIterator
 
 from server.ai.tts.registry import TTSRegistry
 from server.voice.tts import BaseTTSProvider
@@ -38,9 +38,10 @@ class TTSRouter(BaseTTSProvider):
             self._cached_options = active_options
         return self._cached_provider
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         provider = await self._resolve()
-        return await provider.synthesize(text)
+        async for chunk in provider.synthesize_stream(text):
+            yield chunk
 
     async def get_active_provider_class_name(self) -> str:
         provider = await self._resolve()

@@ -63,7 +63,6 @@ class SatelliteSession:
         self._speaker = speaker
         self._vad_factory = vad_factory
         self._vad: SilenceVadDetector | None = None
-        self._response_buffer = bytearray()
 
     async def run(self, mic: MicCapture) -> None:
         """Wysyła handshake, czeka na `CLIENT_CONFIG` serwera (parametry VAD), po czym
@@ -132,7 +131,9 @@ class SatelliteSession:
     async def handle_server_frame(self, frame: ServerFrame) -> None:
         if isinstance(frame, (bytes, bytearray)):
             if self.state == SessionState.SPEAKING:
-                self._response_buffer.extend(frame)
+                # Fragment leci PROSTO na otwarty strumień (patrz `TTS_START` niżej) —
+                # gra w miarę nadejścia, bez czekania na komplet odpowiedzi.
+                await self._speaker.write_chunk(bytes(frame))
             return
 
         message_type = parse_server_message_type(frame)
@@ -142,7 +143,7 @@ class SatelliteSession:
             await self._speaker.play_cue(STOP_SOUND_NAME, synth_tone(STOP_TONE_HZ, TONE_DURATION_MS))
         elif message_type == ServerMessageType.TTS_START:
             self.state = SessionState.SPEAKING
-            self._response_buffer.clear()
+            await self._speaker.start_stream()
         elif message_type == ServerMessageType.TTS_END:
             await self._on_tts_end()
         elif message_type == ServerMessageType.TURN_END:
@@ -164,14 +165,13 @@ class SatelliteSession:
         await self._speaker.play_cue(WAKE_SOUND_NAME, synth_tone(WAKE_TONE_HZ, TONE_DURATION_MS))
 
     async def _on_tts_end(self) -> None:
-        audio = bytes(self._response_buffer)
-        self._response_buffer.clear()
-        await self._speaker.play(audio)
+        # `stop_stream()` czeka, aż wszystko, co już przyjęte, dogra się do końca —
+        # dopiero POTEM `playback_done` jest prawdą, nie tylko sygnałem "odebrałem dane".
+        await self._speaker.stop_stream()
         await self._link.send_control(SatelliteMessageType.PLAYBACK_DONE)
         self._reset_to_listening()
 
     def _reset_to_listening(self) -> None:
         assert self._vad is not None, "SatelliteSession.run() nie zostało wywołane."
         self.state = SessionState.LISTENING_WAKEWORD
-        self._response_buffer.clear()
         self._vad.reset()

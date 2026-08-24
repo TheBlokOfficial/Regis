@@ -29,9 +29,18 @@ class FakeLink:
 
 
 class FakeSpeaker:
+    """Rozróżnia trzy niezależne rzeczy, dokładnie jak `SpeakerPlayback`: lokalne
+    dźwięki (`play`, wołane przez `play_cue`) i strumień odpowiedzi TTS
+    (`start_stream`/`write_chunk`/`stop_stream`) — mieszanie ich w jednej liście
+    ukrywałoby błędy kolejności (np. `write_chunk` wywołane bez `start_stream`)."""
+
     def __init__(self) -> None:
         self.played: list[bytes] = []
         self.cues: list[str] = []
+        self.streamed_chunks: list[bytes] = []
+        self.stream_open = False
+        self.stream_started_count = 0
+        self.stream_stopped_count = 0
 
     async def play(self, pcm_audio: bytes) -> None:
         self.played.append(pcm_audio)
@@ -39,6 +48,18 @@ class FakeSpeaker:
     async def play_cue(self, windows_sound_name: str, fallback_pcm: bytes) -> None:
         self.cues.append(windows_sound_name)
         self.played.append(fallback_pcm)
+
+    async def start_stream(self) -> None:
+        self.stream_open = True
+        self.stream_started_count += 1
+
+    async def write_chunk(self, pcm_audio: bytes) -> None:
+        assert self.stream_open, "write_chunk() wywołane bez uprzedniego start_stream()."
+        self.streamed_chunks.append(pcm_audio)
+
+    async def stop_stream(self) -> None:
+        self.stream_open = False
+        self.stream_stopped_count += 1
 
 
 class AlwaysTriggerVad:
@@ -107,7 +128,11 @@ async def test_mic_frames_ignored_while_processing() -> None:
 
 
 @pytest.mark.anyio
-async def test_full_tts_cycle_plays_audio_and_returns_to_listening() -> None:
+async def test_full_tts_cycle_streams_audio_and_returns_to_listening() -> None:
+    """Fragmenty graja W MIARE NADEJSCIA (przez otwarty strumien), nie po dograniu sie
+    calej odpowiedzi do jednego bufora — sedno streamingu TTS: `write_chunk` musi
+    zobaczyc kazdy fragment OSOBNO, w kolejnosci przyjscia, a strumien musi byc otwarty
+    (`start_stream`) juz na `tts_start`, zanim przyjdzie pierwsza ramka binarna."""
     session, link, speaker = _make_session(NeverTriggerVad())
     session.state = SessionState.PROCESSING
 
@@ -117,12 +142,17 @@ async def test_full_tts_cycle_plays_audio_and_returns_to_listening() -> None:
 
     await session.handle_server_frame({"type": ServerMessageType.TTS_START.value})
     assert session.state == SessionState.SPEAKING
+    assert speaker.stream_started_count == 1
 
     await session.handle_server_frame(b"chunk1")
     await session.handle_server_frame(b"chunk2")
+    # Strumien pozostaje otwarty MIEDZY fragmentami — jeszcze nie zamkniety.
+    assert speaker.stream_open is True
 
     await session.handle_server_frame({"type": ServerMessageType.TTS_END.value})
-    assert speaker.played[-1] == b"chunk1chunk2"
+    assert speaker.streamed_chunks == [b"chunk1", b"chunk2"]
+    assert speaker.stream_stopped_count == 1
+    assert speaker.stream_open is False
     assert link.control_messages == [SatelliteMessageType.PLAYBACK_DONE]
     assert session.state == SessionState.LISTENING_WAKEWORD
 
@@ -160,6 +190,7 @@ async def test_binary_frame_ignored_outside_speaking_state() -> None:
     session.state = SessionState.LISTENING_WAKEWORD
     await session.handle_server_frame(b"stray-audio")
     assert speaker.played == []
+    assert speaker.streamed_chunks == []
 
 
 class ConfigLink(FakeLink):

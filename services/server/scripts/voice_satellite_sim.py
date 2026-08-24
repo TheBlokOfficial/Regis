@@ -78,16 +78,21 @@ async def run(sender_id: str) -> None:
             f"Oczekiwano 'tts_start' albo 'turn_end', dostano '{first_message.get('type')}'."
         )
         audio_bytes = 0
+        audio_frames = 0
         while True:
             raw = await ws.recv()
             if isinstance(raw, bytes):
                 audio_bytes += len(raw)
+                audio_frames += 1
                 continue
             message = json.loads(raw)
             print(f"<- {message}")
             assert message.get("type") == "tts_end"
             break
-        print(f"Odebrano {audio_bytes} bajtów audio odpowiedzi.")
+        # Więcej niż jedna ramka binarna potwierdza STRUMIENIOWANIE: serwer wysyła
+        # `tts_start` i pierwszy fragment audio, gdy tylko dostawca TTS zwróci go
+        # (nie po zakończeniu całej syntezy) — patrz `voice/session.py::speak()`.
+        print(f"Odebrano {audio_bytes} bajtów audio odpowiedzi w {audio_frames} ramkach binarnych.")
 
         # 7. Potwierdzenie zakończenia odtwarzania — powrót do nasłuchu
         playback_done = {"type": "playback_done"}

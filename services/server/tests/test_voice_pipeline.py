@@ -77,8 +77,12 @@ class FakeSTT(BaseSTTProvider):
 
 
 class FakeTTS(BaseTTSProvider):
-    async def synthesize(self, text: str) -> bytes:
-        return f"audio:{text}".encode()
+    """Strumieniuje odpowiedź jako JEDEN fragment — wystarczy do testów, które nie
+    weryfikują samego chunkowania (te mają dedykowane fejki niżej, patrz
+    `test_speak_streams_multiple_chunks_as_they_arrive`)."""
+
+    async def synthesize_stream(self, text: str):
+        yield f"audio:{text}".encode()
 
 
 async def _noop_publish_event(event_type, payload) -> None:
@@ -191,6 +195,55 @@ async def test_speak_sends_tts_frames_and_transitions_to_speaking():
 
 
 @pytest.mark.anyio
+async def test_speak_streams_multiple_chunks_progressively():
+    """Sedno streamingu: `tts_start` i pierwsza ramka lecą po PIERWSZYM fragmencie
+    dostawcy, nie po zakończeniu całej syntezy — kolejne fragmenty dochodzą jako osobne
+    ramki `send_audio`, nie jeden sklejony bufor."""
+
+    class ChunkedTTS(BaseTTSProvider):
+        def __init__(self) -> None:
+            self.chunks_requested_before_first_send = 0
+
+        async def synthesize_stream(self, text: str):
+            del text
+            yield b"pierwszy-"
+            yield b"drugi-"
+            yield b"trzeci"
+
+    session, link = _make_session(AlwaysTriggerWakeWordDetector(), on_transcript=lambda t: None, tts_provider=ChunkedTTS())
+
+    await session.speak("Cześć!")
+
+    assert link.audio_chunks == [b"pierwszy-", b"drugi-", b"trzeci"]
+    assert link.control_messages == [ServerMessageType.TTS_START, ServerMessageType.TTS_END]
+
+
+@pytest.mark.anyio
+async def test_speak_ends_stream_gracefully_when_provider_fails_mid_stream():
+    """Wyjątek PO wysłaniu pierwszego fragmentu jest traktowany inaczej niż wyjątek przed
+    nim: satelita ma już czym karmić głośnik, więc kończymy `tts_end` jak przy normalnym
+    zakończeniu, zamiast zostawiać ją czekającą na ramki, których nie będzie."""
+
+    class FlakyTTS(BaseTTSProvider):
+        async def synthesize_stream(self, text: str):
+            del text
+            yield b"poczatek-"
+            raise RuntimeError("połączenie zerwane w połowie strumienia")
+
+    session, link = _make_session(AlwaysTriggerWakeWordDetector(), on_transcript=lambda t: None, tts_provider=FlakyTTS())
+
+    await session.speak("Cześć!")
+
+    assert link.audio_chunks == [b"poczatek-"]
+    assert link.control_messages == [ServerMessageType.TTS_START, ServerMessageType.TTS_END]
+    # Błąd trafia do logu (sanityzacja), nie do satelity — nie ma dodatkowej ramki błędu.
+    assert link.errors == []
+    # Stan zostaje SPEAKING: normalne zakończenie (handle_playback_done) i tak wróci
+    # do nasłuchu, gdy satelita doigra to, co dostała.
+    assert session.state.name == "SPEAKING"
+
+
+@pytest.mark.anyio
 async def test_playback_done_returns_to_listening_and_resets_detector():
     class CountingResetDetector(AlwaysTriggerWakeWordDetector):
         def __init__(self) -> None:
@@ -217,8 +270,9 @@ async def test_speak_returns_to_listening_when_tts_fails():
     nie było, z wstrzymanym mikrofonem."""
 
     class ExplodingTTS(BaseTTSProvider):
-        async def synthesize(self, text: str) -> bytes:
+        async def synthesize_stream(self, text: str):
             raise RuntimeError(f"401 Unauthorized [klucz konta {text}]")
+            yield b""  # nieosiągalne — czyni funkcję generatorem, nie zwykłą korutyną
 
     session, link = _make_session(
         AlwaysTriggerWakeWordDetector(), on_transcript=lambda t: None, tts_provider=ExplodingTTS()
@@ -236,9 +290,10 @@ async def test_speak_returns_to_listening_when_tts_fails():
 @pytest.mark.anyio
 async def test_speak_ends_turn_when_tts_returns_empty_audio():
     class SilentTTS(BaseTTSProvider):
-        async def synthesize(self, text: str) -> bytes:
+        async def synthesize_stream(self, text: str):
             del text
-            return b""
+            return
+            yield b""  # nieosiągalne — czyni funkcję generatorem, nie zwykłą korutyną
 
     session, link = _make_session(
         AlwaysTriggerWakeWordDetector(), on_transcript=lambda t: None, tts_provider=SilentTTS()
