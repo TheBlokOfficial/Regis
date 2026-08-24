@@ -22,9 +22,3 @@ class TTSInstanceConfig(TTSInstanceFileContent):
     """Struktura instancji w pamięci serwera (z identyfikatorem zdekodowanym z nazwy pliku)."""
 
     id: str = Field(default="", description="Unikalny identyfikator instancji uzyskany z nazwy pliku")
-
-
-class ActiveTTSBackendConfig(BaseModel):
-    """Struktura pliku active_tts_backend.json przechowującego ID aktywnej instancji."""
-
-    active_id: str = Field(description="ID aktualnie wybranego backendu TTS")

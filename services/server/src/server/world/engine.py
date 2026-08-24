@@ -12,13 +12,12 @@ configu ucina wyłącznie encje/narzędzia HA, nigdy framing kanału komunikacji
 """
 
 import asyncio
-import uuid
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from shared import ConfigStore, get_logger, get_service_root, sanitize_identifier
+from shared import ConfigStore, JsonInstanceRepository, get_logger, get_service_root
 
 from server.agent.context_provider import ContextBuild
 from server.ports.llm import ToolDefinition, ToolResult
@@ -76,6 +75,23 @@ class WorldEngine:
         self._lock = asyncio.Lock()
         self._defaults_ensured = False
         self._client_factory = client_factory
+        # Grupy i pokoje to dwie kolekcje "plik na instancję" o identycznej mechanice —
+        # dzielą lock silnika, żeby zapisy w obrębie jednego `WorldEngine` pozostały
+        # serializowane dokładnie tak, jak przed wydzieleniem repozytorium.
+        self._groups: JsonInstanceRepository[DeviceGroupFileContent] = JsonInstanceRepository(
+            directory=self.groups_dir,
+            content_cls=DeviceGroupFileContent,
+            id_prefix="grp",
+            label="grupę urządzeń",
+            lock=self._lock,
+        )
+        self._rooms: JsonInstanceRepository[RoomFileContent] = JsonInstanceRepository(
+            directory=self.rooms_dir,
+            content_cls=RoomFileContent,
+            id_prefix="room",
+            label="pokój",
+            lock=self._lock,
+        )
         # World jest jedynym autorem promptu tej tury, gdy podłączony — własny magazyn
         # profili tożsamości (do 3, przełączalne), zarządzany wewnętrznie (patrz `build()`).
         self._prompt_store = WorldPromptStore(self.base_data_dir)
@@ -85,12 +101,9 @@ class WorldEngine:
         """Tworzy katalogi grup/pokoi jeśli nie istnieją. Silnik startuje bez konfiguracji i grup."""
         if self._defaults_ensured:
             return
-        async with self._lock:
-            if self._defaults_ensured:
-                return
-            self.groups_dir.mkdir(parents=True, exist_ok=True)
-            self.rooms_dir.mkdir(parents=True, exist_ok=True)
-            self._defaults_ensured = True
+        await self._groups.ensure_directory()
+        await self._rooms.ensure_directory()
+        self._defaults_ensured = True
 
     def _build_client(self, config: HomeAssistantConfig) -> HomeAssistantClient:
         if self._client_factory is not None:
@@ -143,7 +156,10 @@ class WorldEngine:
         return await client.test_connection()
 
     # --------------------------------------------------------------------------
-    # CRUD grup urządzeń
+    # CRUD grup urządzeń i pokoi — dwie kolekcje "plik na instancję" o identycznej
+    # mechanice, obsłużone tym samym `JsonInstanceRepository` (patrz `__init__`).
+    # Metody poniżej są cienkimi fasadami: dokładają wyłącznie to, czego magazyn
+    # nie wie — kształt DTO instancji i regułę "aktualizacja częściowa".
     # --------------------------------------------------------------------------
 
     async def create_group(
@@ -154,33 +170,17 @@ class WorldEngine:
     ) -> DeviceGroupInstanceConfig:
         """Tworzy nową grupę urządzeń i zapisuje ją w pliku JSON."""
         await self._ensure_defaults()
-        group_id = custom_id or f"grp_{uuid.uuid4().hex[:8]}"
-        if custom_id:
-            sanitize_identifier(custom_id, field_name="custom_id")
         content = DeviceGroupFileContent(name=name, device_ids=device_ids)
-        file_path = self.groups_dir / f"{group_id}.json"
-
-        async with self._lock:
-            await asyncio.to_thread(ConfigStore(DeviceGroupFileContent, file_path).save, content)
-
-        logger.info(f"Utworzono nową grupę [{name}] z ID: {group_id}")
+        group_id = await self._groups.create(content, custom_id=custom_id)
         return DeviceGroupInstanceConfig(id=group_id, **content.model_dump())
 
     async def list_groups(self) -> dict[str, DeviceGroupInstanceConfig]:
         """Wczytuje i zwraca słownik wszystkich zadeklarowanych grup {id: config}."""
         await self._ensure_defaults()
-        instances: dict[str, DeviceGroupInstanceConfig] = {}
-
-        async with self._lock:
-            for file_path in sorted(self.groups_dir.glob("*.json")):
-                try:
-                    group_id = file_path.stem
-                    content = await asyncio.to_thread(ConfigStore(DeviceGroupFileContent, file_path).load)
-                    instances[group_id] = DeviceGroupInstanceConfig(id=group_id, **content.model_dump())
-                except Exception as e:
-                    logger.error(f"Błąd podczas wczytywania pliku grupy [{file_path}]: {e}")
-
-        return instances
+        return {
+            gid: DeviceGroupInstanceConfig(id=gid, **content.model_dump())
+            for gid, content in (await self._groups.load_all()).items()
+        }
 
     async def update_group(
         self,
@@ -189,82 +189,45 @@ class WorldEngine:
         device_ids: list[str] | None = None,
     ) -> DeviceGroupInstanceConfig:
         """Aktualizuje wybrane pola istniejącej grupy. Rzuca ValueError jeśli nie istnieje."""
-        sanitize_identifier(group_id, field_name="group_id")
         await self._ensure_defaults()
-        file_path = self.groups_dir / f"{group_id}.json"
-        if not file_path.exists():
+        existing = await self._groups.load(group_id)
+        if existing is None:
             raise ValueError(f"Grupa o ID '{group_id}' nie istnieje.")
-
-        async with self._lock:
-            existing = await asyncio.to_thread(ConfigStore(DeviceGroupFileContent, file_path).load)
-            updated = DeviceGroupFileContent(
-                name=name if name is not None else existing.name,
-                device_ids=device_ids if device_ids is not None else existing.device_ids,
-            )
-            await asyncio.to_thread(ConfigStore(DeviceGroupFileContent, file_path).save, updated)
-
+        updated = DeviceGroupFileContent(
+            name=name if name is not None else existing.name,
+            device_ids=device_ids if device_ids is not None else existing.device_ids,
+        )
+        await self._groups.save(group_id, updated)
         logger.info(f"Zaktualizowano grupę [{group_id}].")
         return DeviceGroupInstanceConfig(id=group_id, **updated.model_dump())
 
     async def delete_group(self, group_id: str) -> bool:
         """Usuwa plik grupy z dysku."""
-        sanitize_identifier(group_id, field_name="group_id")
         await self._ensure_defaults()
-        async with self._lock:
-            file_path = self.groups_dir / f"{group_id}.json"
-            if file_path.exists():
-                file_path.unlink()
-                logger.info(f"Usunięto grupę [{group_id}] z dysku.")
-                return True
-            return False
-
-    # --------------------------------------------------------------------------
-    # CRUD pokoi — pełnoprawny byt World, niezależny od Home Assistant Areas
-    # --------------------------------------------------------------------------
+        return await self._groups.delete(group_id)
 
     async def create_room(self, name: str, custom_id: Optional[str] = None) -> RoomInstanceConfig:
         """Tworzy nowy pokój i zapisuje go w pliku JSON."""
         await self._ensure_defaults()
-        room_id = custom_id or f"room_{uuid.uuid4().hex[:8]}"
-        if custom_id:
-            sanitize_identifier(custom_id, field_name="custom_id")
         content = RoomFileContent(name=name)
-        file_path = self.rooms_dir / f"{room_id}.json"
-
-        async with self._lock:
-            await asyncio.to_thread(ConfigStore(RoomFileContent, file_path).save, content)
-
-        logger.info(f"Utworzono nowy pokój [{name}] z ID: {room_id}")
+        room_id = await self._rooms.create(content, custom_id=custom_id)
         return RoomInstanceConfig(id=room_id, **content.model_dump())
 
     async def list_rooms(self) -> dict[str, RoomInstanceConfig]:
         """Wczytuje i zwraca słownik wszystkich pokoi {id: config}."""
         await self._ensure_defaults()
-        instances: dict[str, RoomInstanceConfig] = {}
-
-        async with self._lock:
-            for file_path in sorted(self.rooms_dir.glob("*.json")):
-                try:
-                    room_id = file_path.stem
-                    content = await asyncio.to_thread(ConfigStore(RoomFileContent, file_path).load)
-                    instances[room_id] = RoomInstanceConfig(id=room_id, **content.model_dump())
-                except Exception as e:
-                    logger.error(f"Błąd podczas wczytywania pliku pokoju [{file_path}]: {e}")
-
-        return instances
+        return {
+            rid: RoomInstanceConfig(id=rid, **content.model_dump())
+            for rid, content in (await self._rooms.load_all()).items()
+        }
 
     async def update_room(self, room_id: str, name: str) -> RoomInstanceConfig:
         """Zmienia nazwę istniejącego pokoju. Rzuca ValueError jeśli nie istnieje."""
-        sanitize_identifier(room_id, field_name="room_id")
         await self._ensure_defaults()
-        file_path = self.rooms_dir / f"{room_id}.json"
-        if not file_path.exists():
+        if await self._rooms.load(room_id) is None:
             raise ValueError(f"Pokój o ID '{room_id}' nie istnieje.")
-
-        async with self._lock:
-            updated = RoomFileContent(name=name)
-            await asyncio.to_thread(ConfigStore(RoomFileContent, file_path).save, updated)
-
+        updated = RoomFileContent(name=name)
+        await self._rooms.save(room_id, updated)
         logger.info(f"Zaktualizowano pokój [{room_id}].")
         return RoomInstanceConfig(id=room_id, **updated.model_dump())
 
@@ -272,15 +235,8 @@ class WorldEngine:
         """Usuwa plik pokoju z dysku. Urządzenia/nadawcy wskazujący na usunięty `room_id`
         po prostu przestają mieć dopasowanie (cicho traktowani jak nieprzypisani,
         patrz `_render_devices_section`) — bez cascade delete."""
-        sanitize_identifier(room_id, field_name="room_id")
         await self._ensure_defaults()
-        async with self._lock:
-            file_path = self.rooms_dir / f"{room_id}.json"
-            if file_path.exists():
-                file_path.unlink()
-                logger.info(f"Usunięto pokój [{room_id}] z dysku.")
-                return True
-            return False
+        return await self._rooms.delete(room_id)
 
     # --------------------------------------------------------------------------
     # Zadeklarowane urządzenia — jedyne źródło prawdy o tym, co widzi agent

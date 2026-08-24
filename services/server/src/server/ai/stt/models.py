@@ -22,9 +22,3 @@ class STTInstanceConfig(STTInstanceFileContent):
     """Struktura instancji w pamięci serwera (z identyfikatorem zdekodowanym z nazwy pliku)."""
 
     id: str = Field(default="", description="Unikalny identyfikator instancji uzyskany z nazwy pliku")
-
-
-class ActiveSTTBackendConfig(BaseModel):
-    """Struktura pliku active_stt_backend.json przechowującego ID aktywnej instancji."""
-
-    active_id: str = Field(description="ID aktualnie wybranego backendu STT")

@@ -24,9 +24,3 @@ class BackendInstanceConfig(BackendFileContent):
     """Struktura instancji w pamięci serwera (z identyfikatorem zdekodowanym z nazwy pliku)."""
 
     id: str = Field(default="", description="Unikalny identyfikator instancji uzyskany z nazwy pliku")
-
-
-class ActiveBackendConfig(BaseModel):
-    """Struktura pliku active_backend.json przechowującego ID aktywnej instancji."""
-
-    active_id: str = Field(description="ID aktualnie wybranego backendu")

@@ -29,6 +29,7 @@ from shared.contracts import (
 )
 from shared.discovery import DISCOVERY_MAGIC, DISCOVERY_UDP_PORT, decode_beacon, encode_beacon
 from shared.event_bus import Event, EventBus, EventHandler
+from shared.json_repository import ActiveInstancePointer, JsonInstanceRepository
 from shared.logging import get_logger, setup_logging
 from shared.voice_protocol import (
     CHANNELS,
@@ -58,7 +59,9 @@ __all__ = [
     "Event",
     "EventBus",
     "EventHandler",
+    "ActiveInstancePointer",
     "HealthResponse",
+    "JsonInstanceRepository",
     "LLMProviderDTO",
     "LLMProviderListResponse",
     "PromptDTO",

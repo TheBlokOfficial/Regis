@@ -9,13 +9,12 @@ osobnymi klasami) i logikę wyboru/persystencji (`LLMFactory`, `BackendRegistry`
 """
 
 from server.ai.llm.factory import LLMFactory
-from server.ai.llm.models import ActiveBackendConfig, BackendFileContent, BackendInstanceConfig, ProviderType
+from server.ai.llm.models import BackendFileContent, BackendInstanceConfig, ProviderType
 from server.ai.llm.providers import OllamaProvider, OpenAICompatibleProvider
 from server.ai.llm.registry import BackendRegistry
 from server.ai.llm.router import LLMRouter
 
 __all__ = [
-    "ActiveBackendConfig",
     "BackendFileContent",
     "BackendInstanceConfig",
     "BackendRegistry",
