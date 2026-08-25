@@ -3,12 +3,13 @@ import { AgentClient } from './clients/agent_client.js';
 import { ChatClient } from './clients/chat_client.js';
 import { WorldClient } from './clients/world_client.js';
 import { VoiceClient } from './clients/voice_client.js';
+import { TelemetryClient } from './clients/telemetry_client.js';
 
 /**
  * Klient REST API do komunikacji z serwerem Regis OS (Same-Origin).
  *
- * Fasada nad czterema klientami domenowymi (`network/clients/`), mirrorująca
- * podział backendu (`agent/`, `world/`, `voice/`, `network/routes/chat`) —
+ * Fasada nad pięcioma klientami domenowymi (`network/clients/`), mirrorująca
+ * podział backendu (`agent/`, `world/`, `voice/`, `telemetry/`, `network/routes/chat`) —
  * każda publiczna metoda deleguje 1:1 do właściwego klienta, więc żaden
  * z konsumentów (`apiClient.getXxx()`) nie musiał się zmienić.
  */
@@ -19,6 +20,7 @@ export class ApiClient {
     this._chat = new ChatClient(baseUrl);
     this._world = new WorldClient(baseUrl);
     this._voice = new VoiceClient(baseUrl);
+    this._telemetry = new TelemetryClient(baseUrl);
   }
 
   // --- Agent (health, dostawcy LLM, prompt domyślny) ---
@@ -228,5 +230,16 @@ export class ApiClient {
   }
   updateTtsProvider(...args) {
     return this._voice.updateTtsProvider(...args);
+  }
+
+  // --- Telemetria (zrzuty wywołań LLM, zakładka Logi) ---
+  getGenerations(...args) {
+    return this._telemetry.getGenerations(...args);
+  }
+  getGeneration(...args) {
+    return this._telemetry.getGeneration(...args);
+  }
+  clearGenerations(...args) {
+    return this._telemetry.clearGenerations(...args);
   }
 }

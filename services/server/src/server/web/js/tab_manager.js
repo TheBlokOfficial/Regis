@@ -1,10 +1,11 @@
 import { DashboardView } from './views/dashboard.js';
 import { SettingsView } from './views/settings.js';
 import { ChatView } from './views/chat.js';
+import { LogsView } from './views/logs.js';
 import { confirmModal } from './modal_confirm.js';
 
 /**
- * Zarządza przełączaniem zakładek top-level (Dashboard/Chat/Ustawienia) i renderowaniem
+ * Zarządza przełączaniem zakładek top-level (Dashboard/Chat/Logi/Ustawienia) i renderowaniem
  * widoków w obszarze roboczym. Cała konfiguracja (dawne Kernel/Świat/Głos/Prompty) żyje
  * dziś wewnątrz `SettingsView` jako poziome sekcje (pills), nie jako osobne top-level taby.
  */
@@ -19,6 +20,7 @@ export class TabManager {
     this.views = {
       dashboard: new DashboardView(),
       chat: new ChatView(),
+      logs: new LogsView(),
       settings: new SettingsView(),
     };
 
@@ -58,6 +60,11 @@ export class TabManager {
       if (!confirmed) return;
     }
 
+    // Widok schodzący z ekranu sprząta po sobie zasoby żyjące poza DOM-em (timery,
+    // subskrypcje) — `innerHTML = ...` niżej usuwa markup, ale nie zatrzymałby np.
+    // odpytywania w tle zakładki Logi.
+    currentView?.destroy?.();
+
     this.activeTabId = tabId;
 
     // Aktualizacja podświetlenia w Sidebarze
@@ -71,13 +78,13 @@ export class TabManager {
 
     // Aktualizacja Breadcrumbs
     if (this.breadcrumb) {
-      const titles = { dashboard: 'Dashboard', chat: 'Czat', settings: 'Ustawienia' };
+      const titles = { dashboard: 'Dashboard', chat: 'Czat', logs: 'Logi', settings: 'Ustawienia' };
       this.breadcrumb.textContent = titles[tabId] || tabId;
     }
 
     // Renderowanie widoku w kontenerze roboczym
     if (this.container) {
-      if (tabId === 'settings') {
+      if (tabId === 'settings' || tabId === 'logs') {
         this.container.classList.add('workspace-content--full');
       } else {
         this.container.classList.remove('workspace-content--full');
@@ -91,6 +98,8 @@ export class TabManager {
         this.views.dashboard.updateStatus(this.latestHealthData);
       } else if (tabId === 'chat') {
         await this.views.chat.init(this.apiClient);
+      } else if (tabId === 'logs') {
+        await this.views.logs.init(this.apiClient);
       } else if (tabId === 'settings') {
         await this.views.settings.init(this.apiClient);
         await this.views.settings.activateSection(options.section);

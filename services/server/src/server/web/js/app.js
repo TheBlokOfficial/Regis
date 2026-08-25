@@ -64,6 +64,9 @@ function mountIcons() {
   const iconChat = document.getElementById('icon-nav-chat');
   if (iconChat) iconChat.innerHTML = Icons.MessageSquare();
 
+  const iconLogs = document.getElementById('icon-nav-logs');
+  if (iconLogs) iconLogs.innerHTML = Icons.Activity();
+
   const iconSettings = document.getElementById('icon-nav-settings');
   if (iconSettings) iconSettings.innerHTML = Icons.Sliders();
 

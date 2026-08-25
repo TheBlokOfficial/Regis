@@ -31,6 +31,8 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`llm_default_max_tokens`**: Domyślna maksymalna liczba tokenów wyjściowych (domyślnie: `4096`).
 - **`max_history_messages`**: Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM (domyślnie: `40`).
 - **`max_tool_iterations`**: Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej (domyślnie: `8`).
+- **`telemetry_retention_records`**: Ile najnowszych zrzutów wywołań LLM trzyma zakładka **Logi** (domyślnie: `2000`, plik `data/telemetry/generations.db`). Rotacja jest leniwa — uruchamia się co kilkadziesiąt zapisów, nie z timera, więc chwilowo w bazie może być nieco więcej wpisów niż limit.
+- **`telemetry_max_record_bytes`**: Sufit rozmiaru zrzutu kontekstu w jednym wpisie telemetrii (domyślnie: `262144`, czyli 256 KB). Po przekroczeniu ucinane są **treści** wiadomości — struktura (ile wiadomości, w jakich rolach) zostaje nietknięta, a wpis dostaje flagę `truncated` widoczną w UI jako badge „ucięto”.
 - **`wakeword_model_path`**: Ścieżka (względna wobec katalogu usługi) do wytrenowanego modelu wake-word `.onnx` (domyślnie: puste — placeholder progu amplitudy `ThresholdEnergyWakeWordDetector`, łagodna degradacja gdy plik nieskonfigurowany/nie istnieje). Model kopiuje się ręcznie, np. do `data/wakeword/<nazwa>.onnx` (katalog `data/` jest w `.gitignore`).
 - **`wakeword_threshold`**: Próg pewności detekcji wake-word, 0-1 (domyślnie: `0.65` — dla konkretnego modelu użyj wartości `optimal_threshold` z jego metryk ewaluacyjnych). Konfigurowalne przez Web UI (zakładka **Klienci**, `GET/PUT /api/v1/voice/client-config`), działa od razu bez restartu.
 - **`vad_silence_duration_ms`** / **`vad_amplitude_threshold`**: Parametry VAD satelity (koniec wypowiedzi) — domyślnie `1500.0`/`500`. Algorytm wykonuje się lokalnie na satelicie (zero rundtripu na decyzję), ale próg jest centralnie skonfigurowany tutaj i wysyłany satelicie raz, zaraz po handshake (`ServerMessageType.CLIENT_CONFIG`, `shared/voice_protocol.py`) — zmiana działa po następnym reconnect satelity, bez restartu serwera. Konfigurowalne przez to samo `GET/PUT /api/v1/voice/client-config`.
@@ -78,6 +80,17 @@ nadal wymaga restartu.
 
 Najwygodniejszy sposób edycji: zakładka **Ustawienia** w Web UI, wewnątrz poziome sekcje (pills) **Agent** (dostawcy LLM, REST `/api/v1/llm/providers`, + fallbackowy prompt kernela, REST `/api/v1/agent/prompt`), **Świat** (Konfiguracja HA/pokoi/nadawców, REST `/api/v1/world/*`, + pod-zakładka **Prompty** — profile tożsamości Świata, REST `/api/v1/world/prompts/*`), **Dostawcy** (CRUD dostawców LLM/STT/TTS) i **Klienci** (rejestr klientów + progi wake-worda/VAD, REST `/api/v1/voice/*`). Zakładka **Dashboard** to wyłącznie panel powitalny/statusowy ze skrótami do sekcji Ustawień.
 
+Zakładka **Logi** (grupa System, obok Ustawień) to panel obserwowalności potoku: lista
+wywołań LLM grupowana po turze i inspektor pojedynczego wywołania. Pokazuje **dokładny
+kontekst, jaki poleciał do modelu** — łącznie z system promptem i faktami tury, których
+nie ma w historii czatu, bo powstają na nowo przy każdej turze i nigdzie się nie zapisują.
+Każdy blok wiadomości jest opisany rolą w kontekście (`system prompt` / `fakty tury` /
+`historia` / `pytanie użytkownika` / `wynik narzędzia`), a to, co się nie zmieniło od
+poprzedniego wywołania tej samej sesji, jest domyślnie zwinięte — zmieniony system prompt
+dostaje badge i diff liniowy. Dane pochodzą z `data/telemetry/generations.db` (patrz
+`docs/manifest.md` sekcja 3.8); zakładka nie czyta `data/logs/regis.log`, który jest
+osobnym, tekstowym logiem aplikacji.
+
 ---
 
 ## 3. Architektura i Relacje Pakietów Monorepo
@@ -93,6 +106,7 @@ Pełny opis architektoniczny znajduje się w dokumentu [`docs/manifest.md`](mani
 | **Kernel** | `server/agent/` | LLM, pamięć, kontekst, pętla ReAct | Tylko protokół `WorldInterface` (`agent/context_provider.py`) |
 | **WorldEngine** | `server/world/` | Jedyny, konkretny silnik świata (dziś: Home Assistant, przypisania nadawców do pokoi, `get_time`, `speak_in_room`) | Nic — sam orkiestruje swoje backendy wewnętrznie (dziś: `HomeAssistantClient`) |
 | **Voice** | `server/voice/` | WS gateway satelit, wake-word/VAD-signaling, STT/TTS | Wyłącznie publiczny kontrakt `AgentEngine` (`start_interaction()` + `EventBus`) — **nigdy World** |
+| **Telemetria** | `server/telemetry/` | Zrzut każdego wywołania LLM (kontekst, tokeny, TTFT, `finish_reason`, próby fallbacku) do SQLite | Port `BaseLLMProvider` (jest jego dekoratorem) + `LLMAttempt` z `ai/llm` — **nigdy kernel, który jej nie zna** |
 
 **Zasada nadrzędna**: kernel nie zna z góry implementacji `WorldEngine` — ten
 jest wstrzykiwany jawnie w `main.py` (`AgentEngine(world=world_engine)`),
@@ -181,6 +195,9 @@ Wszystkie trzy wejścia odpalające turę (`/chat`, `/chat/stream`, `/chat/send`
 | | `GET/POST/PUT /api/v1/voice/stt/providers[/active]` `.../tts/providers[/active]` | Lista, tworzenie, edycja (`PUT .../{id}`) i przełączanie aktywnej instancji STT/TTS — pełny CRUD, mirror `/api/v1/llm/providers*`, z tą samą zasadą zachowywania pominiętych kluczy API |
 | | `DELETE /api/v1/voice/stt/providers/{id}` `.../tts/providers/{id}` | Usunięcie instancji STT/TTS z dysku |
 | | `GET /api/v1/voice/connected` | `sender_id` z aktualnie żywym połączeniem WS — pozwala Web UI (Świat → Nadawcy) pokazać podłączone, ale jeszcze niezarejestrowane satelity |
+| **Telemetria (Logi)** | `GET /api/v1/telemetry/generations` | Lista wywołań LLM od najnowszego. Stronicowanie kursorem (`before_id`, nie offsetem — lista rośnie od góry), filtry `session_id`/`turn_id`/`status`. Wiersz **nie** niesie zrzutu wiadomości |
+| | `GET /api/v1/telemetry/generations/{id}` | Pełny zrzut: dokładny kontekst wysłany do modelu (łącznie z system promptem i ulotnymi faktami tury), narzędzia, próby łańcucha fallbacku, surowa treść błędu. `404`, jeśli wpis wypadł już przez rotację |
+| | `DELETE /api/v1/telemetry/generations` | Czyści całą telemetrię. Zwraca `{"success": true, "deleted": N}` — jedyny `DELETE` odbiegający od `DeletionResponse`, bo nie usuwa **zasobu o identyfikatorze**, tylko opróżnia kolekcję |
 
 > **Świadome założenie**: `WS /ws/voice/{sender_id}` nie ma żadnego uwierzytelniania
 > — spójne z resztą systemu (opaque `sender_id` bez auth, model zaufanej sieci
