@@ -1,8 +1,14 @@
-import { Icons } from '../icons.js';
 import { confirmModal } from '../modal_confirm.js';
-import { renderSelectMarkup, initSelect } from './select.js';
-import { escapeHtml, escapeAttr } from '../utils/dom.js';
+import { initSelect } from './select.js';
 import { showToast } from '../utils/toast.js';
+import {
+  renderProviderSectionMarkup,
+  renderListSkeletonMarkup,
+  renderEditorSkeletonMarkup,
+  renderEmptyListMarkup,
+  renderProviderCardMarkup,
+  renderProviderEditorMarkup,
+} from './provider_crud/provider_crud_template.js';
 
 /**
  * Sekcja presetów dostawcy (LLM/STT/TTS) — lista kart, z których każda **rozwija się
@@ -25,6 +31,11 @@ import { showToast } from '../utils/toast.js';
  *
  * Dostawcy bez odkrywania modeli (STT/TTS) po prostu nie dostają tej sekcji — ich pola
  * w całości pochodzą ze schematu typu.
+ *
+ * Szablon HTML wydzielony do `provider_crud/provider_crud_template.js` (wzorzec
+ * `renderXMarkup` z `components/select.js`) — jak w `world_prompts_view.js`, brak
+ * kanału SSE i drugiej niezależnej odpowiedzialności, więc reszta (stan, wiązanie
+ * zdarzeń, zapis/usuwanie) zostaje w jednej klasie.
  */
 export class ProviderCrudSection {
   /**
@@ -48,25 +59,7 @@ export class ProviderCrudSection {
   }
 
   render() {
-    const p = this.idPrefix;
-    return `
-      <form id="${p}-form-create-provider" class="agent-composer">
-        <div class="agent-composer-row">
-          ${renderSelectMarkup(`${p}-provider-type`, { placeholder: 'Ładowanie...' })}
-          <input type="text" id="${p}-new-name" class="form-control agent-composer-name"
-            placeholder="Nazwa presetu (np. Dom)" aria-label="Nazwa presetu" />
-          <button type="submit" class="agent-composer-submit" title="Dodaj preset" aria-label="Dodaj preset">${Icons.Plus()}</button>
-        </div>
-        <p class="section-hint">Model i parametry ustawisz po utworzeniu — rozwiń preset na liście.</p>
-      </form>
-
-      <div class="agent-provider-list" id="${p}-providers-list">
-        <div class="skeleton-stack">
-          <div class="skeleton-block skeleton-block--card"></div>
-          <div class="skeleton-block skeleton-block--card"></div>
-        </div>
-      </div>
-    `;
+    return renderProviderSectionMarkup(this.idPrefix);
   }
 
   async init(apiClient) {
@@ -91,7 +84,7 @@ export class ProviderCrudSection {
 
     if (this._providers.length === 0) {
       this._expandedId = null;
-      listContainer.innerHTML = `<div class="card card-sm">${escapeHtml(this.emptyLabel)}</div>`;
+      listContainer.innerHTML = renderEmptyListMarkup(this.emptyLabel);
       return;
     }
     // Rozwinięty preset mógł zniknąć (usunięty w innej karcie przeglądarki).
@@ -99,40 +92,11 @@ export class ProviderCrudSection {
       this._expandedId = null;
     }
 
-    listContainer.innerHTML = this._providers.map((provider) => this._renderCard(provider, schemas)).join('');
+    listContainer.innerHTML = this._providers
+      .map((provider) => renderProviderCardMarkup(provider, schemas, { idPrefix: this.idPrefix, expandedId: this._expandedId }))
+      .join('');
     this._bindCards();
     if (this._expandedId) await this._mountEditor(this._expandedId);
-  }
-
-  _renderCard(provider, schemas) {
-    const isActive = provider.is_active;
-    const isExpanded = provider.id === this._expandedId;
-    const typeSpec = schemas?.provider_types?.find((t) => t.type === provider.type);
-    const model = provider.options?.model || provider.options?.model_id || '';
-
-    return `
-      <div class="agent-provider-card ${isActive ? 'is-active' : ''} ${isExpanded ? 'is-expanded' : ''}"
-        data-id="${escapeAttr(provider.id)}">
-        <div class="agent-provider-card-head" role="button" tabindex="0"
-          aria-expanded="${isExpanded}" data-toggle="${escapeAttr(provider.id)}">
-          <span class="agent-provider-card-chevron">${Icons.ChevronRight()}</span>
-          <div class="agent-provider-card-main">
-            <div class="agent-provider-card-title-row">
-              <span class="agent-provider-card-name" title="${escapeAttr(provider.name)}">${escapeHtml(provider.name)}</span>
-              <span class="badge badge-chip">${escapeHtml((typeSpec?.label || provider.type || '').toUpperCase())}</span>
-            </div>
-            <div class="agent-provider-card-meta">${escapeHtml(model || 'model nieustawiony')}</div>
-          </div>
-          ${
-            isActive
-              ? `<span class="agent-provider-card-check" title="Aktywny preset">${Icons.CheckCircle2()}</span>`
-              : `<button type="button" class="btn btn-sm btn-subtle agent-provider-card-activate"
-                   data-activate="${escapeAttr(provider.id)}">Aktywuj</button>`
-          }
-        </div>
-        <div class="agent-provider-card-editor" id="${this.idPrefix}-editor-${escapeAttr(provider.id)}"></div>
-      </div>
-    `;
   }
 
   _bindCards() {
@@ -182,7 +146,7 @@ export class ProviderCrudSection {
     const provider = this._providers.find((p) => p.id === providerId);
     if (!mount || !provider) return;
 
-    mount.innerHTML = '<div class="skeleton-stack"><div class="skeleton-block skeleton-block--field"></div></div>';
+    mount.innerHTML = renderEditorSkeletonMarkup();
 
     const schemas = await this._schemas();
     const typeSpec = schemas?.provider_types?.find((t) => t.type === provider.type);
@@ -192,29 +156,16 @@ export class ProviderCrudSection {
     const selectedModel = this._draftOptions.model || '';
     const paramSchema = this._paramSchemaFor(modelsData, selectedModel);
 
-    mount.innerHTML = `
-      <div class="provider-editor">
-        <div class="provider-editor-group">
-          <div class="provider-field-grid">
-            <div class="provider-field">
-              <label for="${this.idPrefix}-name-${providerId}">Nazwa presetu</label>
-              <input type="text" class="form-control" id="${this.idPrefix}-name-${providerId}"
-                value="${escapeAttr(provider.name || '')}" placeholder="np. Dom" />
-              <p class="provider-field-hint">Twoja etykieta, nie nazwa modelu — to ona pojawia się w czacie.</p>
-            </div>
-          </div>
-        </div>
-        ${this._renderFieldGrid(`${this.idPrefix}-base-${providerId}`, typeSpec?.options_schema || [])}
-        ${modelsData ? this._renderModelPicker(providerId, modelsData, selectedModel) : ''}
-        <div id="${this.idPrefix}-params-${providerId}">
-          ${this._renderFieldGrid(`${this.idPrefix}-param-${providerId}`, paramSchema, 'Parametry generacji')}
-        </div>
-        <div class="provider-editor-actions">
-          <button type="button" class="btn btn-primary btn-sm" data-save="${escapeAttr(providerId)}">Zapisz</button>
-          <button type="button" class="btn btn-ghost-danger btn-sm" data-delete="${escapeAttr(providerId)}">Usuń preset</button>
-        </div>
-      </div>
-    `;
+    mount.innerHTML = renderProviderEditorMarkup({
+      idPrefix: this.idPrefix,
+      providerId,
+      provider,
+      typeSpec,
+      modelsData,
+      selectedModel,
+      paramSchema,
+      draftOptions: this._draftOptions,
+    });
 
     this._mountFieldSelects(`${this.idPrefix}-base-${providerId}`, typeSpec?.options_schema || []);
     this._mountFieldSelects(`${this.idPrefix}-param-${providerId}`, paramSchema);
@@ -222,30 +173,6 @@ export class ProviderCrudSection {
 
     mount.querySelector('[data-save]')?.addEventListener('click', () => this._save(providerId));
     mount.querySelector('[data-delete]')?.addEventListener('click', () => this._delete(providerId));
-  }
-
-  _renderModelPicker(providerId, modelsData, selectedModel) {
-    const hasList = (modelsData.models || []).length > 0;
-    return `
-      <div class="provider-editor-group">
-        <h5 class="provider-editor-group-title">Model</h5>
-        ${
-          hasList
-            ? `<div class="provider-field">
-                 <label>Wybierz z listy</label>
-                 ${renderSelectMarkup(`${this.idPrefix}-model-${providerId}`, { placeholder: 'Wybierz model' })}
-               </div>`
-            : ''
-        }
-        <div class="provider-field">
-          <label for="${this.idPrefix}-model-custom-${providerId}">Identyfikator modelu</label>
-          <input type="text" class="form-control" id="${this.idPrefix}-model-custom-${providerId}"
-            value="${escapeAttr(selectedModel)}" placeholder="np. openai/gpt-oss-120b" />
-          <p class="provider-field-hint">Lista nigdy nie zamyka wyboru — model spoza niej wpisz tutaj.</p>
-        </div>
-        ${modelsData.detail ? `<p class="provider-field-warning">${Icons.AlertCircle()} ${escapeHtml(modelsData.detail)}</p>` : ''}
-      </div>
-    `;
   }
 
   _mountModelPicker(providerId, modelsData, selectedModel) {
@@ -276,51 +203,6 @@ export class ProviderCrudSection {
     if (!modelsData) return [];
     const match = (modelsData.models || []).find((m) => m.id === modelId);
     return match ? match.options_schema || [] : modelsData.fallback_options_schema || [];
-  }
-
-  // --------------------------------------------------------------------------
-  // Renderowanie pól ze schematu
-  // --------------------------------------------------------------------------
-
-  _renderFieldGrid(idPrefix, schema, title = '') {
-    if (!schema || schema.length === 0) return '';
-    const fields = schema.map((opt) => this._renderField(idPrefix, opt)).join('');
-    return `
-      <div class="provider-editor-group">
-        ${title ? `<h5 class="provider-editor-group-title">${escapeHtml(title)}</h5>` : ''}
-        <div class="provider-field-grid">${fields}</div>
-      </div>
-    `;
-  }
-
-  _renderField(idPrefix, opt) {
-    const id = `${idPrefix}-${opt.name}`;
-    const value = this._draftOptions[opt.name];
-    const hint = opt.hint ? `<p class="provider-field-hint">${escapeHtml(opt.hint)}</p>` : '';
-
-    if (opt.type === 'enum') {
-      return `
-        <div class="provider-field" data-opt-name="${escapeAttr(opt.name)}" data-opt-kind="enum">
-          <label>${escapeHtml(opt.label)}</label>
-          ${renderSelectMarkup(id, { placeholder: 'Domyślne modelu', className: 'select--compact' })}
-          ${hint}
-        </div>
-      `;
-    }
-
-    // `type="number"` odpada świadomie — natywne strzałki góra/dół przeglądarki są
-    // jednym z domyślnych kontrolek, których ten projekt nie używa.
-    const inputType = opt.type === 'password' ? 'password' : 'text';
-    const shown = value === undefined || value === null ? '' : String(value);
-    return `
-      <div class="provider-field" data-opt-name="${escapeAttr(opt.name)}" data-opt-kind="input">
-        <label for="${id}">${escapeHtml(opt.label)}</label>
-        <input type="${inputType}" id="${id}" class="form-control provider-field-input"
-          data-opt-name="${escapeAttr(opt.name)}"
-          value="${escapeAttr(shown)}" placeholder="${escapeHtml(opt.placeholder || '')}" />
-        ${hint}
-      </div>
-    `;
   }
 
   _mountFieldSelects(idPrefix, schema) {

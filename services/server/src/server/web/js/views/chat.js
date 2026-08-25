@@ -1,115 +1,84 @@
 import { Icons } from '../icons.js';
-import { renderSelectMarkup, initSelect } from '../components/select.js';
+import { initSelect } from '../components/select.js';
 import { getSenderId } from '../sender_id.js';
-import { escapeHtml, escapeAttr } from '../utils/dom.js';
 import { showToast } from '../utils/toast.js';
 import { StepRailRenderer } from './chat/step_rail.js';
+import { renderChatLayoutMarkup, renderEmptyStateMarkup, renderUserMessageMarkup, renderAgentMessageMarkup } from './chat/chat_template.js';
+import { createWatchChannel } from './chat/chat_watch_channel.js';
+import { initSessionManager } from './chat/chat_session_manager.js';
 
 /**
  * Moduł widoku "Czat z Agentem" - interfejs kontrolno-debugujący w Web Console Regis OS.
+ *
+ * Cienki "klej" spinający trzy wydzielone moduły: szablon HTML (`chat_template.js`), kanał
+ * SSE obserwujący aktywną sesję (`chat_watch_channel.js`) i zarządzanie listą sesji/popoverem
+ * (`chat_session_manager.js`). ChatView trzyma tylko stan bieżącej tury (streaming) i deleguje
+ * resztę — dokładnie tak samo, jak renderowanie kroków ReAct już wcześniej zostało wydzielone
+ * do `StepRailRenderer` (`./chat/step_rail.js`).
  */
 export class ChatView {
   constructor() {
     this.apiClient = null;
     this.activeSessionId = 'session_default';
-    this.sessions = [];
     this.isGenerating = false;
     this.currentAssistantMessageEl = null;
     this.currentAssistantTextEl = null;
     this.accumulatedText = '';
-    // Renderowanie na żywo drzewka kroków ReAct (tekst/COT przeplecione z wywołaniami
-    // narzędzi) — wydzielone do StepRailRenderer (`./chat/step_rail.js`), które trzyma
-    // własny stan przebiegu i dokłada węzły do DOM w kolejności faktycznego przyjścia
-    // zdarzeń SSE, bez pełnego przerenderowania na każdy token.
     this.stepRail = new StepRailRenderer();
     this.userHasScrolledUp = false;
-    this._documentClickBound = false;
-    // Kanał obserwujący aktywną sesję w czasie rzeczywistym (GET .../watch, SSE) — jedno
-    // długożyjące połączenie, niezależne od tego, kto zainicjował turę (Web/satelita/cron/
-    // inna karta). Jedyne źródło renderowania wiadomości/streamingu — Web UI nie ma już
-    // żadnej "własnej", uprzywilejowanej ścieżki (patrz handleSendMessage/openWatch).
-    this.watchController = null;
-    // Lekki poll niskiej częstotliwości — WYŁĄCZNIE do wykrycia nowych sesji utworzonych
-    // gdzie indziej (kanał watch jest per-sesja, nie widzi sesji jeszcze nieobecnych w
-    // popoverze). Treść/tokeny nie idą już tą ścieżką.
-    this.sessionListWatchInterval = null;
+    // Kanał obserwujący i menedżer sesji są tworzone raz (patrz `_ensureChannels`) i
+    // przetrwają wielokrotne wizyty na zakładce Chat — ChatView jest instancją długożyjącą,
+    // ale `render()`/`init()` uruchamiają się przy każdym przełączeniu (patrz tab_manager.js).
+    this.watchChannel = null;
+    this.sessionManager = null;
   }
 
   render() {
-    return `
-      <div class="chat-layout">
-        <!-- Górny Pasek Nagłówka Czatu (Top Center Custom Popover Trigger) -->
-        <div class="chat-top-bar">
-          <div class="chat-session-trigger-wrapper">
-            <button class="chat-session-trigger" id="chat-session-trigger" title="Zmień konwersację">
-              <span class="chat-session-trigger-icon" id="icon-chat-session-msg"></span>
-              <span class="chat-session-trigger-title" id="chat-session-title-display">Główny Czat Debugujący</span>
-              <span class="chat-session-trigger-chevron" id="icon-chat-session-chevron"></span>
-            </button>
-
-            <!-- Pływające Popover Menu Konwersacji -->
-            <div class="chat-session-popover hidden" id="chat-session-popover">
-              <div class="popover-header">
-                <div class="popover-title-box">
-                  <span class="popover-title">Konwersacje</span>
-                  <span class="popover-badge" id="popover-session-count">0</span>
-                </div>
-                <button class="btn btn-primary btn-sm btn-popover-new" id="btn-popover-new-chat">
-                  <span id="icon-popover-plus"></span>
-                  <span>+ Nowa konwersacja</span>
-                </button>
-              </div>
-              <div class="popover-session-list" id="popover-session-list"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Główny Kontener Wiadomości -->
-        <div class="chat-messages-container" id="chat-messages-container">
-          <div class="chat-empty-state" id="chat-empty-state">
-            <div class="empty-state-icon" id="chat-empty-icon"></div>
-            <div class="empty-state-title">Jak mogę pomóc?</div>
-            <div class="empty-state-desc">Jestem Agentem Regis OS. O co chcesz zapytać?</div>
-          </div>
-        </div>
-
-        <div class="chat-bottom-area">
-          <!-- Pływający Pasek Wprowadzania -->
-          <div class="chat-floating-input-wrapper">
-            <div class="chat-floating-box">
-              <textarea
-                id="chat-textarea"
-                class="chat-textarea"
-                placeholder="Napisz wiadomość do Agenta..."
-                rows="1"
-              ></textarea>
-              
-              <div class="chat-input-bottom-bar">
-                <div class="chat-input-actions-left">
-                  ${renderSelectMarkup('chat-model-switch', { placeholder: 'Ładowanie...', className: 'select--compact chat-model-select' })}
-                </div>
-                <button class="btn-chat-send" id="btn-chat-send" title="Wyślij">
-                  <span id="icon-btn-chat-send"></span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
+    return renderChatLayoutMarkup();
   }
 
   async init(apiClient) {
     this.apiClient = apiClient;
+    this._ensureChannels();
     this.mountIcons();
     this.bindEvents();
     await this.loadActiveProviderInfo();
-    await this.loadSessionsList();
+    await this.sessionManager.loadSessionsList();
     // Otwieramy kanał obserwujący PRZED wczytaniem historii, żeby zminimalizować okno,
     // w którym ewentualny token/zdarzenie mogłyby przepaść między snapshotem a subskrypcją.
-    this.openWatch(this.activeSessionId);
+    this.watchChannel.open(this.activeSessionId);
     await this.loadSessionHistory(this.activeSessionId);
-    this.startSessionListWatch();
+    this.sessionManager.startWatch();
+  }
+
+  // Leniwa inicjalizacja "raz na zawsze" — apiClient nie jest znany w konstruktorze
+  // (TabManager wstrzykuje go dopiero w init()), a oba moduły muszą przetrwać kolejne
+  // wizyty na zakładce (patrz komentarz w konstruktorze).
+  _ensureChannels() {
+    if (!this.watchChannel) {
+      this.watchChannel = createWatchChannel(this.apiClient, {
+        onUserMessage: (sessionId, content) => this._onWatchUserMessage(sessionId, content),
+        onChunk: (sessionId, chunk, kind) => this._onWatchChunk(sessionId, chunk, kind),
+        onToolStart: (sessionId, evt) => this._onWatchToolStart(sessionId, evt),
+        onToolResult: (sessionId, evt) => this._onWatchToolResult(sessionId, evt),
+        onDone: (sessionId) => this._onWatchDone(sessionId),
+        onError: (sessionId, err) => this._onWatchError(sessionId, err),
+        onCancelled: (sessionId) => this._onWatchCancelled(sessionId),
+      });
+    }
+    if (!this.sessionManager) {
+      this.sessionManager = initSessionManager({
+        apiClient: this.apiClient,
+        getActiveSessionId: () => this.activeSessionId,
+        setActiveSessionId: (id) => {
+          this.activeSessionId = id;
+        },
+        onSessionSwitch: async (sessionId) => {
+          this.watchChannel.open(sessionId);
+          await this.loadSessionHistory(sessionId);
+        },
+      });
+    }
   }
 
   mountIcons() {
@@ -132,9 +101,6 @@ export class ChatView {
   bindEvents() {
     const textarea = document.getElementById('chat-textarea');
     const btnSend = document.getElementById('btn-chat-send');
-    const triggerBtn = document.getElementById('chat-session-trigger');
-    const popover = document.getElementById('chat-session-popover');
-    const btnPopoverNew = document.getElementById('btn-popover-new-chat');
     const container = document.getElementById('chat-messages-container');
 
     if (container) {
@@ -182,53 +148,7 @@ export class ChatView {
       });
     }
 
-    if (triggerBtn && popover) {
-      triggerBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        popover.classList.toggle('hidden');
-        triggerBtn.classList.toggle('active', !popover.classList.contains('hidden'));
-      });
-
-      // TabManager zastępuje cały poddrzewo DOM widoku Chat przy każdej wizycie na zakładce
-      // (patrz tab_manager.js#switchTab), a ChatView jest instancją długożyjącą — bindEvents()
-      // uruchamia się więc wielokrotnie. Nasłuch na `document` musi zostać spięty tylko RAZ,
-      // inaczej każda wizyta na zakładce Chat dokłada kolejny, nigdy niesprzątany listener.
-      // Wewnątrz handlera odpytujemy DOM na żywo, by zawsze operować na aktualnie
-      // wyrenderowanym popoverze/triggerze, a nie na (potencjalnie odłączonych) referencjach
-      // z chwili pierwszego wywołania bindEvents().
-      if (!this._documentClickBound) {
-        this._documentClickBound = true;
-        document.addEventListener('click', (e) => {
-          const currentPopover = document.getElementById('chat-session-popover');
-          const currentTrigger = document.getElementById('chat-session-trigger');
-          if (!currentPopover || !currentTrigger) return;
-          if (!currentPopover.classList.contains('hidden')) {
-            if (!currentPopover.contains(e.target) && !currentTrigger.contains(e.target)) {
-              currentPopover.classList.add('hidden');
-              currentTrigger.classList.remove('active');
-            }
-          }
-        });
-      }
-    }
-
-    if (btnPopoverNew) {
-      btnPopoverNew.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const title = 'Nowa konwersacja';
-        const created = await this.apiClient.createChatSession(title);
-        if (created && created.session_id) {
-          this.activeSessionId = created.session_id;
-          await this.loadSessionsList();
-          this.openWatch(this.activeSessionId);
-          await this.loadSessionHistory(this.activeSessionId);
-          if (popover) {
-            popover.classList.add('hidden');
-            if (triggerBtn) triggerBtn.classList.remove('active');
-          }
-        }
-      });
-    }
+    this.sessionManager.bindPopoverEvents();
   }
 
   /**
@@ -285,198 +205,12 @@ export class ChatView {
     });
   }
 
-  async loadSessionsList() {
-    const list = document.getElementById('popover-session-list');
-    const titleDisplay = document.getElementById('chat-session-title-display');
-    const countBadge = document.getElementById('popover-session-count');
-    if (!this.apiClient) return;
-
-    try {
-      const res = await this.apiClient.getChatSessions();
-      if (res && res.sessions) {
-        this.sessions = res.sessions;
-
-        const activeSession = this.sessions.find((s) => s.session_id === this.activeSessionId);
-        if (!activeSession && this.sessions.length > 0) {
-          this.activeSessionId = this.sessions[0].session_id;
-        }
-
-        const currentActive = this.sessions.find((s) => s.session_id === this.activeSessionId);
-        if (titleDisplay) {
-          titleDisplay.textContent = currentActive ? currentActive.title : 'Wybierz konwersację';
-        }
-
-        if (countBadge) {
-          countBadge.textContent = this.sessions.length;
-        }
-
-        if (list) {
-          list.innerHTML = this.sessions
-            .map((s) => {
-              const isActive = s.session_id === this.activeSessionId;
-              const dateStr = this.formatSessionDate(s.updated_at || s.created_at);
-              return `
-                <div class="popover-session-row ${isActive ? 'active' : ''}" data-session-id="${escapeAttr(s.session_id)}">
-                  <div class="session-info">
-                    <span class="session-title" title="${escapeAttr(s.title)}">${escapeHtml(s.title)}</span>
-                    <span class="session-time">${dateStr ? dateStr : ''}</span>
-                  </div>
-                  <button class="session-delete-btn" data-session-id="${escapeAttr(s.session_id)}" title="Usuń konwersację">
-                    ${Icons.Trash2()}
-                  </button>
-                </div>
-              `;
-            })
-            .join('');
-
-          list.querySelectorAll('.popover-session-row').forEach((row) => {
-            row.addEventListener('click', async (e) => {
-              if (e.target.closest('.session-delete-btn')) return;
-
-              const sid = row.getAttribute('data-session-id');
-              if (sid !== this.activeSessionId) {
-                this.activeSessionId = sid;
-                await this.loadSessionsList();
-                this.openWatch(this.activeSessionId);
-                await this.loadSessionHistory(this.activeSessionId);
-              }
-              const popover = document.getElementById('chat-session-popover');
-              const triggerBtn = document.getElementById('chat-session-trigger');
-              if (popover) popover.classList.add('hidden');
-              if (triggerBtn) triggerBtn.classList.remove('active');
-            });
-          });
-
-          list.querySelectorAll('.session-delete-btn').forEach((btn) => {
-            btn.addEventListener('click', async (e) => {
-              e.stopPropagation();
-              const sid = btn.getAttribute('data-session-id');
-              const row = btn.closest('.popover-session-row');
-
-              try {
-                if (sid !== this.activeSessionId) {
-                  await this.apiClient.deleteChatSession(sid);
-                  if (row) row.remove();
-                  this.sessions = this.sessions.filter((s) => s.session_id !== sid);
-                  const countBadgeEl = document.getElementById('popover-session-count');
-                  if (countBadgeEl) countBadgeEl.textContent = this.sessions.length;
-                } else {
-                  await this.apiClient.deleteChatSession(sid);
-                  this.sessions = this.sessions.filter((s) => s.session_id !== sid);
-                  if (this.sessions.length > 0) {
-                    this.activeSessionId = this.sessions[0].session_id;
-                  } else {
-                    this.activeSessionId = 'session_default';
-                  }
-                  await this.loadSessionsList();
-                  this.openWatch(this.activeSessionId);
-                  await this.loadSessionHistory(this.activeSessionId);
-                }
-              } catch (err) {
-                console.error('[ChatView] Błąd usuwania sesji:', err);
-              }
-            });
-          });
-        }
-      }
-    } catch (err) {
-      console.error('[ChatView] Błąd wczytywania listy sesji:', err);
-    }
-  }
-
-  formatSessionDate(timestamp) {
-    if (!timestamp) return '';
-    const date = new Date(timestamp * 1000);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-
-    if (isToday) {
-      return `Dzisiaj, ${hours}:${minutes}`;
-    }
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    return `${day}.${month}, ${hours}:${minutes}`;
-  }
-
-  startSessionListWatch() {
-    this.stopSessionListWatch();
-    this.sessionListWatchInterval = setInterval(() => this.checkForNewSessions(), 4000);
-  }
-
-  stopSessionListWatch() {
-    if (this.sessionListWatchInterval) {
-      clearInterval(this.sessionListWatchInterval);
-      this.sessionListWatchInterval = null;
-    }
-  }
-
-  async checkForNewSessions() {
-    if (!this.apiClient) return;
-    try {
-      const res = await this.apiClient.getChatSessions();
-      if (!res || !res.sessions) return;
-
-      const previousIds = new Set(this.sessions.map((s) => s.session_id));
-      const incomingIds = new Set(res.sessions.map((s) => s.session_id));
-      const sessionListChanged =
-        previousIds.size !== incomingIds.size || [...incomingIds].some((id) => !previousIds.has(id));
-
-      if (sessionListChanged) {
-        await this.loadSessionsList();
-      }
-    } catch (err) {
-      console.error('[ChatView] Błąd sprawdzania nowych sesji:', err);
-    }
-  }
-
   // --------------------------------------------------------------------------------------
-  // Kanał obserwujący (GET .../watch, SSE) — jedyne źródło renderowania treści/streamingu.
-  // Otwierany raz per aktywna sesja (init/przełączenie sesji), niezależnie od tego, kto
-  // odpalił turę: satelita/cron/Web UI/inna karta wyglądają dla tego kodu identycznie.
+  // Zdarzenia kanału obserwującego (GET .../watch, SSE) — jedyne źródło renderowania
+  // treści/streamingu. Mechanika połączenia (AbortController, reconnect) żyje w
+  // `chat_watch_channel.js`; tu zostaje wyłącznie logika dotykająca DOM/stan tury, bo to
+  // ona wymaga dostępu do `this.stepRail`/`this.activeSessionId` itd.
   // --------------------------------------------------------------------------------------
-
-  openWatch(sessionId) {
-    this.closeWatch();
-    const controller = new AbortController();
-    this.watchController = controller;
-    this._runWatchLoop(sessionId, controller);
-  }
-
-  closeWatch() {
-    if (this.watchController) {
-      this.watchController.abort();
-      this.watchController = null;
-    }
-  }
-
-  async _runWatchLoop(sessionId, controller) {
-    while (!controller.signal.aborted) {
-      try {
-        await this.apiClient.watchSession(
-          sessionId,
-          {
-            onUserMessage: (content) => this._onWatchUserMessage(sessionId, content),
-            onChunk: (chunk, kind) => this._onWatchChunk(sessionId, chunk, kind),
-            onToolStart: (evt) => this._onWatchToolStart(sessionId, evt),
-            onToolResult: (evt) => this._onWatchToolResult(sessionId, evt),
-            onDone: () => this._onWatchDone(sessionId),
-            onError: (err) => this._onWatchError(sessionId, err),
-            onCancelled: () => this._onWatchCancelled(sessionId),
-          },
-          controller.signal
-        );
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        console.error('[ChatView] Kanał obserwujący przerwany, ponawiam za chwilę:', err);
-      }
-      if (controller.signal.aborted) return;
-      // Połączenie zakończyło się z jakiegoś powodu (restart serwera, sieć) — krótka
-      // przerwa i reconnect na tę samą sesję, zamiast zostawiać kartę bez żywego kanału.
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-  }
 
   _onWatchUserMessage(sessionId, content) {
     if (sessionId !== this.activeSessionId) return;
@@ -527,7 +261,7 @@ export class ChatView {
     this.stepRail.finalizeCurrentTextRun();
     this.stepRail.closeCurrentRail();
     this.setGeneratingState(false);
-    this.loadSessionsList();
+    this.sessionManager.loadSessionsList();
   }
 
   _onWatchError(sessionId, error) {
@@ -553,13 +287,7 @@ export class ChatView {
       container.innerHTML = '';
 
       if (!res || !res.messages || res.messages.length === 0) {
-        container.innerHTML = `
-          <div class="chat-empty-state" id="chat-empty-state">
-            <div class="empty-state-icon" id="chat-empty-icon">${Icons.MessageSquare()}</div>
-            <div class="empty-state-title">Jak mogę pomóc?</div>
-            <div class="empty-state-desc">Jestem Agentem Regis OS. O co chcesz zapytać?</div>
-          </div>
-        `;
+        container.innerHTML = renderEmptyStateMarkup();
         this.setGeneratingState(!!(res && res.is_generating));
         return;
       }
@@ -683,24 +411,7 @@ export class ChatView {
           (metadata && metadata.reasoning) || []
         ) + cursorHtml;
 
-    if (isUser) {
-      row.innerHTML = `
-        <div class="message-bubble bubble-user">
-          <div class="message-text">${formattedContent}</div>
-        </div>
-      `;
-    } else {
-      // Bez awatara/nazwy nadawcy — jedyny agent w systemie, powtarzanie "Regis OS" przy
-      // każdej turze nie niesie informacji (lewe wyrównanie już jednoznacznie odróżnia
-      // agenta od usera, którego bąbelki są po prawej).
-      row.innerHTML = `
-        <div class="message-body">
-          <div class="message-bubble bubble-agent">
-            <div class="message-text">${formattedContent}</div>
-          </div>
-        </div>
-      `;
-    }
+    row.innerHTML = isUser ? renderUserMessageMarkup(formattedContent) : renderAgentMessageMarkup(formattedContent);
 
     container.appendChild(row);
     return row;
@@ -722,5 +433,4 @@ export class ChatView {
       }
     }
   }
-
 }

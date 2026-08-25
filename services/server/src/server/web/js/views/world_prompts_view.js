@@ -1,7 +1,16 @@
-import { Icons } from '../icons.js';
 import { confirmModal } from '../modal_confirm.js';
-import { escapeHtml, escapeAttr } from '../utils/dom.js';
 import { showToast } from '../utils/toast.js';
+import {
+  renderWorldPromptsLayoutMarkup,
+  renderListErrorMarkup,
+  renderProfileTabMarkup,
+  renderNewProfileTabMarkup,
+  renderEmptyEditorMarkup,
+  renderEditorMarkup,
+  renderCopyIdButtonMarkup,
+  renderDeleteButtonMarkup,
+  renderDeleteConfirmMarkup,
+} from './world_prompts/world_prompts_template.js';
 
 const MAX_PROFILES = 3;
 
@@ -22,6 +31,11 @@ const MAX_PROFILES = 3;
  *
  * Identyfikator profilu zszedł z pozycji nagłówka do stopki: to metadana techniczna,
  * a nie tytuł, więc nie ma prawa konkurować wzrokowo z nazwą.
+ *
+ * Szablon HTML wydzielony do `world_prompts/world_prompts_template.js` (wzorzec
+ * `renderXMarkup` z `components/select.js`) — w odróżnieniu od Czatu/Klientów ten widok
+ * nie ma kanału SSE ani drugiej niezależnej odpowiedzialności, więc reszta (stan,
+ * wiązanie zdarzeń, akcje) zostaje w jednej klasie zamiast dzielić się dalej.
  */
 export class WorldPromptsView {
   constructor() {
@@ -42,17 +56,7 @@ export class WorldPromptsView {
   }
 
   render() {
-    return `
-      <div class="wp-layout" id="wp-layout">
-        <nav class="pill-tabs wp-profile-tabs" id="wp-list"></nav>
-        <div class="wp-panel-editor" id="wp-panel-editor">
-          <div class="skeleton-stack">
-            <div class="skeleton-block skeleton-block--field"></div>
-            <div class="skeleton-block skeleton-block--section"></div>
-          </div>
-        </div>
-      </div>
-    `;
+    return renderWorldPromptsLayoutMarkup();
   }
 
   async init(apiClient) {
@@ -91,38 +95,23 @@ export class WorldPromptsView {
 
   _renderListError() {
     const list = document.getElementById('wp-list');
-    if (list) list.innerHTML = `<div class="wp-list-error">Błąd ładowania listy profili promptu.</div>`;
+    if (list) list.innerHTML = renderListErrorMarkup();
   }
 
-  /** Przełącznik profili — pill-taby, bo pozycji jest najwyżej `MAX_PROFILES`.
-   * Kropka aktywności siedzi w samym tabie, więc widać ją bez wchodzenia w profil. */
   _renderList() {
     const list = document.getElementById('wp-list');
     if (!list) return;
 
     const atLimit = this.prompts.length >= MAX_PROFILES;
     const tabs = this.prompts
-      .map((p) => {
-        const isActive = p.id === this.activeId;
-        const isSelected = !this.isNewMode && p.id === this.selectedId;
-        return `
-          <button type="button" class="pill-tab wp-profile-tab ${isSelected ? 'active' : ''}"
-            data-id="${escapeAttr(p.id)}" title="${escapeAttr(p.description || p.name)}"
-            ${isSelected ? 'aria-current="true"' : ''}>
-            ${isActive ? '<span class="wp-profile-tab-dot" title="Aktywny profil"></span>' : ''}
-            <span class="wp-profile-tab-name">${escapeHtml(p.name)}</span>
-          </button>
-        `;
-      })
+      .map((p) =>
+        renderProfileTabMarkup(p, {
+          isActive: p.id === this.activeId,
+          isSelected: !this.isNewMode && p.id === this.selectedId,
+        })
+      )
       .join('');
-
-    const newTab = `
-      <button type="button" class="pill-tab wp-profile-tab wp-profile-tab--new ${this.isNewMode ? 'active' : ''}"
-        id="wp-btn-new" ${atLimit ? 'disabled' : ''}
-        title="${atLimit ? `Osiągnięto limit ${MAX_PROFILES} profili` : 'Nowy profil'}">
-        ${Icons.Plus()} Nowy
-      </button>
-    `;
+    const newTab = renderNewProfileTabMarkup({ atLimit, isNewMode: this.isNewMode, maxProfiles: MAX_PROFILES });
 
     list.innerHTML = tabs + newTab;
 
@@ -172,49 +161,7 @@ export class WorldPromptsView {
   _renderEmptyEditor() {
     const panel = document.getElementById('wp-panel-editor');
     if (!panel) return;
-    panel.innerHTML = `
-      <div class="wp-editor-empty">
-        <div class="wp-editor-empty-icon">${Icons.Cpu()}</div>
-        <p>Wybierz prompt z listy lub utwórz nowy.</p>
-      </div>
-    `;
-  }
-
-  /**
-   * Jeden szablon edytora dla obu trybów (edycja istniejącego / nowy profil) — wcześniej
-   * były to dwa niemal identyczne bloki HTML, rozjeżdżające się przy każdej zmianie.
-   * Różnią się wyłącznie zawartością stopki i paska akcji.
-   */
-  _editorMarkup({ name, description, content, footerLeft, actionsRight, activateButton = '', namePlaceholder = '' }) {
-    return `
-      <div class="wp-editor">
-        <div class="wp-editor-topline">
-          <div class="wp-editor-identity">
-            <input type="text" id="wp-input-name" class="form-control wp-input-name"
-              value="${escapeAttr(name)}" placeholder="${escapeAttr(namePlaceholder || 'Nazwa profilu')}"
-              aria-label="Nazwa profilu" />
-            <input type="text" id="wp-input-desc" class="form-control wp-input-desc"
-              value="${escapeAttr(description)}" placeholder="Opis (opcjonalny)" aria-label="Opis profilu" />
-          </div>
-          <div class="wp-editor-topline-right">
-            <span class="wp-dirty-badge hidden" id="wp-dirty-badge">Niezapisane zmiany</span>
-            ${activateButton}
-          </div>
-        </div>
-
-        <div class="wp-editor-content-wrap">
-          <div class="wp-line-gutter" id="wp-line-gutter">1</div>
-          <textarea id="wp-input-content" class="form-control wp-editor-textarea"
-            placeholder="Treść instrukcji systemowej... (może być pusta)"
-            aria-label="Treść profilu">${escapeHtml(content)}</textarea>
-        </div>
-
-        <div class="wp-editor-actions">
-          <div class="wp-editor-actions-left">${footerLeft}</div>
-          <div class="wp-editor-actions-right" id="wp-delete-zone">${actionsRight}</div>
-        </div>
-      </div>
-    `;
+    panel.innerHTML = renderEmptyEditorMarkup();
   }
 
   _renderEditor(prompt) {
@@ -223,7 +170,7 @@ export class WorldPromptsView {
     this.isDirty = false;
     const isActive = prompt.id === this.activeId;
 
-    panel.innerHTML = this._editorMarkup({
+    panel.innerHTML = renderEditorMarkup({
       name: prompt.name,
       description: prompt.description || '',
       content: prompt.content,
@@ -234,13 +181,12 @@ export class WorldPromptsView {
       footerLeft: `
         <button class="btn btn-primary" id="wp-btn-save" disabled>Zapisz</button>
         <span class="wp-char-count" id="wp-char-count">0 znaków</span>
-        <button class="wp-btn-copy-id" id="wp-btn-copy-id" title="Skopiuj ID profilu: ${escapeAttr(prompt.id)}"
-          aria-label="Skopiuj ID profilu">${Icons.Copy()}<span>${escapeHtml(prompt.id)}</span></button>
+        ${renderCopyIdButtonMarkup(prompt.id)}
       `,
       actionsRight: isActive
         ? `<span class="wp-delete-hint">Aby usunąć, najpierw ustaw inny profil jako aktywny</span>
            <button class="btn wp-btn-delete" id="wp-btn-delete" disabled title="Nie można usunąć aktywnego profilu">Usuń</button>`
-        : '<button class="btn wp-btn-delete" id="wp-btn-delete">Usuń</button>',
+        : renderDeleteButtonMarkup(),
     });
 
     document.getElementById('wp-btn-save')?.addEventListener('click', () => this._handleSave(prompt.id));
@@ -258,7 +204,7 @@ export class WorldPromptsView {
     if (!panel) return;
     this.isDirty = false;
 
-    panel.innerHTML = this._editorMarkup({
+    panel.innerHTML = renderEditorMarkup({
       name: '',
       description: '',
       content: '',
@@ -402,18 +348,12 @@ export class WorldPromptsView {
   _handleDeleteClick(promptId) {
     const zone = document.getElementById('wp-delete-zone');
     if (!zone) return;
-    zone.innerHTML = `
-      <div class="delete-confirm-inline">
-        <span class="delete-confirm-text">Usunąć profil?</span>
-        <button class="btn-confirm-yes" id="wp-btn-delete-yes">Tak</button>
-        <button class="btn-confirm-no" id="wp-btn-delete-no">Anuluj</button>
-      </div>
-    `;
+    zone.innerHTML = renderDeleteConfirmMarkup();
     document.getElementById('wp-btn-delete-yes')?.addEventListener('click', () => this._handleDeleteConfirm(promptId));
     document.getElementById('wp-btn-delete-no')?.addEventListener('click', () => {
       // Przywraca tylko strefę przycisku Usuń — pełny re-render edytora
       // wyzerowałby niezapisane zmiany w Nazwie/Opisie/Treści.
-      zone.innerHTML = `<button class="btn wp-btn-delete" id="wp-btn-delete">Usuń</button>`;
+      zone.innerHTML = renderDeleteButtonMarkup();
       document.getElementById('wp-btn-delete')?.addEventListener('click', () => this._handleDeleteClick(promptId));
     });
   }
