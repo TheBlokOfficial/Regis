@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Awaitable, Callable, Literal, TypedDict
 
-from shared import get_logger
+from shared import TurnRef, bind_turn, get_logger, new_turn_id
 
 from server.agent.context import ContextBuilder
 from server.agent.context_provider import ContextBuild
@@ -196,6 +196,18 @@ class TurnRunner:
         return self._publisher.address.session_id
 
     async def run(self, prompt: str, sender_id: str | None) -> None:
+        """Cienka obwoluta nadająca turze tożsamość na czas jej trwania.
+
+        `bind_turn` nie jest częścią prowadzenia tury — jest deklaracją „to wszystko,
+        co wydarzy się poniżej, należy do tej jednej tury". Kod wołany w środku
+        (dostawca LLM, jego router) może dzięki temu skorelować swoją pracę z turą,
+        nie dostając ani jednego dodatkowego parametru i nie będąc tu znanym z nazwy."""
+        with bind_turn(
+            TurnRef(turn_id=new_turn_id(), session_id=self._session_id, sender_id=sender_id)
+        ):
+            await self._run(prompt, sender_id)
+
+    async def _run(self, prompt: str, sender_id: str | None) -> None:
         session_id = self._session_id
         await self._persist(role="user", content=prompt)
         # Rozgłoszenie treści pytania — jedyny sposób, w jaki obserwator sesji

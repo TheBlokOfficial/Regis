@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator
 
 import pytest
 from server.ai.llm.circuit_breaker import CircuitBreaker
+from server.ai.llm.models import ProviderType
 from server.ai.llm.router import LLMRouter
 from server.ai.llm.token_budget import TokenBudgetTracker
 from server.ai.stt.providers import MockSTTProvider
@@ -64,7 +65,12 @@ class _FakeRegistry:
         return self.chain
 
     async def load_all_instances(self) -> dict[str, SimpleNamespace]:
-        return {bid: SimpleNamespace(id=bid, options=opts) for bid, opts in self.options.items()}
+        # `name`/`type` są tu, bo router opisuje nimi próby zgłaszane obserwatorowi
+        # (`LLMAttempt`) — atrapa musi odwzorować ten sam kształt co `BackendInstanceConfig`.
+        return {
+            bid: SimpleNamespace(id=bid, name=bid.upper(), type=ProviderType.OLLAMA, options=opts)
+            for bid, opts in self.options.items()
+        }
 
     def create_provider_instance(self, instance: SimpleNamespace) -> _FakeProvider:
         self.create_provider_instance_calls += 1

@@ -29,10 +29,14 @@ próbować danego backendu), oraz **po** wywołaniu jako awaryjny zamiennik, gdy
 dostawca nie zwróci `GenerationUsage` z realnymi licznikami (`router.py`)."""
 
 
+def estimate_tokens_from_chars(char_count: int) -> int:
+    """Prymityw estymacji — jedyne miejsce w systemie, które zna ten dzielnik."""
+    return max(1, char_count // _CHARS_PER_TOKEN_ESTIMATE)
+
+
 def estimate_tokens(messages: list[LLMMessage]) -> int:
     """Przybliżona liczba tokenów wejściowych — suma długości treści / 4."""
-    total_chars = sum(len(m.content) for m in messages)
-    return max(1, total_chars // _CHARS_PER_TOKEN_ESTIMATE)
+    return estimate_tokens_from_chars(sum(len(m.content) for m in messages))
 
 
 class TokenBudgetTracker:

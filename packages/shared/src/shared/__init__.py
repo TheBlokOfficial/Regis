@@ -12,6 +12,11 @@ from shared.contracts import (
     CreateLLMProviderRequest,
     CreatePromptRequest,
     DeletionResponse,
+    GenerationAttemptDTO,
+    GenerationLogDetailDTO,
+    GenerationLogEntryDTO,
+    GenerationLogListResponse,
+    GenerationMessageDTO,
     HealthResponse,
     LLMFallbackChainResponse,
     LLMProviderDTO,
@@ -30,6 +35,7 @@ from shared.contracts import (
     UpdateLLMProviderRequest,
     UpdatePromptRequest,
 )
+from shared.correlation import TurnRef, bind_turn, current_turn, new_turn_id
 from shared.discovery import DISCOVERY_MAGIC, DISCOVERY_UDP_PORT, decode_beacon, encode_beacon
 from shared.event_bus import Event, EventBus, EventHandler
 from shared.json_repository import ActiveInstancePointer, JsonInstanceRepository
@@ -53,6 +59,7 @@ __all__ = [
     "ChatSessionListResponse",
     "ChatSessionSummaryDTO",
     "ConfigStore",
+    "current_turn",
     "CreateLLMProviderRequest",
     "CreatePromptRequest",
     "DeletionResponse",
@@ -61,6 +68,11 @@ __all__ = [
     "decode_beacon",
     "encode_beacon",
     "Event",
+    "GenerationAttemptDTO",
+    "GenerationLogDetailDTO",
+    "GenerationLogEntryDTO",
+    "GenerationLogListResponse",
+    "GenerationMessageDTO",
     "EventBus",
     "EventHandler",
     "ActiveInstancePointer",
@@ -85,6 +97,9 @@ __all__ = [
     "SendChatMessageRequest",
     "ServerMessageType",
     "SetLLMFallbackChainRequest",
+    "TurnRef",
+    "bind_turn",
+    "new_turn_id",
     "UpdatePromptRequest",
     "get_logger",
     "get_service_root",

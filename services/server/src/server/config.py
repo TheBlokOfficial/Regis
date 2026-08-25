@@ -17,6 +17,14 @@ class Settings(BaseModel):
     llm_default_max_tokens: int = Field(default=4096, description="Domyślna maksymalna liczba tokenów wyjściowych dla modeli LLM")
     max_history_messages: int = Field(default=40, description="Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM")
     max_tool_iterations: int = Field(default=8, description="Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej, zanim agent zakończy z tym co wygenerował")
+    telemetry_retention_records: int = Field(
+        default=2000,
+        description="Ile najnowszych zrzutów wywołań LLM trzyma zakładka Logi (data/telemetry/generations.db). Rotacja usuwa nadmiar leniwie, co kilkadziesiąt zapisów.",
+    )
+    telemetry_max_record_bytes: int = Field(
+        default=262144,
+        description="Sufit rozmiaru zrzutu kontekstu w jednym wpisie telemetrii. Po przekroczeniu ucinane są treści wiadomości (struktura zostaje), a wpis dostaje flagę `truncated`.",
+    )
     wakeword_model_path: str = Field(
         default="", description="Ścieżka do wytrenowanego modelu wake-word .onnx. Puste = placeholder progu amplitudy."
     )

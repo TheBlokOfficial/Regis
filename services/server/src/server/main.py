@@ -14,6 +14,7 @@ from server.config import Settings, config_store, load_settings
 from server.discovery import DiscoveryBroadcaster
 from server.network.gateway import create_gateway_app
 from server.ports.wakeword import WakeWordDetector
+from server.telemetry import GenerationLogStore, RecordingLLMProvider, TurnAttemptCollector
 from server.voice.gateway import WakeWordDetectorFactory, create_voice_router
 from server.voice.provider_routes import create_voice_providers_router
 from server.voice.routes import create_voice_status_router
@@ -71,8 +72,26 @@ async def main() -> None:
     #    backend przy każdym wywołaniu, więc zmiana aktywnego dostawcy przez
     #    `PUT /api/v1/llm/providers/active` działa natychmiast, bez mutowania
     #    `agent_engine` z zewnątrz.
+    #    Dekorator `RecordingLLMProvider` opakowuje router i zapisuje zrzut każdego
+    #    wywołania (zakładka „Logi"). Kernel dostaje go zamiast routera i nie zauważa
+    #    różnicy — to nadal `BaseLLMProvider`. `TurnAttemptCollector` powstaje PIERWSZY,
+    #    bo trafia w dwa miejsca naraz: router zgłasza mu próby łańcucha fallbacku,
+    #    dekorator je odbiera (patrz `telemetry/recorder.py`).
     backend_registry = BackendRegistry()
-    llm_router = LLMRouter(backend_registry, tracker=TokenBudgetTracker(), breaker=CircuitBreaker())
+    generation_log = GenerationLogStore(
+        db_path=get_service_root(__file__) / "data" / "telemetry" / "generations.db",
+        retention_records=settings.telemetry_retention_records,
+        max_record_bytes=settings.telemetry_max_record_bytes,
+    )
+    await generation_log.start()
+    attempt_collector = TurnAttemptCollector()
+    llm_router = LLMRouter(
+        backend_registry,
+        tracker=TokenBudgetTracker(),
+        breaker=CircuitBreaker(),
+        attempt_observer=attempt_collector.record,
+    )
+    recording_llm = RecordingLLMProvider(llm_router, generation_log, attempt_collector)
 
     # 3. Inicjalizacja fallbackowego promptu kernela (używanego tylko gdy World milczy)
     prompt_store = AgentDefaultPromptStore()
@@ -88,7 +107,7 @@ async def main() -> None:
     # 5. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus, skonfigurowanym limitem historii, fallbackowym promptem i WorldEngine
     context_builder = ContextBuilder(max_history_messages=settings.max_history_messages)
     agent_engine = AgentEngine(
-        llm_provider=llm_router,
+        llm_provider=recording_llm,
         context_builder=context_builder,
         event_bus=event_bus,
         prompt_store=prompt_store,
@@ -96,6 +115,10 @@ async def main() -> None:
         max_tool_iterations=settings.max_tool_iterations,
     )
     await agent_engine.initialize()
+    # Tury, które skończyły się PRZED wywołaniem modelu (padnięty silnik świata przy
+    # budowie kontekstu, natychmiastowe anulowanie), nie zostawiają po sobie żadnego
+    # żądania — dekorator dowiaduje się o nich wyłącznie ze zdarzeń zakończenia tury.
+    recording_llm.subscribe(event_bus)
 
     # 6. Inicjalizacja gatewaya głosowego (server.voice) — rozłącznego z WorldEngine,
     #    zna wyłącznie AgentEngine. `STTRouter`/`TTSRouter` (`server.ai.stt`/`server.ai.tts`)
@@ -167,6 +190,7 @@ async def main() -> None:
         voice_status_router=voice_status_router,
         voice_providers_router=voice_providers_router,
         is_registered=is_registered,
+        generation_log=generation_log,
     )
 
     # 8. Start serwera uvicorn
@@ -191,6 +215,9 @@ async def main() -> None:
     finally:
         discovery_broadcaster.stop()
         await agent_engine.shutdown()
+        # Po `shutdown()` agenta: wpisy z ostatniej tury przed zamknięciem to często
+        # dokładnie te, których się potem szuka — writer domyka kolejkę, nie porzuca jej.
+        await generation_log.stop()
 
 
 if __name__ == "__main__":

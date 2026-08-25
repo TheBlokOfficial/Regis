@@ -6,11 +6,13 @@ stanu Kernela z zewnątrz."""
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, Callable, Literal
 
 from shared import get_logger
 
 from server.ai.llm.circuit_breaker import CircuitBreaker
+from server.ai.llm.models import BackendInstanceConfig
 from server.ai.llm.registry import BackendRegistry
 from server.ai.llm.token_budget import TokenBudgetTracker, estimate_tokens
 from server.ports.llm import (
@@ -23,6 +25,54 @@ from server.ports.llm import (
 )
 
 logger = get_logger("regis.ai.llm.router")
+
+
+AttemptOutcome = Literal["ok", "error", "skipped_breaker", "skipped_budget"]
+
+
+@dataclass(frozen=True)
+class LLMAttempt:
+    """Jedna próba obsłużenia tury przez konkretnego kandydata z łańcucha.
+
+    Router jest **jedynym** miejscem w systemie, które w ogóle wie, że próba miała
+    numer, że wcześniejsza odpadła albo że którejś w ogóle nie podjęto (otwarty
+    circuit breaker, wyczerpany budżet TPM). Dla warstw wyżej — łącznie z dekoratorem
+    opakowującym ten router — cała ta sekwencja wygląda jak jedno wywołanie LLM.
+    Dotąd ta wiedza kończyła się w `logger.warning`; `LLMAttempt` daje jej kształt,
+    dzięki czemu może trafić także do obserwatora."""
+
+    instance_id: str
+    instance_name: str
+    provider_type: str
+    model: str | None
+    position: int
+    outcome: AttemptOutcome
+    error: str | None = None
+
+
+AttemptObserver = Callable[[LLMAttempt], None]
+"""Synchroniczny, nieblokujący odbiorca prób. Wstrzykiwany w kompozycji aplikacji —
+router nie zna ani jednego konkretnego obserwatora i działa tak samo bez niego."""
+
+
+def _attempt(
+    instance_id: str,
+    instance: BackendInstanceConfig,
+    position: int,
+    outcome: AttemptOutcome,
+    error: str | None = None,
+) -> LLMAttempt:
+    """Funkcja modułowa, nie domknięcie w pętli — domknięcie nad zmienną iteracji
+    czytałoby jej wartość dopiero przy wywołaniu (`B023`)."""
+    return LLMAttempt(
+        instance_id=instance_id,
+        instance_name=instance.name,
+        provider_type=instance.type.value,
+        model=instance.options.get("model"),
+        position=position,
+        outcome=outcome,
+        error=error,
+    )
 
 
 def _billable_tokens(usage: GenerationUsage | None, estimated: int) -> int:
@@ -68,11 +118,23 @@ class LLMRouter(BaseLLMProvider):
         registry: BackendRegistry,
         tracker: TokenBudgetTracker | None = None,
         breaker: CircuitBreaker | None = None,
+        attempt_observer: AttemptObserver | None = None,
     ) -> None:
         self._registry = registry
         self._tracker = tracker
         self._breaker = breaker
+        self._attempt_observer = attempt_observer
         self._provider_cache: dict[str, tuple[dict[str, Any] | None, BaseLLMProvider]] = {}
+
+    def _notify(self, attempt: LLMAttempt) -> None:
+        """Obserwator jest dodatkiem, nie uczestnikiem tury — jego błąd nie może
+        przewrócić generowania odpowiedzi, więc kończy w logu i na tym się kończy."""
+        if self._attempt_observer is None:
+            return
+        try:
+            self._attempt_observer(attempt)
+        except Exception as err:
+            logger.error(f"Obserwator prób backendu LLM rzucił wyjątkiem: {err}")
 
     async def _candidate_ids(self) -> list[str]:
         """Aktywny preset jest zawsze Priorytetem 0 — próbowany jako pierwszy,
@@ -108,11 +170,13 @@ class LLMRouter(BaseLLMProvider):
         last_error: Exception | None = None
 
         for position, instance_id in enumerate(candidates):
+            instance = all_instances[instance_id]
+
             if self._breaker is not None and self._breaker.is_open(instance_id):
                 logger.debug(f"Pominięto backend [{instance_id}] — circuit breaker otwarty.")
+                self._notify(_attempt(instance_id, instance, position, "skipped_breaker"))
                 continue
 
-            instance = all_instances[instance_id]
             tpm_limit = instance.options.get("tpm_limit")
             if (
                 self._tracker is not None
@@ -120,6 +184,7 @@ class LLMRouter(BaseLLMProvider):
                 and not self._tracker.has_budget(instance_id, estimated_tokens, tpm_limit)
             ):
                 logger.debug(f"Pominięto backend [{instance_id}] — brak budżetu TPM w lokalnym trackerze.")
+                self._notify(_attempt(instance_id, instance, position, "skipped_budget"))
                 continue
 
             provider = self._resolve_cached(instance_id, instance.options)
@@ -141,8 +206,12 @@ class LLMRouter(BaseLLMProvider):
                     # (patrz `token_budget.py`), więc rozjazd nie jest krytyczny,
                     # ale bramkowanie na prawdziwych liczbach po prostu trafia lepiej.
                     self._tracker.record(instance_id, _billable_tokens(usage, estimated_tokens))
+                # Zgłoszenie DOPIERO po domknięciu strumienia — dopiero tu wiadomo, że
+                # kandydat naprawdę obsłużył turę, a nie wywrócił się w jej połowie.
+                self._notify(_attempt(instance_id, instance, position, "ok"))
                 return
             except Exception as err:
+                self._notify(_attempt(instance_id, instance, position, "error", str(err)))
                 if started:
                     # Strumień już zaczął dostarczać treść — dalsza zamiana kandydata
                     # byłaby niebezpieczna (patrz docstring klasy). Błąd propaguje.

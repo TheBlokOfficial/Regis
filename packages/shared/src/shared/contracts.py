@@ -287,3 +287,81 @@ class DeletionResponse(BaseModel):
 
     success: bool = Field(default=True, description="Czy usunięcie się powiodło")
     deleted_id: str = Field(..., description="Identyfikator usuniętego zasobu")
+
+
+# ==========================================================================
+# KONTRAKTY TELEMETRII WYWOŁAŃ LLM (GENERATION LOG CONTRACTS)
+# ==========================================================================
+#
+# Jednostką jest POJEDYNCZE wywołanie modelu, nie tura i nie sesja — uzasadnienie
+# przy `server/telemetry/models.py::GenerationRecord`. Wiersz listy (`...EntryDTO`)
+# świadomie nie niesie zrzutu wiadomości: przy 2000 rekordach po kilkanaście
+# kilobajtów lista byłaby nie do wysłania, a inspektor i tak dociąga szczegół
+# jednego wpisu osobnym żądaniem.
+
+
+class GenerationMessageDTO(BaseModel):
+    """Jedna wiadomość ze zrzutu kontekstu wysłanego do modelu."""
+
+    role: str = Field(..., description="Rola wiadomości w kontekście LLM")
+    content: str = Field(default="", description="Treść wiadomości")
+    tool_calls: list[dict[str, Any]] | None = Field(default=None, description="Żądania wywołania narzędzi")
+    tool_call_id: str | None = Field(default=None, description="Identyfikator wywołania dla roli tool")
+    tool_name: str | None = Field(default=None, description="Nazwa narzędzia dla roli tool")
+
+
+class GenerationAttemptDTO(BaseModel):
+    """Jedna próba obsłużenia wywołania przez kandydata z łańcucha fallbacku."""
+
+    instance_id: str = Field(..., description="Preset backendu LLM")
+    instance_name: str = Field(..., description="Wyświetlana nazwa presetu")
+    provider_type: str = Field(..., description="Typ dostawcy")
+    model: str | None = Field(default=None, description="Model zadeklarowany w presecie")
+    position: int = Field(..., description="Pozycja w łańcuchu fallbacku, od zera")
+    outcome: str = Field(..., description="ok | error | skipped_breaker | skipped_budget")
+    error: str | None = Field(default=None, description="Surowa treść błędu, jeśli próba się nie powiodła")
+
+
+class GenerationLogEntryDTO(BaseModel):
+    """Wiersz listy wywołań — bez zrzutu kontekstu."""
+
+    id: int = Field(..., description="Identyfikator wpisu, malejący w czasie")
+    created_at: float = Field(..., description="Stempel rozpoczęcia wywołania")
+    session_id: str | None = Field(default=None, description="Sesja, do której należy tura")
+    turn_id: str | None = Field(default=None, description="Tura agenta")
+    call_index: int = Field(default=0, description="Numer wywołania w obrębie tury, od zera")
+    model: str | None = Field(default=None, description="Model, który realnie odpowiedział")
+    provider_type: str | None = Field(default=None, description="Typ dostawcy obsługującego wywołanie")
+    instance_name: str | None = Field(default=None, description="Preset backendu, który obsłużył wywołanie")
+    status: str = Field(..., description="ok | error | cancelled | no_generation")
+    finish_reason: str | None = Field(default=None, description="Powód zakończenia generacji")
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cached_tokens: int | None = None
+    estimated: bool = Field(default=True, description="Czy liczniki tokenów są estymatą, a nie danymi od dostawcy")
+    ttft_ms: float | None = Field(default=None, description="Czas do pierwszego zdarzenia strumienia")
+    total_ms: float | None = Field(default=None, description="Łączny czas wywołania")
+    output_tps: float | None = Field(default=None, description="Tokeny wyjściowe na sekundę")
+    tool_calls: int = Field(default=0, description="Liczba żądań wywołania narzędzi w tej rundzie")
+    message_count: int = Field(default=0, description="Ile wiadomości poszło do modelu")
+    attempt_count: int = Field(default=0, description="Ile prób podjął łańcuch fallbacku")
+    truncated: bool = Field(default=False, description="Czy zrzut kontekstu został ucięty przez limit rozmiaru")
+
+
+class GenerationLogDetailDTO(GenerationLogEntryDTO):
+    """Pełny wpis wraz ze zrzutem tego, co dokładnie poleciało do modelu."""
+
+    sender_id: str | None = Field(default=None, description="Opaque identyfikator nadawcy tury")
+    error: str | None = Field(default=None, description="Surowa treść błędu — panel diagnostyczny nie sanityzuje")
+    messages: list[GenerationMessageDTO] = Field(default_factory=list, description="Zrzut kontekstu wysłanego do modelu")
+    tools: list[dict[str, Any]] = Field(default_factory=list, description="Narzędzia udostępnione modelowi")
+    attempts: list[GenerationAttemptDTO] = Field(default_factory=list, description="Próby łańcucha fallbacku")
+
+
+class GenerationLogListResponse(BaseModel):
+    """Strona listy wywołań, od najnowszego."""
+
+    entries: list[GenerationLogEntryDTO] = Field(default_factory=list, description="Wpisy, od najnowszego")
+    next_before_id: int | None = Field(
+        default=None, description="Kursor do kolejnej strony (`before_id`); None gdy to ostatnia strona"
+    )
