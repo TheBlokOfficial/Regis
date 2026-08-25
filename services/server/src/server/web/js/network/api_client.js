@@ -46,6 +46,12 @@ export class ApiClient {
   getLLMProviderModels(...args) {
     return this._agent.getLLMProviderModels(...args);
   }
+  getLLMFallbackChain(...args) {
+    return this._agent.getLLMFallbackChain(...args);
+  }
+  setLLMFallbackChain(...args) {
+    return this._agent.setLLMFallbackChain(...args);
+  }
   getAgentDefaultPrompt(...args) {
     return this._agent.getAgentDefaultPrompt(...args);
   }

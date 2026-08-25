@@ -6,7 +6,7 @@ from shared import EventBus, get_logger, get_service_root, setup_logging
 from server.agent import AgentEngine
 from server.agent.context import ContextBuilder
 from server.agent.prompts import AgentDefaultPromptStore
-from server.ai.llm import BackendRegistry, LLMRouter
+from server.ai.llm import BackendRegistry, CircuitBreaker, LLMRouter, TokenBudgetTracker
 from server.ai.stt import STTRegistry, STTRouter
 from server.ai.tts import TTSRegistry, TTSRouter
 from server.ai.wakeword import OnnxWakeWordDetector, ThresholdEnergyWakeWordDetector
@@ -72,7 +72,7 @@ async def main() -> None:
     #    `PUT /api/v1/llm/providers/active` działa natychmiast, bez mutowania
     #    `agent_engine` z zewnątrz.
     backend_registry = BackendRegistry()
-    llm_router = LLMRouter(backend_registry)
+    llm_router = LLMRouter(backend_registry, tracker=TokenBudgetTracker(), breaker=CircuitBreaker())
 
     # 3. Inicjalizacja fallbackowego promptu kernela (używanego tylko gdy World milczy)
     prompt_store = AgentDefaultPromptStore()

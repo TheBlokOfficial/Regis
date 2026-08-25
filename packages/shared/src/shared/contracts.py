@@ -57,6 +57,20 @@ class UpdateLLMProviderRequest(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict, description="Opcje do nadpisania")
 
 
+class LLMFallbackChainResponse(BaseModel):
+    """Odpowiedź dla GET /api/v1/llm/backends/fallback-chain."""
+
+    priority_ids: list[str] = Field(
+        default_factory=list, description="ID presetów LLM w kolejności prób; pusta = tylko active_id"
+    )
+
+
+class SetLLMFallbackChainRequest(BaseModel):
+    """Żądanie dla PUT /api/v1/llm/backends/fallback-chain."""
+
+    priority_ids: list[str] = Field(default_factory=list, description="ID presetów LLM w kolejności prób")
+
+
 # ==========================================================================
 # GENERYCZNA SPECYFIKACJA OPCJI DOSTAWCÓW LLM (CLEAN SOLID CONTRACTS)
 # ==========================================================================

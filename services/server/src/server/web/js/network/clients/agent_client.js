@@ -133,6 +133,37 @@ export class AgentClient {
     }
   }
 
+  async getLLMFallbackChain() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/llm/backends/fallback-chain`);
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd pobierania łańcucha fallbacku LLM:', error);
+      return null;
+    }
+  }
+
+  async setLLMFallbackChain(priorityIds) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v1/llm/backends/fallback-chain`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority_ids: priorityIds }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP Error: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[ApiClient] Błąd zapisu łańcucha fallbacku LLM:', error);
+      throw error;
+    }
+  }
+
   async getAgentDefaultPrompt() {
     try {
       const response = await fetch(`${this.baseUrl}/api/v1/agent/prompt`);

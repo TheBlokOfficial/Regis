@@ -9,11 +9,13 @@ from fastapi import APIRouter, HTTPException, status
 from shared import (
     CreateLLMProviderRequest,
     DeletionResponse,
+    LLMFallbackChainResponse,
     LLMProviderDTO,
     LLMProviderListResponse,
     ProviderMetadataResponse,
     ProviderModelsResponse,
     SelectLLMProviderRequest,
+    SetLLMFallbackChainRequest,
     UpdateLLMProviderRequest,
 )
 
@@ -125,5 +127,27 @@ def create_providers_router(
             detail=detail,
             fallback_options_schema=fallback_options_schema(config.type),
         )
+
+    @router.get(
+        "/api/v1/llm/backends/fallback-chain",
+        response_model=LLMFallbackChainResponse,
+        summary="Pobiera łańcuch priorytetów presetów LLM używany przez LLMRouter",
+        tags=["LLM Providers"],
+    )
+    async def get_llm_fallback_chain() -> LLMFallbackChainResponse:
+        return LLMFallbackChainResponse(priority_ids=await backend_registry.get_fallback_chain())
+
+    @router.put(
+        "/api/v1/llm/backends/fallback-chain",
+        response_model=LLMFallbackChainResponse,
+        summary="Ustawia łańcuch priorytetów presetów LLM; pusta lista = tylko active_id",
+        tags=["LLM Providers"],
+    )
+    async def set_llm_fallback_chain(req: SetLLMFallbackChainRequest) -> LLMFallbackChainResponse:
+        try:
+            await backend_registry.set_fallback_chain(req.priority_ids)
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
+        return LLMFallbackChainResponse(priority_ids=req.priority_ids)
 
     return router

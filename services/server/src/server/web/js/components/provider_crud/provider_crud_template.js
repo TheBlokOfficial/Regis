@@ -46,7 +46,7 @@ export function renderEmptyListMarkup(emptyLabel) {
   return `<div class="card card-sm">${escapeHtml(emptyLabel)}</div>`;
 }
 
-export function renderProviderCardMarkup(provider, schemas, { idPrefix, expandedId }) {
+export function renderProviderCardMarkup(provider, schemas, { idPrefix, expandedId, hasFallbackChain, fallbackPriority }) {
   const isActive = provider.is_active;
   const isExpanded = provider.id === expandedId;
   const typeSpec = schemas?.provider_types?.find((t) => t.type === provider.type);
@@ -66,8 +66,16 @@ export function renderProviderCardMarkup(provider, schemas, { idPrefix, expanded
           <div class="agent-provider-card-meta">${escapeHtml(model || 'model nieustawiony')}</div>
         </div>
         ${
+          !isActive && hasFallbackChain
+            ? `<input type="number" min="1" step="1" class="form-control agent-provider-card-priority-input"
+                 data-priority-for="${escapeAttr(provider.id)}" placeholder="—"
+                 title="Priorytet w łańcuchu fallbacku (puste = poza automatycznym routingiem)"
+                 value="${fallbackPriority ?? ''}" />`
+            : ''
+        }
+        ${
           isActive
-            ? `<span class="agent-provider-card-check" title="Aktywny preset">${Icons.CheckCircle2()}</span>`
+            ? `<span class="agent-provider-card-check" title="Aktywny preset (Priorytet 0)">${Icons.CheckCircle2()}</span>`
             : `<button type="button" class="btn btn-sm btn-subtle agent-provider-card-activate"
                  data-activate="${escapeAttr(provider.id)}">Aktywuj</button>`
         }

@@ -56,6 +56,10 @@ export class ProviderCrudSection {
     /** Parametry aktualnie wybranego modelu — trzymane osobno, bo zmiana modelu
      * przerenderowuje tę część formularza, a wpisane wartości mają przetrwać. */
     this._draftOptions = {};
+    /** @type {Map<string, number>} id (nieaktywnego presetu) -> priorytet fallbacku.
+     * Puste, dopóki `api.getFallbackChain` nie jest skonfigurowane (dziś: tylko LLM) —
+     * patrz `views/providers_config.js`. */
+    this._priorities = new Map();
   }
 
   render() {
@@ -81,6 +85,7 @@ export class ProviderCrudSection {
       this._schemas(),
     ]);
     this._providers = data?.providers || [];
+    await this._loadPriorities();
 
     if (this._providers.length === 0) {
       this._expandedId = null;
@@ -93,18 +98,49 @@ export class ProviderCrudSection {
     }
 
     listContainer.innerHTML = this._providers
-      .map((provider) => renderProviderCardMarkup(provider, schemas, { idPrefix: this.idPrefix, expandedId: this._expandedId }))
+      .map((provider) =>
+        renderProviderCardMarkup(provider, schemas, {
+          idPrefix: this.idPrefix,
+          expandedId: this._expandedId,
+          hasFallbackChain: !!this.api.getFallbackChain,
+          fallbackPriority: this._priorities.get(provider.id),
+        })
+      )
       .join('');
     this._bindCards();
     if (this._expandedId) await this._mountEditor(this._expandedId);
+  }
+
+  /** Wypełnia `_priorities` z zapisanego łańcucha fallbacku — no-op, gdy ta domena
+   * (STT/TTS) nie ma skonfigurowanych metod `getFallbackChain` w `api`. Aktywny
+   * preset jest zawsze Priorytetem 0 (patrz `LLMRouter._candidate_ids`), więc
+   * ewentualny jego wpis w zapisanym łańcuchu jest tu świadomie pomijany —
+   * karta aktywnego presetu w ogóle nie renderuje pola priorytetu.
+   *
+   * **Filtrowanie po `knownIds` jest obowiązkowe, nie kosmetyczne**: preset
+   * usunięty z listy (np. w innej karcie przeglądarki) mógł zostać w zapisanym
+   * `priority_ids` na dysku — `set_fallback_chain` na backendzie odrzuca CAŁY
+   * zapis, gdy choć jeden ID jest nieznany. Bez tego filtra edycja priorytetu
+   * zupełnie INNEGO presetu wysyłałaby ten martwy ID z powrotem i psuła zapis
+   * (obserwowane na żywo: `Nieznane ID presetów w łańcuchu fallbacku: [...]`). */
+  async _loadPriorities() {
+    this._priorities = new Map();
+    if (!this.api.getFallbackChain) return;
+    const chainData = await this.apiClient[this.api.getFallbackChain]();
+    const activeId = this._providers.find((p) => p.is_active)?.id;
+    const knownIds = new Set(this._providers.map((p) => p.id));
+    (chainData?.priority_ids || [])
+      .filter((id) => id !== activeId && knownIds.has(id))
+      .forEach((id, index) => this._priorities.set(id, index + 1));
   }
 
   _bindCards() {
     const listContainer = document.getElementById(`${this.idPrefix}-providers-list`);
     listContainer?.querySelectorAll('[data-toggle]').forEach((head) => {
       const toggle = (e) => {
-        // Przycisk aktywacji leży wewnątrz nagłówka — nie może przy okazji rozwijać karty.
-        if (e.target.closest('[data-activate]')) return;
+        // Przycisk aktywacji i pole priorytetu leżą wewnątrz nagłówka — nie mogą
+        // przy okazji rozwijać karty.
+        if (e.target.closest('[data-activate]') || e.target.closest('[data-priority-for]')) return;
         this._toggleExpanded(head.getAttribute('data-toggle'));
       };
       head.addEventListener('click', toggle);
@@ -129,12 +165,41 @@ export class ProviderCrudSection {
         }
       });
     });
+
+    listContainer?.querySelectorAll('[data-priority-for]').forEach((input) => {
+      input.addEventListener('click', (e) => e.stopPropagation());
+      input.addEventListener('change', (e) => this._changePriority(e.target));
+    });
   }
 
   async _toggleExpanded(providerId) {
     this._expandedId = this._expandedId === providerId ? null : providerId;
     this._draftOptions = {};
     await this.refresh();
+  }
+
+  /** Zapis natychmiastowy po zmianie pola priorytetu (ten sam wzorzec co "Aktywuj" —
+   * bez osobnego przycisku "Zapisz", bo to jedna wartość, nie formularz). Puste/nie-
+   * liczbowe/nie-dodatnie pole wyklucza preset z łańcucha fallbacku w całości. */
+  async _changePriority(input) {
+    const id = input.getAttribute('data-priority-for');
+    const raw = input.value.trim();
+    const value = raw === '' ? NaN : parseInt(raw, 10);
+    if (!raw || !Number.isInteger(value) || value < 1) {
+      this._priorities.delete(id);
+    } else {
+      this._priorities.set(id, value);
+    }
+
+    const priorityIds = [...this._priorities.entries()].sort((a, b) => a[1] - b[1]).map(([pid]) => pid);
+    try {
+      await this.apiClient[this.api.setFallbackChain](priorityIds);
+      showToast('Zaktualizowano priorytet fallbacku.', 'success');
+      await this.refresh();
+    } catch (err) {
+      showToast(`Błąd zapisu priorytetu: ${err.message}`, 'error');
+      await this.refresh();
+    }
   }
 
   // --------------------------------------------------------------------------

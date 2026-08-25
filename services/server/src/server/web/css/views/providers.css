@@ -337,3 +337,31 @@
   margin-top: 10px;
   margin-bottom: 0;
 }
+
+/* --------------------------------------------------------------------------
+   Priorytet fallbacku — pole liczbowe wpięte bezpośrednio w nagłówek karty
+   presetu (`components/provider_crud/provider_crud_template.js`), obok
+   przycisku "Aktywuj". Widoczne tylko, gdy sekcja ma skonfigurowane
+   `api.getFallbackChain` (dziś: wyłącznie LLM, patrz `views/providers_config.js`)
+   i preset NIE jest aktywny — aktywny jest zawsze Priorytetem 0 z definicji,
+   więc w ogóle nie dostaje tego pola.
+   -------------------------------------------------------------------------- */
+.agent-provider-card-priority-input {
+  flex-shrink: 0;
+  width: 44px;
+  text-align: center;
+  padding: 6px 4px;
+  font-size: 0.85rem;
+}
+
+/* Bez natywnych strzałek góra/dół przeglądarki — mirror `.agent-composer-fields input[type="number"]`. */
+.agent-provider-card-priority-input::-webkit-outer-spin-button,
+.agent-provider-card-priority-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.agent-provider-card-priority-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

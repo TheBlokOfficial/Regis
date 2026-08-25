@@ -5,6 +5,13 @@ import { ProviderCrudSection } from '../components/provider_crud_section.js';
  * `ProviderCrudSection` (ten sam design, wcześniej tylko w zakładce Agent
  * dla LLM). STT/TTS przeniesione tu z zakładki Głos (dawny płaski,
  * jednosslotowy formularz zastąpiony pełnym CRUD, mirror LLM).
+ *
+ * Priorytet fallbacku (`api.getFallbackChain`/`setFallbackChain`) jest
+ * włączony WYŁĄCZNIE dla LLM — komponent obsługuje to pole generycznie
+ * (patrz `ProviderCrudSection`), ale backend (`LLMRouter`, `CircuitBreaker`,
+ * REST) istnieje dziś tylko dla tej domeny. STT/TTS nie mają realnych
+ * incydentów rate-limit w historii projektu (sprawdzone w logach) — dopisanie
+ * tej opcji dla nich bez odpowiadającego backendu dałoby martwe pole w UI.
  */
 export class ProvidersView {
   constructor() {
@@ -19,6 +26,8 @@ export class ProvidersView {
         update: 'updateLLMProvider',
         delete_: 'deleteLLMProvider',
         getModels: 'getLLMProviderModels',
+        getFallbackChain: 'getLLMFallbackChain',
+        setFallbackChain: 'setLLMFallbackChain',
       },
     });
     this.stt = new ProviderCrudSection({
