@@ -5,7 +5,14 @@ import httpx
 from shared import get_logger
 
 from server.config import load_settings
-from server.ports.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest, ToolDefinition
+from server.ports.llm import (
+    BaseLLMProvider,
+    GenerationUsage,
+    LLMMessage,
+    ReasoningChunk,
+    ToolCallRequest,
+    ToolDefinition,
+)
 
 logger = get_logger("regis.ai.llm.providers.openai_compatible")
 
@@ -43,6 +50,18 @@ def _tools_to_openai_payload(tools: list[ToolDefinition]) -> list[dict[str, Any]
         }
         for tool in tools
     ]
+
+
+def _usage_from_payload(usage: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
+    """Wyciąga trójkę (wejście, wyjście, cache) z bloku `usage` odpowiedzi.
+
+    `cached_tokens` mieszka w `prompt_tokens_details` i dziś zwraca je wyłącznie
+    OpenRouter — brak tego zagnieżdżenia daje `None` („dostawca nie powiedział"),
+    nigdy zero (patrz `GenerationUsage`).
+    """
+    details = usage.get("prompt_tokens_details") or {}
+    cached = details.get("cached_tokens") if isinstance(details, dict) else None
+    return usage.get("prompt_tokens"), usage.get("completion_tokens"), cached
 
 
 class OpenAICompatibleProvider(BaseLLMProvider):
@@ -85,7 +104,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         messages: list[LLMMessage],
         tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest]:
+    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest | GenerationUsage]:
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -97,6 +116,12 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             "model": kwargs.get("model", self._model),
             "messages": _messages_to_openai_payload(messages),
             "stream": True,
+            # Rozliczenie tokenów w trybie strumieniowym jest OPT-IN w całej rodzinie
+            # OpenAI-compatible (OpenAI, Groq, OpenRouter) — bez tego pola żaden chunk
+            # nie niesie bloku `usage` i realne zużycie nie dociera nigdy. Stoi PRZED
+            # `extra_payload`, więc dostawca, który tego rozszerzenia nie rozumie, może
+            # je nadpisać z poziomu presetu.
+            "stream_options": {"include_usage": True},
             **self._extra_payload,
         }
 
@@ -119,6 +144,13 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             # Bufor akumulujący fragmentaryczne delty tool_calls po indeksie (OpenAI-compatible SSE
             # przysyła argumenty wywołania narzędzia porcjami — dopiero cały strumień daje poprawny JSON).
             pending_tool_calls: dict[int, dict[str, Any]] = {}
+            # Rozliczenie generacji zbierane po drodze i emitowane raz, na końcu:
+            # `finish_reason` przychodzi w ostatnim chunku z treścią, a blok `usage`
+            # dopiero w kolejnym, który ma już PUSTĄ listę `choices` (stąd odczyt poza
+            # gałęzią `if choices`). Rozjechane w czasie, więc trzymane w zmiennych.
+            finish_reason: str | None = None
+            usage_tokens: tuple[int | None, int | None, int | None] = (None, None, None)
+            reported_model: str | None = None
             async with httpx.AsyncClient(timeout=httpx_timeout) as client:
                 async with client.stream("POST", url, json=payload, headers=headers) as response:
                     if response.is_error:
@@ -144,8 +176,13 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
                         try:
                             data = json.loads(raw_data)
+                            reported_model = data.get("model") or reported_model
+                            raw_usage = data.get("usage")
+                            if isinstance(raw_usage, dict):
+                                usage_tokens = _usage_from_payload(raw_usage)
                             choices = data.get("choices", [])
                             if choices:
+                                finish_reason = choices[0].get("finish_reason") or finish_reason
                                 delta = choices[0].get("delta", {})
                                 reasoning = (
                                     delta.get("reasoning")
@@ -185,6 +222,15 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                             logger.error(f"Nie udało się zdekodować argumentów narzędzia: {entry['arguments']}")
                             arguments = {}
                         yield ToolCallRequest(id=entry["id"], name=entry["name"], arguments=arguments)
+
+                    prompt_tokens, completion_tokens, cached_tokens = usage_tokens
+                    yield GenerationUsage(
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        cached_tokens=cached_tokens,
+                        finish_reason=finish_reason,
+                        model=reported_model or payload["model"],
+                    )
         except httpx.ReadTimeout as e:
             logger.error(f"Przekroczono limit czasu oczekiwania na tokeny ({timeout_val}s) z [{self.base_url}].")
             raise RuntimeError(f"Timeout strumienia z [{self.base_url}] ({timeout_val}s): {e}") from e

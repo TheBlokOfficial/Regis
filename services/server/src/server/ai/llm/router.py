@@ -13,9 +13,28 @@ from shared import get_logger
 from server.ai.llm.circuit_breaker import CircuitBreaker
 from server.ai.llm.registry import BackendRegistry
 from server.ai.llm.token_budget import TokenBudgetTracker, estimate_tokens
-from server.ports.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest, ToolDefinition
+from server.ports.llm import (
+    BaseLLMProvider,
+    GenerationUsage,
+    LLMMessage,
+    ReasoningChunk,
+    ToolCallRequest,
+    ToolDefinition,
+)
 
 logger = get_logger("regis.ai.llm.router")
+
+
+def _billable_tokens(usage: GenerationUsage | None, estimated: int) -> int:
+    """Suma tokenów tury do odnotowania w budżecie TPM.
+
+    Dostawca może podać jeden licznik bez drugiego (albo żadnego) — wtedy brakujący
+    człon zastępuje estymata, zamiast liczyć zaniżoną sumę częściową."""
+    if usage is None or (usage.prompt_tokens is None and usage.completion_tokens is None):
+        return estimated
+    return (usage.prompt_tokens if usage.prompt_tokens is not None else estimated) + (
+        usage.completion_tokens or 0
+    )
 
 
 class LLMRouter(BaseLLMProvider):
@@ -76,7 +95,7 @@ class LLMRouter(BaseLLMProvider):
         messages: list[LLMMessage],
         tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest]:
+    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest | GenerationUsage]:
         all_instances = await self._registry.load_all_instances()
         if not all_instances:
             raise RuntimeError("Brak jakichkolwiek zadeklarowanych instancji backendu LLM.")
@@ -109,12 +128,19 @@ class LLMRouter(BaseLLMProvider):
                 self._provider_cache[instance_id] = (instance.options, provider)
 
             started = False
+            usage: GenerationUsage | None = None
             try:
                 async for event in provider.generate_stream(messages, tools=tools, **kwargs):
                     started = True
+                    if isinstance(event, GenerationUsage):
+                        usage = event
                     yield event
                 if self._tracker is not None:
-                    self._tracker.record(instance_id, estimated_tokens)
+                    # Realne zużycie, gdy dostawca je podał — estymata `len/4` tylko
+                    # jako awaryjny margines. Tracker bramkuje wyłącznie wstępnie
+                    # (patrz `token_budget.py`), więc rozjazd nie jest krytyczny,
+                    # ale bramkowanie na prawdziwych liczbach po prostu trafia lepiej.
+                    self._tracker.record(instance_id, _billable_tokens(usage, estimated_tokens))
                 return
             except Exception as err:
                 if started:

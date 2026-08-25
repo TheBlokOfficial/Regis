@@ -6,7 +6,14 @@ import httpx
 from shared import get_logger
 
 from server.config import load_settings
-from server.ports.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest, ToolDefinition
+from server.ports.llm import (
+    BaseLLMProvider,
+    GenerationUsage,
+    LLMMessage,
+    ReasoningChunk,
+    ToolCallRequest,
+    ToolDefinition,
+)
 
 logger = get_logger("regis.ai.llm.providers.ollama")
 
@@ -74,7 +81,7 @@ class OllamaProvider(BaseLLMProvider):
         messages: list[LLMMessage],
         tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest]:
+    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest | GenerationUsage]:
         url = f"{self.base_url}/api/chat"
         payload: dict[str, Any] = {
             "model": kwargs.get("model", self._model),
@@ -103,6 +110,11 @@ class OllamaProvider(BaseLLMProvider):
         httpx_timeout = httpx.Timeout(timeout_val, connect=5.0)
 
         try:
+            # Ollama nie ma osobnego chunka `usage` jak rodzina OpenAI-compatible —
+            # liczniki i powód zakończenia przychodzą w tym samym, ostatnim komunikacie
+            # oznaczonym `done: true`. Pojęcia cache promptu nie zna w ogóle, więc
+            # `cached_tokens` zostaje `None` (patrz `GenerationUsage`).
+            usage: GenerationUsage | None = None
             async with httpx.AsyncClient(timeout=httpx_timeout) as client:
                 async with client.stream("POST", url, json=payload) as response:
                     response.raise_for_status()
@@ -111,6 +123,14 @@ class OllamaProvider(BaseLLMProvider):
                             continue
                         try:
                             data = json.loads(line)
+                            if data.get("done"):
+                                usage = GenerationUsage(
+                                    prompt_tokens=data.get("prompt_eval_count"),
+                                    completion_tokens=data.get("eval_count"),
+                                    cached_tokens=None,
+                                    finish_reason=data.get("done_reason"),
+                                    model=data.get("model") or payload["model"],
+                                )
                             message_data = data.get("message", {})
                             reasoning = (
                                 message_data.get("reasoning_content")
@@ -139,6 +159,8 @@ class OllamaProvider(BaseLLMProvider):
                                     )
                         except json.JSONDecodeError:
                             continue
+
+                    yield usage or GenerationUsage(model=payload["model"])
         except httpx.ConnectError as e:
             logger.error(
                 f"Nie można połączyć się z serwerem Ollama pod adresem {self.base_url}. "

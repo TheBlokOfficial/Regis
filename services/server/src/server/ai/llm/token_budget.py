@@ -21,8 +21,12 @@ from server.ports.llm import LLMMessage
 
 _CHARS_PER_TOKEN_ESTIMATE = 4
 """Zgrubna heurystyka (nie tokenizacja) — wystarczająca jako margines bezpieczeństwa
-przy bramkowaniu, nie do rozliczeń. Prawdziwe zużycie z API nie jest dziś dostępne
-bez rozszerzania kontraktu `BaseLLMProvider` o zdarzenie użycia tokenów."""
+przy bramkowaniu, nie do rozliczeń.
+
+Używana dziś w dwóch rolach, celowo rozdzielonych: **przed** wywołaniem, gdzie nic
+innego nie istnieje (trzeba oszacować koszt tury, żeby zdecydować, czy w ogóle
+próbować danego backendu), oraz **po** wywołaniu jako awaryjny zamiennik, gdy
+dostawca nie zwróci `GenerationUsage` z realnymi licznikami (`router.py`)."""
 
 
 def estimate_tokens(messages: list[LLMMessage]) -> int:
@@ -39,7 +43,10 @@ class TokenBudgetTracker:
         self._usage: dict[str, deque[tuple[float, int]]] = {}
 
     def record(self, instance_id: str, tokens: int) -> None:
-        """Odnotowuje zużycie po udanym wywołaniu (estymacja wejścia + wyjścia)."""
+        """Odnotowuje zużycie po udanym wywołaniu (wejście + wyjście).
+
+        Realne liczniki z `GenerationUsage`, gdy dostawca je podał; estymata z
+        `estimate_tokens()` w przeciwnym razie — decyduje `router.py`."""
         self._prune(instance_id)
         self._usage.setdefault(instance_id, deque()).append((time.monotonic(), tokens))
 

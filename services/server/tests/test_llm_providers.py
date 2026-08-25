@@ -11,7 +11,7 @@ from server.ai.llm.model_catalog import (
 from server.ai.llm.models import BackendInstanceConfig, ProviderType
 from server.ai.llm.providers.ollama import OllamaProvider
 from server.ai.llm.providers.openai_compatible import OpenAICompatibleProvider
-from server.ports.llm import LLMMessage
+from server.ports.llm import GenerationUsage, LLMMessage
 
 
 @pytest.mark.anyio
@@ -26,6 +26,7 @@ async def test_ollama_provider_max_tokens_num_predict():
 
     async def mock_aiter_lines():
         yield '{"message": {"content": "World"}}'
+        yield '{"message": {"content": ""}, "done": true, "done_reason": "stop", "prompt_eval_count": 11, "eval_count": 3}'
 
     mock_response.aiter_lines = mock_aiter_lines
 
@@ -42,7 +43,17 @@ async def test_ollama_provider_max_tokens_num_predict():
 
     with patch("httpx.AsyncClient", return_value=mock_async_client_ctx):
         chunks = [chunk async for chunk in provider.generate_stream(messages)]
-        assert "".join(chunks) == "World"
+        assert "".join(c for c in chunks if isinstance(c, str)) == "World"
+
+        # Rozliczenie generacji: JEDNO, terminalne zdarzenie na końcu strumienia.
+        usage = [c for c in chunks if isinstance(c, GenerationUsage)]
+        assert len(usage) == 1
+        assert chunks[-1] is usage[0]
+        assert usage[0].prompt_tokens == 11
+        assert usage[0].completion_tokens == 3
+        assert usage[0].finish_reason == "stop"
+        # Ollama nie zna pojęcia cache promptu — `None`, nigdy 0 (patrz `GenerationUsage`).
+        assert usage[0].cached_tokens is None
 
         # Sprawdzamy czy w wysłanym payloadzie w options znajduje się num_predict = 8192
         mock_client.stream.assert_called_once()
@@ -85,7 +96,10 @@ async def test_openai_compatible_provider_streams_and_applies_extras(base_url, e
     mock_response.is_error = False
 
     async def mock_aiter_lines():
-        yield 'data: {"choices": [{"delta": {"content": "Hi"}}]}'
+        yield 'data: {"model": "test-model", "choices": [{"delta": {"content": "Hi"}, "finish_reason": "stop"}]}'
+        # Blok `usage` przychodzi w OSOBNYM chunku, z pustą listą `choices` — dokładnie
+        # ten kształt gubiła poprzednia wersja parsera (odczyt tylko wewnątrz `if choices`).
+        yield 'data: {"model": "test-model", "choices": [], "usage": {"prompt_tokens": 42, "completion_tokens": 7, "prompt_tokens_details": {"cached_tokens": 16}}}'
         yield 'data: [DONE]'
 
     mock_response.aiter_lines = mock_aiter_lines
@@ -103,7 +117,15 @@ async def test_openai_compatible_provider_streams_and_applies_extras(base_url, e
 
     with patch("httpx.AsyncClient", return_value=mock_async_client_ctx):
         chunks = [chunk async for chunk in provider.generate_stream(messages)]
-        assert "".join(chunks) == "Hi"
+        assert "".join(c for c in chunks if isinstance(c, str)) == "Hi"
+
+        usage = [c for c in chunks if isinstance(c, GenerationUsage)]
+        assert len(usage) == 1
+        assert chunks[-1] is usage[0]
+        assert usage[0].prompt_tokens == 42
+        assert usage[0].completion_tokens == 7
+        assert usage[0].cached_tokens == 16
+        assert usage[0].finish_reason == "stop"
 
         mock_client.stream.assert_called_once()
         call_args = mock_client.stream.call_args
@@ -111,6 +133,8 @@ async def test_openai_compatible_provider_streams_and_applies_extras(base_url, e
 
         json_payload = call_args.kwargs.get("json", {})
         assert json_payload.get("max_tokens") == 2048
+        # Bez tego opt-inu żaden dostawca z tej rodziny nie przyśle bloku `usage`.
+        assert json_payload.get("stream_options") == {"include_usage": True}
         headers = call_args.kwargs.get("headers", {})
         assert headers.get("Authorization") == "Bearer test-key"
 

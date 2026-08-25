@@ -30,6 +30,7 @@ z wyprzedzenia.
 
 from server.ports.llm import (
     BaseLLMProvider,
+    GenerationUsage,
     LLMMessage,
     LLMResponse,
     LLMRole,
@@ -46,6 +47,7 @@ __all__ = [
     "BaseLLMProvider",
     "BaseSTTProvider",
     "BaseTTSProvider",
+    "GenerationUsage",
     "LLMMessage",
     "LLMResponse",
     "LLMRole",

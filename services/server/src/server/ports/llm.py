@@ -45,6 +45,33 @@ class ReasoningChunk:
 
 
 @dataclass
+class GenerationUsage:
+    """Rozliczenie zakończonej generacji — emitowane **raz, na samym końcu** strumienia.
+
+    Celowo nie `...Chunk`: to nie jest fragment czegokolwiek, tylko terminalne
+    podsumowanie rundy. Ale powód istnienia jest ten sam co przy `ReasoningChunk` —
+    fakt strukturalny (ile tokenów, dlaczego model przestał pisać) ma podróżować
+    jako osobny typ zdarzenia, a nie być doklejany do tekstu albo odczytywany
+    z prywatnego stanu providera po fakcie.
+
+    Każde pole jest `| None`, bo **żaden dostawca nie daje kompletu**: `cached_tokens`
+    zwraca dziś wyłącznie OpenRouter, Ollama nie zna pojęcia `finish_reason` w formie
+    OpenAI (ma `done_reason`), a starsze bramki OpenAI-compatible potrafią w ogóle
+    pominąć blok `usage`. `None` znaczy „dostawca tego nie powiedział" i nigdy nie
+    jest zastępowane zerem — konsument musi umieć odróżnić „zero tokenów cache"
+    od „nie wiadomo".
+
+    Kto tego nie konsumuje, pomija przez `isinstance` — dokładnie jak `ReasoningChunk`.
+    """
+
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cached_tokens: int | None = None
+    finish_reason: str | None = None
+    model: str | None = None
+
+
+@dataclass
 class ToolDefinition:
     """Specyfikacja narzędzia udostępnianego LLM (JSON Schema parametrów)."""
 
@@ -118,14 +145,17 @@ class BaseLLMProvider(ABC):
         messages: list[LLMMessage],
         tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest]:
-        """Strumieniuje fragmenty odpowiedzi, rozumowania oraz żądania wywołania narzędzi.
+    ) -> AsyncIterator[str | ReasoningChunk | ToolCallRequest | GenerationUsage]:
+        """Strumieniuje fragmenty odpowiedzi, rozumowania, żądania wywołania narzędzi
+        oraz końcowe rozliczenie generacji.
 
         :param messages: Lista wiadomości stanowiących kontekst konwersacji.
         :param tools: Opcjonalna lista narzędzi udostępnionych LLM do wywołania.
         :param kwargs: Dodatkowe opcjonalne parametry generacji.
         :yields: Fragmenty tekstu odpowiedzi (`str`), fragmenty rozumowania
-            (`ReasoningChunk`) lub kompletne żądania wywołania narzędzia (`ToolCallRequest`).
+            (`ReasoningChunk`), kompletne żądania wywołania narzędzia (`ToolCallRequest`)
+            oraz — jako **ostatnie** zdarzenie, o ile dostawca je udostępnia — jedno
+            `GenerationUsage` z licznikami tokenów i powodem zakończenia.
         """
         pass
 
@@ -144,8 +174,9 @@ class BaseLLMProvider(ABC):
         """
         chunks: list[str] = []
         async for event in self.generate_stream(messages, tools=tools, **kwargs):
-            # `ReasoningChunk`/`ToolCallRequest` odpadają same — `str` to wyłącznie
-            # tekst odpowiedzi, więc rozumowanie nigdy nie wycieka do `LLMResponse`.
+            # `ReasoningChunk`/`ToolCallRequest`/`GenerationUsage` odpadają same — `str`
+            # to wyłącznie tekst odpowiedzi, więc ani rozumowanie, ani telemetria nigdy
+            # nie wyciekają do `LLMResponse`.
             if isinstance(event, str):
                 chunks.append(event)
 

@@ -28,7 +28,7 @@ from server.agent.memory import MemoryManager
 from server.agent.tasks import SessionTaskRegistry
 from server.agent.turn_events import TurnEventPublisher
 from server.events import ServerEventType
-from server.ports.llm import BaseLLMProvider, LLMMessage, ReasoningChunk, ToolCallRequest
+from server.ports.llm import BaseLLMProvider, GenerationUsage, LLMMessage, ReasoningChunk, ToolCallRequest
 
 logger = get_logger("regis.agent.turn")
 
@@ -288,6 +288,13 @@ class TurnRunner:
                 await self._publisher.publish(
                     ServerEventType.CHAT_CHUNK, {"chunk": event.text, "kind": "reasoning"}
                 )
+                continue
+            if isinstance(event, GenerationUsage):
+                # Rozliczenie generacji nie jest treścią odpowiedzi i nie ma tu żadnego
+                # konsumenta — turze jest obojętne, ile tokenów kosztowała. Gałąź MUSI
+                # jednak istnieć jawnie: `else` niżej traktuje wszystko pozostałe jak
+                # tekst, więc bez tego obiekt trafiłby do bufora odpowiedzi, do pamięci
+                # sesji i z powrotem do modelu w kolejnej turze.
                 continue
             self._recorder.flush_reasoning(self._tasks.buffer_length(session_id))
             turn_text += event
