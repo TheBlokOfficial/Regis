@@ -2,7 +2,7 @@
 
 **System Regis** to rozproszony system usług sieciowych komunikujących się w sieci lokalnej, zbudowany w oparciu o architekturę monorepo w języku Python z wykorzystaniem menedżera pakietów [`uv`](https://github.com/astral-sh/uv) (`uv workspace`).
 
-Regis jest **ogólnym agentem AI**: rdzeń (kernel) odpowiada za rozmowę, pamięć i pętlę agentyczną, a konkretne możliwości (dziś: sterowanie Home Assistant, data/godzina) są doklejane z zewnątrz jako Rozszerzenia. Projekt oferuje obsługę wielu dostawców modeli LLM (lokalnych jak Ollama i chmurowych przez OpenRouter), **tool calling** w pełnej pętli ReAct, asynchroniczną magistralę zdarzeń `EventBus` oraz wbudowaną konsolę Web UI.
+Regis jest **ogólnym agentem AI**: rdzeń (kernel) odpowiada za rozmowę, pamięć i pętlę agentyczną, a konkretne możliwości (dziś: sterowanie Home Assistant, data/godzina, mówienie w pokoju) dostarcza jeden, konkretny silnik świata wstrzykiwany w kompozycji aplikacji. Projekt oferuje obsługę wielu dostawców modeli LLM (lokalnie Ollama, w chmurze OpenRouter i Groq) z łańcuchem fallbacku, **tool calling** w pełnej pętli ReAct, pipeline głosowy satelit (wake-word, STT/TTS), asynchroniczną magistralę zdarzeń `EventBus` oraz wbudowaną konsolę Web UI z panelem telemetrii wywołań LLM.
 
 ---
 
@@ -14,27 +14,33 @@ System Regis podzielony jest na autonomiczne usługi (`services/`) oraz wspólne
 Regis/
 ├── docs/             # Dokumentacja architektoniczna i wdrożeniowa (manifest.md, onboarding.md)
 ├── packages/         # Wspólne pakiety kodowe
-│   └── shared/       # Paczka shared (ConfigStore, EventBus, kontrakty DTO, logowanie)
+│   └── shared/       # Paczka shared (ConfigStore, EventBus, kontrakty DTO, logowanie, korelacja tury)
 ├── services/         # Usługi sieciowe i aplikacje
-│   └── server/       # Główny serwer Systemu Regis (bramka REST/SSE, kernel, rozszerzenia, Web UI)
+│   ├── server/       # Główny serwer (bramka REST/SSE, kernel, silnik świata, głos, telemetria, Web UI)
+│   └── desktop_satellite/  # Satelita desktopowa (mikrofon/głośnik, lokalny VAD, auto-discovery serwera)
 ├── pyproject.toml    # Konfiguracja uv workspace, grupy dev i pytest
 └── README.md         # Wprowadzenie do projektu
 ```
 
-### Trzy warstwy wewnątrz `services/server`
+### Warstwy wewnątrz `services/server`
 
-Fundamentem architektury jest **kierunek zależności: żadna warstwa nie zna z góry konkretnych implementacji warstwy poniżej** — te rejestrują się same, jawnie, w kompozycji aplikacji (`main.py`).
+Fundamentem architektury jest **kierunek zależności: kernel nie zna z góry żadnej konkretnej implementacji** — zna wyłącznie minimalne protokoły (`WorldInterface`, `BaseLLMProvider`), a konkrety wstrzykiwane są jawnie w kompozycji aplikacji (`main.py`).
 
 | Warstwa | Katalog | Odpowiedzialność |
 | :--- | :--- | :--- |
-| **0 — Kernel** | `server/agent/` | `AgentEngine` (pętla ReAct), `Gateway`, `MemoryManager`, `ContextBuilder`, `PromptStore`, dostawcy LLM |
-| **1 — Rozszerzenia** | `server/extensions/` | Domena możliwości agenta i deklaracja narzędzi LLM (dziś: `HomeAssistantExtension`, `BasicToolsExtension`) |
+| **Porty** | `server/ports/` | Kontrakty dostawców AI: `BaseLLMProvider`, `BaseSTTProvider`, `BaseTTSProvider`, `WakeWordDetector` |
+| **Kernel** | `server/agent/` | `AgentEngine`, `TurnRunner` (pętla ReAct), `MemoryManager`, `ContextBuilder` — domenowo pusty |
+| **Konkrety AI** | `server/ai/` | Ollama i OpenAI-compatible (OpenRouter, Groq), STT/TTS, wake-word, rejestry i routery |
+| **Silnik świata** | `server/world/` | `WorldEngine` — jedyny konkretny silnik: Home Assistant, pokoje, nadawcy, narzędzia, tożsamość agenta |
+| **Głos** | `server/voice/` | Gateway WS satelit — rozłączny ze światem, zna wyłącznie `AgentEngine` |
+| **Telemetria** | `server/telemetry/` | Zrzut każdego wywołania LLM (dekorator na porcie) — zasila zakładkę **Logi** |
 
-Dzięki temu Home Assistant jest tylko *narzędziem, którego agent może użyć* — nie integralną częścią tego, czym agent jest. Pełny opis warstw, przepływów danych i uzasadnienia decyzji: [`docs/manifest.md`](docs/manifest.md).
+Dzięki temu Home Assistant jest tylko *narzędziem, którego agent może użyć* — nie integralną częścią tego, czym agent jest. Generyczna wielorozszerzeniowość (`server/extensions/`, `PluginProvider`) została **świadomie porzucona**; uzasadnienie i warunki powrotu do tej decyzji: [`docs/manifest.md`](docs/manifest.md), sekcja 5.
 
 ### Kluczowe komponenty:
-- **`services/server`**: Serwer realizujący komunikację przez FastAPI (REST API v1), strumieniowanie odpowiedzi w czasie rzeczywistym (Server-Sent Events), silnik konwersacji `AgentEngine` z pętlą agentyczną (tool calling), zarządcę pamięci sesji `MemoryManager`, budowniczego kontekstu `ContextBuilder`, magazyn promptów systemowych `PromptStore`, rozszerzenia oraz wbudowany interfejs Web UI.
-- **`packages/shared`**: Centralny pakiet dzielony zawierający wspólny magazyn konfiguracji (`ConfigStore`), asynchroniczną magistralę zdarzeń (`EventBus`), obiekty transferu danych (`contracts.py`) oraz standaryzowany moduł logowania (`logging.py`).
+- **`services/server`**: Serwer realizujący komunikację przez FastAPI (REST API v1), strumieniowanie odpowiedzi w czasie rzeczywistym (Server-Sent Events), silnik konwersacji `AgentEngine` z pętlą agentyczną (tool calling), zarządcę pamięci sesji `MemoryManager`, budowniczego kontekstu `ContextBuilder`, silnik świata `WorldEngine`, pipeline głosowy satelit oraz telemetrię wywołań LLM zasilającą wbudowany interfejs Web UI.
+- **`services/desktop_satellite`**: Realny klient satelity na Windows/Linux — mikrofon i głośnik przez `sounddevice`, lokalny VAD końca wypowiedzi, automatyczne odnajdywanie serwera w sieci lokalnej. Nie importuje niczego z `services/server`; łączy je wyłącznie `packages/shared` i protokół WebSocket.
+- **`packages/shared`**: Centralny pakiet dzielony zawierający wspólny magazyn konfiguracji (`ConfigStore`, `JsonInstanceRepository`), asynchroniczną magistralę zdarzeń (`EventBus`), obiekty transferu danych (`contracts.py`), korelację tury (`correlation.py`), protokół WS satelit (`voice_protocol.py`) oraz standaryzowany moduł logowania (`logging.py`).
 
 ---
 
@@ -64,6 +70,7 @@ Po uruchomieniu serwera aplikacja jest dostępna pod adresami:
 - **Dokumentacja Swagger UI**: `http://127.0.0.1:8000/docs`
 - **API REST (Czat)**: `http://127.0.0.1:8000/api/v1/chat`
 - **Strumieniowanie SSE**: `http://127.0.0.1:8000/api/v1/chat/stream`
+- **Telemetria wywołań LLM**: `http://127.0.0.1:8000/api/v1/telemetry/generations`
 
 Pełna mapa punktów końcowych: [`docs/onboarding.md`](docs/onboarding.md#4-uruchamianie-i-weryfikacja).
 
@@ -83,12 +90,22 @@ python -m uv run python -m pytest -q
 
 Cała konfiguracja jest persystentna i trzymana w plikach JSON zarządzanych przez `ConfigStore` — **żaden parametr nie jest odczytywany ze zmiennych środowiskowych**:
 
+Ścieżki poniżej są względne wobec `services/server/`; cały katalog `data/` jest w `.gitignore`.
+
 | Co | Gdzie | Wygodna edycja |
 | :--- | :--- | :--- |
-| Ustawienia serwera (host, port, limity) | `services/server/config/settings.json` | ręcznie |
-| Instancje dostawców LLM (Ollama, OpenRouter) | `services/server/data/backends/*.json` | zakładka **Ustawienia** w Web UI |
-| Prompty systemowe | `services/server/data/prompts/*.json` | zakładka **Prompty** w Web UI |
-| Połączenia Home Assistant i grupy urządzeń | `services/server/data/extensions/home_assistant/{connections,groups}/*.json` | zakładka **Rozszerzenia** w Web UI |
+| Ustawienia serwera (host, port, limity, progi wake-word/VAD, retencja telemetrii) | `config/settings.json` | ręcznie (progi głosowe także w Ustawieniach → **Klienci**) |
+| Instancje dostawców LLM (Ollama, OpenRouter, Groq) | `data/backends/*.json` + `data/active_backend.json` | Ustawienia → **Dostawcy** |
+| Kolejność łańcucha fallbacku LLM | `data/fallback_chain.json` | Ustawienia → **Dostawcy** (pole `Priority` na karcie presetu) |
+| Instancje dostawców STT/TTS | `data/stt_backends/*.json`, `data/tts_backends/*.json` | Ustawienia → **Dostawcy** |
+| Tożsamość agenta — do 3 profili promptu | `data/world/prompts/*.json` + `data/world/active_prompt.json` | Ustawienia → **Świat → Prompty** |
+| Sekcje kontekstu tury (fakty wstrzykiwane przed każdym pytaniem) | `data/world/prompt_sections.json` | Ustawienia → **Świat → Kontekst tury** |
+| Połączenie z Home Assistant, zadeklarowane urządzenia, grupy, pokoje | `data/world/config.json`, `data/world/declared_devices.json`, `data/world/groups/*.json`, `data/world/rooms/*.json` | Ustawienia → **Świat** |
+| Zarejestrowani klienci (`sender_id` → pokój, nazwa, możliwości) | `data/world/senders.json` | Ustawienia → **Klienci** i **Świat** |
+| Historia konwersacji | `data/sessions/*.json` | zakładka **Czat** |
+| Telemetria wywołań LLM | `data/telemetry/generations.db` (SQLite) | zakładka **Logi** |
+
+> **Fallbackowy prompt kernela** (`data/agent_default_prompt.json`) to jedna wartość używana **wyłącznie** wtedy, gdy silnik świata nie jest podłączony — nie myl go z profilami tożsamości Świata z tabeli wyżej. Katalog `data/prompts/` i plik `data/active_prompt.json` to pozostałość po dawnym, wieloprofilowym magazynie promptów kernela: są nieużywane i służą już tylko jednorazowej migracji przy pierwszym starcie.
 
 Szczegółowy opis wszystkich parametrów: [`docs/onboarding.md`](docs/onboarding.md#2-konfiguracja).
 
