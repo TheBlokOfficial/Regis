@@ -13,7 +13,6 @@ w zapytaniu, a nie drugi model danych.
 
 from __future__ import annotations
 
-import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -93,7 +92,25 @@ class GenerationRecord(BaseModel):
     messages: list[MessageSnapshot] = Field(default_factory=list)
     tools: list[dict[str, Any]] = Field(default_factory=list)
     attempts: list[AttemptSnapshot] = Field(default_factory=list)
-    truncated: bool = Field(default=False, description="Czy treści wiadomości zostały ucięte przez limit rozmiaru")
+    truncated: bool = Field(default=False, description="Czy treści zostały ucięte przez limit rozmiaru")
+
+    # --- Co model wygenerował w odpowiedzi na powyższy kontekst ---------------
+    #
+    # Powiązanie wejścia z wyjściem nie potrzebuje żadnego klucza: rekord JEST
+    # jednym `generate_stream()`, więc to, co strumień wydał, jest z definicji
+    # odpowiedzią na dokładnie ten input.
+    #
+    # Odtworzenie tego z kolejnych rekordów **nie zadziała** i nie jest to detal:
+    # runda pośrednia faktycznie wraca do modelu jako `assistant`+`tool` w kontekście
+    # następnego wywołania, ale runda OSTATNIA już nie — finalna odpowiedź idzie do
+    # pamięci sesji, nie do `working_messages`. Rozumowanie nie wraca nigdy i donikąd
+    # (patrz `ReasoningChunk`), więc dekorator na porcie jest jedynym miejscem
+    # w systemie, które je w ogóle widzi.
+    answer: str = Field(default="", description="Tekst odpowiedzi wygenerowany w tej rundzie")
+    reasoning: str = Field(default="", description="Monolog wewnętrzny modelu (chain of thought) z tej rundy")
+    response_tool_calls: list[dict[str, Any]] = Field(
+        default_factory=list, description="Żądania wywołania narzędzi wygenerowane w tej rundzie"
+    )
 
 
 def snapshot_messages(messages: list[LLMMessage]) -> list[MessageSnapshot]:
@@ -123,24 +140,30 @@ def snapshot_tools(tools: list[ToolDefinition] | None) -> list[dict[str, Any]]:
     return [{"name": t.name, "description": t.description, "parameters": t.parameters} for t in tools]
 
 
+def _clip(text: str, budget: int) -> str:
+    return text[:budget] + _TRUNCATION_MARKER if len(text) > budget else text
+
+
 def enforce_size_limit(record: GenerationRecord, max_bytes: int) -> GenerationRecord:
     """Przycina zrzut do limitu, gdy prompt urósł ponad rozsądek.
 
-    Ucinane są **wyłącznie treści wiadomości** — struktura (ile wiadomości, w jakich
-    rolach, z jakimi narzędziami) zostaje nietknięta, bo to ona niesie większość
-    wartości diagnostycznej i to po niej działa porównywanie kolejnych wywołań.
-    Budżet dzielony jest równo, więc jedna gigantyczna wiadomość nie wypycha
-    wszystkich pozostałych do zera.
+    Ucinane są **wyłącznie treści** (wiadomości kontekstu, odpowiedź, rozumowanie) —
+    struktura (ile wiadomości, w jakich rolach, z jakimi narzędziami) zostaje
+    nietknięta, bo to ona niesie większość wartości diagnostycznej i to po niej
+    działa porównywanie kolejnych wywołań. Budżet dzielony jest równo, więc jedna
+    gigantyczna wiadomość nie wypycha wszystkich pozostałych do zera.
     """
-    payload_size = len(json.dumps([m.model_dump() for m in record.messages], ensure_ascii=False).encode("utf-8"))
+    parts = [m.content for m in record.messages] + [record.answer, record.reasoning]
+    payload_size = sum(len(part.encode("utf-8")) for part in parts)
     if payload_size <= max_bytes:
         return record
 
-    budget = max(_MIN_CONTENT_BUDGET, max_bytes // max(1, len(record.messages)))
-    trimmed = [
-        m.model_copy(update={"content": m.content[:budget] + _TRUNCATION_MARKER})
-        if len(m.content) > budget
-        else m
-        for m in record.messages
-    ]
-    return record.model_copy(update={"messages": trimmed, "truncated": True})
+    budget = max(_MIN_CONTENT_BUDGET, max_bytes // max(1, len(parts)))
+    return record.model_copy(
+        update={
+            "messages": [m.model_copy(update={"content": _clip(m.content, budget)}) for m in record.messages],
+            "answer": _clip(record.answer, budget),
+            "reasoning": _clip(record.reasoning, budget),
+            "truncated": True,
+        }
+    )

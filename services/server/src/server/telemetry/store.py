@@ -70,7 +70,10 @@ CREATE TABLE IF NOT EXISTS generations (
     truncated        INTEGER NOT NULL DEFAULT 0,
     messages_json    TEXT    NOT NULL,
     tools_json       TEXT    NOT NULL,
-    attempts_json    TEXT    NOT NULL
+    attempts_json    TEXT    NOT NULL,
+    answer           TEXT    NOT NULL DEFAULT '',
+    reasoning        TEXT    NOT NULL DEFAULT '',
+    response_tool_calls_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_generations_created_at ON generations (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_generations_turn ON generations (session_id, turn_id, call_index);
@@ -81,6 +84,13 @@ _ENTRY_COLUMNS = (
     "status, finish_reason, prompt_tokens, completion_tokens, cached_tokens, estimated, "
     "ttft_ms, total_ms, output_tps, tool_calls, message_count, attempt_count, truncated"
 )
+
+_ADDED_COLUMNS = (
+    ("answer", "TEXT NOT NULL DEFAULT ''"),
+    ("reasoning", "TEXT NOT NULL DEFAULT ''"),
+    ("response_tool_calls_json", "TEXT NOT NULL DEFAULT '[]'"),
+)
+"""Kolumny dołożone po pierwszym wydaniu schematu — patrz `_add_missing_columns`."""
 
 _WRITE_BATCH = 32
 """Ile rekordów writer scala w jedną transakcję, gdy kolejka zdążyła urosnąć."""
@@ -195,6 +205,7 @@ class GenerationLogStore:
             messages=[GenerationMessageDTO(**m) for m in json.loads(data["messages_json"])],
             tools=json.loads(data["tools_json"]),
             attempts=[GenerationAttemptDTO(**a) for a in json.loads(data["attempts_json"])],
+            response_tool_calls=json.loads(data["response_tool_calls_json"]),
         )
 
     async def clear(self) -> int:
@@ -225,6 +236,23 @@ class GenerationLogStore:
             # WAL: czytelnik (lista w UI) nie blokuje się na writerze i odwrotnie.
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(_SCHEMA)
+            self._add_missing_columns(conn)
+
+    def _add_missing_columns(self, conn: sqlite3.Connection) -> None:
+        """Dokłada kolumny, których brakuje w bazie założonej wcześniejszą wersją.
+
+        `CREATE TABLE IF NOT EXISTS` nie dotyka istniejącej tabeli, więc bez tego
+        kroku dotychczasowa baza użytkownika przestałaby przyjmować zapisy po każdym
+        rozszerzeniu rekordu. Migracja jest **wyłącznie addytywna** (`ADD COLUMN`
+        z wartością domyślną) — stare wpisy zostają, po prostu mają pusty nowy zakres.
+        Wystarcza dla telemetrii, bo kolumny tylko przybywają; gdyby kiedyś trzeba
+        było zmienić typ albo usunąć kolumnę, to jest miejsce na prawdziwą migrację.
+        """
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(generations)")}
+        for column, definition in _ADDED_COLUMNS:
+            if column not in existing:
+                conn.execute(f"ALTER TABLE generations ADD COLUMN {column} {definition}")
+                logger.info(f"Telemetria: dołożono kolumnę '{column}' do istniejącej bazy.")
 
     def _insert_batch(self, batch: list[GenerationRecord]) -> None:
         with self._session() as conn:
@@ -237,8 +265,9 @@ class GenerationLogStore:
                     prompt_tokens, completion_tokens, cached_tokens, estimated,
                     ttft_ms, total_ms, output_tps, tool_calls,
                     message_count, attempt_count, truncated,
-                    messages_json, tools_json, attempts_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    messages_json, tools_json, attempts_json,
+                    answer, reasoning, response_tool_calls_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [_row_values(record) for record in batch],
             )
@@ -327,4 +356,7 @@ def _row_values(record: GenerationRecord) -> tuple[Any, ...]:
         json.dumps([m.model_dump() for m in record.messages], ensure_ascii=False),
         json.dumps(record.tools, ensure_ascii=False),
         json.dumps([a.model_dump() for a in record.attempts], ensure_ascii=False),
+        record.answer,
+        record.reasoning,
+        json.dumps(record.response_tool_calls, ensure_ascii=False),
     )

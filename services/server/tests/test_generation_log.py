@@ -25,6 +25,7 @@ from server.ports.llm import (
     BaseLLMProvider,
     GenerationUsage,
     LLMMessage,
+    ReasoningChunk,
     ToolCallRequest,
     ToolDefinition,
     ToolResult,
@@ -75,6 +76,21 @@ class _ToolThenAnswerProvider(BaseLLMProvider):
         else:
             yield "Gotowe."
             yield GenerationUsage(prompt_tokens=80, completion_tokens=2, finish_reason="stop")
+
+
+class _ReasoningProvider(BaseLLMProvider):
+    """Model myśli, potem odpowiada — rozumowanie i tekst to dwa różne wyjścia."""
+
+    def __init__(self) -> None:
+        self._model = "mock-reasoning"
+
+    async def generate_stream(
+        self, messages: List[LLMMessage], tools: list[ToolDefinition] | None = None, **kwargs: Any
+    ) -> AsyncIterator[Any]:
+        del messages, tools, kwargs
+        yield ReasoningChunk(text="Zastanawiam się.")
+        yield "Gotowe."
+        yield GenerationUsage(prompt_tokens=10, completion_tokens=5, finish_reason="stop")
 
 
 class _ExplodingProvider(BaseLLMProvider):
@@ -201,6 +217,48 @@ async def test_react_loop_produces_one_record_per_llm_call_with_growing_context(
         # Druga runda dostała dodatkowo wiadomość assistant z wywołaniem i wynik narzędzia.
         assert len(second.messages) > len(first.messages)
         assert [m.role for m in second.messages][-2:] == ["assistant", "tool"]
+
+
+@pytest.mark.anyio
+async def test_record_pairs_the_context_with_what_the_model_generated() -> None:
+    """Wejście i wyjście w jednym rekordzie — powiązanie nie potrzebuje klucza obcego,
+    bo wpis JEST jednym wywołaniem dostawcy."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine, store, _ = await _engine_with_telemetry(tmp_dir, _ReasoningProvider())
+
+        _ = [e async for e in engine.interact_stream(session_id="s1", prompt="hej")]
+        await _drain(store)
+
+        detail = await store.get_entry((await store.list_entries()).entries[0].id)
+        assert detail is not None
+        assert detail.answer == "Gotowe."
+        # Rozumowanie nie istnieje NIGDZIE indziej: nie wchodzi do pamięci sesji ani
+        # nie wraca do modelu, więc telemetria jest jedynym jego śladem.
+        assert detail.reasoning == "Zastanawiam się."
+        assert engine.memory_manager.get_history(session_id="s1")[-1].content == "Gotowe."
+
+
+@pytest.mark.anyio
+async def test_tool_round_records_requested_calls_and_empty_answer() -> None:
+    """Runda zakończona wywołaniem narzędzia nie ma tekstu odpowiedzi — i to jest
+    poprawny stan, nie brak danych."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        engine, store, _ = await _engine_with_telemetry(
+            tmp_dir, _ToolThenAnswerProvider(), _WorldWithVolatileContext()
+        )
+
+        _ = [e async for e in engine.interact_stream(session_id="s1", prompt="sprawdź")]
+        await _drain(store)
+
+        entries = sorted((await store.list_entries()).entries, key=lambda e: e.call_index)
+        first = await store.get_entry(entries[0].id)
+        second = await store.get_entry(entries[1].id)
+        assert first is not None and second is not None
+
+        assert first.answer == ""
+        assert [c["name"] for c in first.response_tool_calls] == ["probe"]
+        assert second.answer == "Gotowe."
+        assert second.response_tool_calls == []
 
 
 @pytest.mark.anyio
@@ -399,6 +457,59 @@ async def test_oversized_snapshot_is_truncated_but_keeps_its_structure() -> None
         assert len(detail.messages[0].content) < 50_000
         # Krótka wiadomość nie jest ruszana — ucinanie ma budżet per wiadomość.
         assert detail.messages[1].content == "krótka wiadomość"
+
+
+@pytest.mark.anyio
+async def test_existing_database_gains_new_columns_without_losing_records() -> None:
+    """`CREATE TABLE IF NOT EXISTS` nie dotyka istniejącej tabeli, więc rozszerzenie
+    rekordu o nowe pola musi domknąć addytywna migracja — inaczej baza użytkownika
+    przestałaby przyjmować zapisy po aktualizacji."""
+    import sqlite3
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        db_path = Path(tmp_dir) / "generations.db"
+
+        # Baza w kształcie sprzed dołożenia sekcji odpowiedzi, z jednym starym wpisem.
+        legacy = sqlite3.connect(db_path)
+        legacy.executescript(
+            """
+            CREATE TABLE generations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at REAL NOT NULL, session_id TEXT, turn_id TEXT,
+                call_index INTEGER NOT NULL DEFAULT 0, sender_id TEXT,
+                model TEXT, provider_type TEXT, instance_id TEXT, instance_name TEXT,
+                status TEXT NOT NULL, finish_reason TEXT, error TEXT,
+                prompt_tokens INTEGER, completion_tokens INTEGER, cached_tokens INTEGER,
+                estimated INTEGER NOT NULL DEFAULT 1,
+                ttft_ms REAL, total_ms REAL, output_tps REAL,
+                tool_calls INTEGER NOT NULL DEFAULT 0,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                truncated INTEGER NOT NULL DEFAULT 0,
+                messages_json TEXT NOT NULL, tools_json TEXT NOT NULL, attempts_json TEXT NOT NULL
+            );
+            INSERT INTO generations (created_at, status, messages_json, tools_json, attempts_json)
+            VALUES (1.0, 'ok', '[]', '[]', '[]');
+            """
+        )
+        legacy.commit()
+        legacy.close()
+
+        store = GenerationLogStore(db_path=db_path)
+        await store.start()
+        store.submit(_record(2).model_copy(update={"answer": "nowy wpis"}))
+        await _drain(store)
+
+        entries = (await store.list_entries()).entries
+        assert len(entries) == 2, "Stary wpis musi przetrwać migrację"
+
+        migrated = await store.get_entry(min(e.id for e in entries))
+        assert migrated is not None
+        assert migrated.answer == ""
+        assert migrated.response_tool_calls == []
+
+        fresh = await store.get_entry(max(e.id for e in entries))
+        assert fresh is not None and fresh.answer == "nowy wpis"
 
 
 @pytest.mark.anyio

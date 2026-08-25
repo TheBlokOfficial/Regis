@@ -87,7 +87,9 @@ nie ma w historii czatu, bo powstają na nowo przy każdej turze i nigdzie się 
 Każdy blok wiadomości jest opisany rolą w kontekście (`system prompt` / `fakty tury` /
 `historia` / `pytanie użytkownika` / `wynik narzędzia`), a to, co się nie zmieniło od
 poprzedniego wywołania tej samej sesji, jest domyślnie zwinięte — zmieniony system prompt
-dostaje badge i diff liniowy. Dane pochodzą z `data/telemetry/generations.db` (patrz
+dostaje badge i diff liniowy. Pod kontekstem wejściowym stoi sekcja **Odpowiedź modelu**
+z tym, co powstało dokładnie na jego podstawie: rozumowaniem, żądaniami wywołania narzędzi
+i tekstem odpowiedzi. Dane pochodzą z `data/telemetry/generations.db` (patrz
 `docs/manifest.md` sekcja 3.8); zakładka nie czyta `data/logs/regis.log`, który jest
 osobnym, tekstowym logiem aplikacji.
 
@@ -196,7 +198,7 @@ Wszystkie trzy wejścia odpalające turę (`/chat`, `/chat/stream`, `/chat/send`
 | | `DELETE /api/v1/voice/stt/providers/{id}` `.../tts/providers/{id}` | Usunięcie instancji STT/TTS z dysku |
 | | `GET /api/v1/voice/connected` | `sender_id` z aktualnie żywym połączeniem WS — pozwala Web UI (Świat → Nadawcy) pokazać podłączone, ale jeszcze niezarejestrowane satelity |
 | **Telemetria (Logi)** | `GET /api/v1/telemetry/generations` | Lista wywołań LLM od najnowszego. Stronicowanie kursorem (`before_id`, nie offsetem — lista rośnie od góry), filtry `session_id`/`turn_id`/`status`. Wiersz **nie** niesie zrzutu wiadomości |
-| | `GET /api/v1/telemetry/generations/{id}` | Pełny zrzut: dokładny kontekst wysłany do modelu (łącznie z system promptem i ulotnymi faktami tury), narzędzia, próby łańcucha fallbacku, surowa treść błędu. `404`, jeśli wpis wypadł już przez rotację |
+| | `GET /api/v1/telemetry/generations/{id}` | Pełny zrzut **wejścia i wyjścia**: dokładny kontekst wysłany do modelu (łącznie z system promptem i ulotnymi faktami tury), narzędzia, próby łańcucha fallbacku, surowa treść błędu, a także to, co model wygenerował — `answer`, `reasoning` (monolog wewnętrzny, nieodtwarzalny z niczego innego) i `response_tool_calls`. `404`, jeśli wpis wypadł już przez rotację |
 | | `DELETE /api/v1/telemetry/generations` | Czyści całą telemetrię. Zwraca `{"success": true, "deleted": N}` — jedyny `DELETE` odbiegający od `DeletionResponse`, bo nie usuwa **zasobu o identyfikatorze**, tylko opróżnia kolekcję |
 
 > **Świadome założenie**: `WS /ws/voice/{sender_id}` nie ma żadnego uwierzytelniania

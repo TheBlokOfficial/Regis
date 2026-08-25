@@ -155,8 +155,12 @@ class RecordingLLMProvider(BaseLLMProvider):
 
         started = time.perf_counter()
         first_event_at: float | None = None
-        answer_chars = 0
-        tool_call_count = 0
+        # Fragmenty zbieramy do list i sklejamy raz na końcu — konkatenacja `str +=`
+        # w pętli po tysiącach tokenów jest kwadratowa, a ta pętla stoi na ścieżce
+        # dostarczania odpowiedzi użytkownikowi.
+        answer_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        response_tool_calls: list[dict[str, Any]] = []
         usage: GenerationUsage | None = None
         status: GenerationStatus = "ok"
         error: str | None = None
@@ -168,9 +172,11 @@ class RecordingLLMProvider(BaseLLMProvider):
                 if isinstance(event, GenerationUsage):
                     usage = event
                 elif isinstance(event, ToolCallRequest):
-                    tool_call_count += 1
+                    response_tool_calls.append({"id": event.id, "name": event.name, "arguments": event.arguments})
+                elif isinstance(event, ReasoningChunk):
+                    reasoning_parts.append(event.text)
                 elif isinstance(event, str):
-                    answer_chars += len(event)
+                    answer_parts.append(event)
                 yield event
         except asyncio.CancelledError:
             status = "cancelled"
@@ -190,8 +196,9 @@ class RecordingLLMProvider(BaseLLMProvider):
                     tools=tools,
                     started=started,
                     first_event_at=first_event_at,
-                    answer_chars=answer_chars,
-                    tool_call_count=tool_call_count,
+                    answer="".join(answer_parts),
+                    reasoning="".join(reasoning_parts),
+                    response_tool_calls=response_tool_calls,
                     usage=usage,
                     status=status,
                     error=error,
@@ -248,8 +255,9 @@ class RecordingLLMProvider(BaseLLMProvider):
         tools: list[ToolDefinition] | None,
         started: float,
         first_event_at: float | None,
-        answer_chars: int,
-        tool_call_count: int,
+        answer: str,
+        reasoning: str,
+        response_tool_calls: list[dict[str, Any]],
         usage: GenerationUsage | None,
         status: GenerationStatus,
         error: str | None,
@@ -267,9 +275,11 @@ class RecordingLLMProvider(BaseLLMProvider):
             # Estymata z tej samej heurystyki, którą bramkuje budżet TPM — jedna
             # definicja „ile to mniej więcej tokenów" w całym systemie.
             prompt_tokens = estimate_tokens_from_chars(sum(len(m.content) for m in messages))
-            # Runda zakończona samym wywołaniem narzędzia nie wygenerowała ANI JEDNEGO
-            # tokena odpowiedzi — zero, nie podłoga estymatora.
-            completion_tokens = estimate_tokens_from_chars(answer_chars) if answer_chars else 0
+            # Rozumowanie też jest tokenami wyjściowymi, za które dostawca liczy —
+            # runda zakończona samym wywołaniem narzędzia nie wygenerowała jednak ANI
+            # JEDNEGO, więc tu ma być zero, nie podłoga estymatora.
+            generated_chars = len(answer) + len(reasoning)
+            completion_tokens = estimate_tokens_from_chars(generated_chars) if generated_chars else 0
 
         generation_seconds = finished - first_event_at if first_event_at is not None else None
         return GenerationRecord(
@@ -296,8 +306,11 @@ class RecordingLLMProvider(BaseLLMProvider):
                 if completion_tokens and generation_seconds and generation_seconds > 0
                 else None
             ),
-            tool_calls=tool_call_count,
+            tool_calls=len(response_tool_calls),
             messages=messages,
             tools=snapshot_tools(tools),
             attempts=attempts,
+            answer=answer,
+            reasoning=reasoning,
+            response_tool_calls=response_tool_calls,
         )

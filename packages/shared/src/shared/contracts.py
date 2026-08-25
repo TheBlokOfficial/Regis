@@ -349,13 +349,26 @@ class GenerationLogEntryDTO(BaseModel):
 
 
 class GenerationLogDetailDTO(GenerationLogEntryDTO):
-    """Pełny wpis wraz ze zrzutem tego, co dokładnie poleciało do modelu."""
+    """Pełny wpis: co dokładnie poleciało do modelu i co model na to wygenerował.
+
+    Wejście i wyjście w jednym DTO, bo są jednym bytem — wpis odpowiada dokładnie
+    jednemu wywołaniu dostawcy, więc `answer`/`reasoning`/`response_tool_calls` są
+    z definicji odpowiedzią na `messages` z tego samego wpisu. Żaden klucz obcy nie
+    jest do tego potrzebny."""
 
     sender_id: str | None = Field(default=None, description="Opaque identyfikator nadawcy tury")
     error: str | None = Field(default=None, description="Surowa treść błędu — panel diagnostyczny nie sanityzuje")
     messages: list[GenerationMessageDTO] = Field(default_factory=list, description="Zrzut kontekstu wysłanego do modelu")
     tools: list[dict[str, Any]] = Field(default_factory=list, description="Narzędzia udostępnione modelowi")
     attempts: list[GenerationAttemptDTO] = Field(default_factory=list, description="Próby łańcucha fallbacku")
+    answer: str = Field(default="", description="Tekst odpowiedzi wygenerowany w tej rundzie")
+    reasoning: str = Field(
+        default="",
+        description="Monolog wewnętrzny modelu z tej rundy — nie istnieje nigdzie indziej, bo chain of thought nie trafia ani do pamięci sesji, ani z powrotem do modelu",
+    )
+    response_tool_calls: list[dict[str, Any]] = Field(
+        default_factory=list, description="Żądania wywołania narzędzi wygenerowane w tej rundzie"
+    )
 
 
 class GenerationLogListResponse(BaseModel):

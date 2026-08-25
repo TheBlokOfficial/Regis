@@ -498,6 +498,13 @@
   color: var(--accent-warning);
 }
 
+/* Rozumowanie modelu — stonowane celowo: to materiał pomocniczy, nie treść,
+   którą użytkownik zobaczył (ten sam podział co w bąbelkach czatu). */
+.logs-role--reasoning {
+  color: var(--text-muted-aa);
+  font-style: italic;
+}
+
 .logs-message-provenance {
   font-size: 0.76rem;
   color: var(--text-muted-aa);
