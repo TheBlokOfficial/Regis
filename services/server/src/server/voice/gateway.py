@@ -73,6 +73,7 @@ class VoiceConnection:
             on_transcript=self._on_transcript,
             publish_event=self._publish_voice_event,
             is_registered=is_registered,
+            silence_amplitude_threshold=settings_loader().vad_amplitude_threshold,
         )
 
     # --------------------------------------------------------------------------

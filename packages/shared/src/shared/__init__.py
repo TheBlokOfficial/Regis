@@ -1,5 +1,6 @@
 """Wspólne moduły i narzędzia dla usług Regis."""
 
+from shared.audio import peak_amplitude
 from shared.config import ConfigStore, get_service_root, sanitize_identifier
 from shared.contracts import (
     AgentDefaultPromptDTO,
@@ -84,6 +85,7 @@ __all__ = [
     "PromptDTO",
     "PromptListResponse",
     "ModelSpecDTO",
+    "peak_amplitude",
     "ProviderMetadataResponse",
     "ProviderModelsResponse",
     "ProviderOptionChoice",

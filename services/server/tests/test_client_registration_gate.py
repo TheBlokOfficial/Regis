@@ -158,6 +158,11 @@ def test_registered_satellite_starts_a_turn() -> None:
             ws.send_text(json.dumps({"type": "hello", "capabilities": ["mic", "speaker"]}))
             for _ in range(3):
                 ws.send_bytes(_LOUD_FRAME)
+            # 3 ramki wyzwalające wake-word są zużyte przez sam detektor (nic nie trafia
+            # jeszcze do bufora wypowiedzi) — bez dodatkowej "mowy" po wykryciu nagranie
+            # miałoby 0 bajtów (peak_amplitude(b"") == 0) i zostałoby odrzucone przez
+            # serwerową bramkę `Settings.vad_amplitude_threshold`, zanim tura w ogóle ruszy.
+            ws.send_bytes(_LOUD_FRAME * 80)
             ws.send_text(json.dumps({"type": "utterance_end"}))
             # `tts_start` przychodzi dopiero po realnej turze; tu wystarczy, że doszliśmy
             # do syntezy Mock — czyli bramka przepuściła i STT/kernel zostały odpalone.

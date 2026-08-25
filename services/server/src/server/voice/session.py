@@ -21,7 +21,7 @@ from __future__ import annotations
 from enum import Enum, auto
 from typing import Any, Awaitable, Callable, Protocol
 
-from shared import ServerMessageType, get_logger
+from shared import ServerMessageType, get_logger, peak_amplitude
 
 from server.ports.stt import BaseSTTProvider
 from server.ports.tts import BaseTTSProvider
@@ -69,6 +69,7 @@ class VoiceSession:
         on_transcript: Callable[[str], None],
         publish_event: EventPublisher,
         is_registered: RegistrationCheck | None = None,
+        silence_amplitude_threshold: int = 0,
     ) -> None:
         self.sender_id = sender_id
         self.state = SessionState.LISTENING_WAKEWORD
@@ -80,6 +81,7 @@ class VoiceSession:
         self._publish_event = publish_event
         self._is_registered = is_registered
         self._utterance_buffer = bytearray()
+        self._silence_amplitude_threshold = silence_amplitude_threshold
 
     async def _set_state(self, state: SessionState) -> None:
         """Zmienia stan i rozgłasza `SATELLITE_STATE_CHANGED` — jedyne miejsce, w którym
@@ -131,6 +133,34 @@ class VoiceSession:
 
         audio = bytes(self._utterance_buffer)
         self._utterance_buffer.clear()
+
+        # Nagranie, którego szczytowa amplituda nigdy nie przekroczyła progu — czyli to,
+        # co sama satelita już uznaje za ciszę (ten sam próg co jej lokalny VAD) — trafiałoby
+        # do Groq/Whisper jako czysta cisza/szum, na czym te modele halucynują pojedyncze
+        # słowa ("Dzięki", "Okej") zamiast pustego tekstu. Czas trwania NIE jest tu sygnałem:
+        # satelita zawsze czeka pełne `vad_silence_duration_ms` ciszy przed końcem nagrania
+        # (patrz `desktop_satellite/vad.py::SilenceVadDetector`), więc nawet pusta wypowiedź
+        # ma ten sam ~1.5s ogon co realna, krótka mowa.
+        peak = peak_amplitude(audio)
+        # Logowane zawsze (nie tylko przy odrzuceniu) — jedyny sposób, żeby dobrać/zweryfikować
+        # `vad_amplitude_threshold` na realnym sprzęcie zamiast zgadywać z zewnątrz.
+        logger.info(
+            f"Amplituda nagrania [sender_id: '{self.sender_id}']: szczyt={peak}, "
+            f"próg={self._silence_amplitude_threshold}, długość={len(audio)} bajtów."
+        )
+        if self._silence_amplitude_threshold > 0 and peak < self._silence_amplitude_threshold:
+            logger.info(
+                f"Nagranie zawiera wyłącznie ciszę/szum [sender_id: '{self.sender_id}'] "
+                f"(szczytowa amplituda < {self._silence_amplitude_threshold}) — pomijam STT."
+            )
+            # `end_turn_without_speech()`, NIE `reset_to_listening()` bezpośrednio: satelita
+            # (`desktop_satellite/session.py::handle_server_frame`) wraca do nasłuchu i wznawia
+            # wysyłanie mikrofonu WYŁĄCZNIE po odebraniu `TURN_END`/`ERROR` — sam reset stanu
+            # po stronie serwera (bez żadnej ramki do satelity) zostawiał ją uwięzioną w
+            # `PROCESSING` na stałe, mimo że dashboard pokazywał już "Nasłuchiwanie".
+            await self.end_turn_without_speech()
+            return
+
         try:
             transcript = await self._stt_provider.transcribe(audio)
         except Exception as err:
@@ -221,7 +251,15 @@ class VoiceSession:
     async def reset_to_listening(self) -> None:
         """Awaryjny powrót do nasłuchu — wołane przez gateway, gdy tura kernela zakończyła
         się błędem/anulowaniem zanim `speak()` zostało wywołane (patrz `gateway.py`,
-        `_on_error_or_cancelled`). Bez tego sesja utknęłaby w PROCESSING/SPEAKING na zawsze."""
+        `_on_error_or_cancelled`). Bez tego sesja utknęłaby w PROCESSING/SPEAKING na zawsze.
+
+        **Resetuje stan wyłącznie po stronie serwera.** Satelita
+        (`desktop_satellite/session.py::handle_server_frame`) wraca do nasłuchu i wznawia
+        wysyłanie mikrofonu wyłącznie po odebraniu `TURN_END`/`ERROR` — wołający musi wysłać
+        jedną z tych ramek PRZED tym wywołaniem (patrz `end_turn_without_speech()`/
+        `send_error()` u każdego istniejącego wywołującego), inaczej satelita utknie w
+        `PROCESSING` na stałe, mimo że serwer już myśli, że wrócił do nasłuchu (żywy bug,
+        naprawiony 2026-08-25: bramka ciszy w `handle_utterance_end()` wołała to bezpośrednio)."""
         await self._set_state(SessionState.LISTENING_WAKEWORD)
         self._utterance_buffer.clear()
         self._wakeword_detector.reset()

@@ -15,12 +15,11 @@ gdy w `Settings.wakeword_model_path` nie skonfigurowano żadnego modelu (patrz
 
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 
 import numpy as np
 from livekit.wakeword import WakeWordModel
-from shared import SAMPLE_RATE_HZ, get_logger
+from shared import SAMPLE_RATE_HZ, get_logger, peak_amplitude
 
 logger = get_logger("regis.ai.wakeword")
 
@@ -39,7 +38,7 @@ class ThresholdEnergyWakeWordDetector:
         self._consecutive_loud_frames = 0
 
     def process(self, pcm_chunk: bytes) -> bool:
-        if _peak_amplitude(pcm_chunk) >= self._amplitude_threshold:
+        if peak_amplitude(pcm_chunk) >= self._amplitude_threshold:
             self._consecutive_loud_frames += 1
         else:
             self._consecutive_loud_frames = 0
@@ -111,12 +110,3 @@ class OnnxWakeWordDetector:
     @property
     def last_score(self) -> float | None:
         return self._last_score
-
-
-def _peak_amplitude(pcm_chunk: bytes) -> int:
-    """Szczytowa amplituda próbek PCM16 mono w danej porcji (0 dla pustej/nieparzystej porcji)."""
-    sample_count = len(pcm_chunk) // 2
-    if sample_count == 0:
-        return 0
-    samples = struct.unpack(f"<{sample_count}h", pcm_chunk[: sample_count * 2])
-    return max(abs(s) for s in samples)

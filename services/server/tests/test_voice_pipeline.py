@@ -92,6 +92,7 @@ def _make_session(
     wakeword_detector: WakeWordDetector,
     on_transcript,
     tts_provider: BaseTTSProvider | None = None,
+    silence_amplitude_threshold: int = 0,
 ) -> tuple[VoiceSession, FakeLink]:
     link = FakeLink()
     session = VoiceSession(
@@ -102,6 +103,7 @@ def _make_session(
         tts_provider=tts_provider or FakeTTS(),
         on_transcript=on_transcript,
         publish_event=_noop_publish_event,
+        silence_amplitude_threshold=silence_amplitude_threshold,
     )
     return session, link
 
@@ -169,6 +171,54 @@ async def test_utterance_end_transcribes_and_calls_on_transcript_then_stop_tone(
 
     assert link.control_messages == [ServerMessageType.WAKE_DETECTED, ServerMessageType.PLAY_STOP_TONE]
     assert seen_transcripts == ["transkrypcja(4 bajtów)"]
+    assert session.state.name == "PROCESSING"
+
+
+@pytest.mark.anyio
+async def test_utterance_end_skips_stt_when_audio_is_silent():
+    """Nagranie, którego szczytowa amplituda nigdy nie przekroczyła progu (ten sam próg,
+    którym satelita sama mierzy ciszę) nie trafia do STT — halucynacje Groq na czystej
+    ciszy/szumie nie mogą odpalić tury agenta. Czas trwania świadomie nieużywany jako
+    sygnał — patrz komentarz w `session.py::handle_utterance_end`.
+
+    Musi kończyć się `TURN_END` (przez `end_turn_without_speech()`), nie gołym
+    `reset_to_listening()`: satelita wraca do nasłuchu i wznawia wysyłanie mikrofonu
+    wyłącznie po odebraniu `TURN_END`/`ERROR` (`desktop_satellite/session.py`) — bez
+    tej ramki zostawała uwięziona w `PROCESSING` na stałe, mimo że serwer myślał,
+    że już wrócił do nasłuchu."""
+    seen_transcripts: list[str] = []
+    session, link = _make_session(
+        AlwaysTriggerWakeWordDetector(), on_transcript=seen_transcripts.append, silence_amplitude_threshold=500
+    )
+    quiet_frame = (10).to_bytes(2, byteorder="little", signed=True)
+
+    await session.handle_audio_frame(b"\x00\x01")  # wake-word
+    await session.handle_audio_frame(quiet_frame * 3)  # cisza/szum, poniżej progu
+    await session.handle_utterance_end()
+
+    assert seen_transcripts == []
+    assert session.state.name == "LISTENING_WAKEWORD"
+    assert link.control_messages == [
+        ServerMessageType.WAKE_DETECTED,
+        ServerMessageType.PLAY_STOP_TONE,
+        ServerMessageType.TURN_END,
+    ]
+    assert link.errors == []
+
+
+@pytest.mark.anyio
+async def test_utterance_end_transcribes_when_audio_has_speech():
+    seen_transcripts: list[str] = []
+    session, link = _make_session(
+        AlwaysTriggerWakeWordDetector(), on_transcript=seen_transcripts.append, silence_amplitude_threshold=500
+    )
+    loud_frame = (1000).to_bytes(2, byteorder="little", signed=True)
+
+    await session.handle_audio_frame(b"\x00\x01")  # wake-word
+    await session.handle_audio_frame(loud_frame)  # realna mowa, powyżej progu
+    await session.handle_utterance_end()
+
+    assert seen_transcripts == ["transkrypcja(2 bajtów)"]
     assert session.state.name == "PROCESSING"
 
 

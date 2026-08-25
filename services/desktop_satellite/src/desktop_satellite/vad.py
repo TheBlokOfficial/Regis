@@ -11,9 +11,7 @@ Czysta klasa (mirror stylu `ThresholdEnergyWakeWordDetector` z
 
 from __future__ import annotations
 
-import struct
-
-from shared import SAMPLE_RATE_HZ
+from shared import SAMPLE_RATE_HZ, peak_amplitude
 
 
 class SilenceVadDetector:
@@ -39,7 +37,7 @@ class SilenceVadDetector:
         self._consecutive_silent_frames = 0
 
     def process(self, pcm_chunk: bytes) -> bool:
-        if _peak_amplitude(pcm_chunk) >= self._amplitude_threshold:
+        if peak_amplitude(pcm_chunk) >= self._amplitude_threshold:
             self._consecutive_silent_frames = 0
             return False
 
@@ -48,15 +46,6 @@ class SilenceVadDetector:
 
     def reset(self) -> None:
         self._consecutive_silent_frames = 0
-
-
-def _peak_amplitude(pcm_chunk: bytes) -> int:
-    """Szczytowa amplituda próbek PCM16 mono w danej porcji (0 dla pustej/nieparzystej porcji)."""
-    sample_count = len(pcm_chunk) // 2
-    if sample_count == 0:
-        return 0
-    samples = struct.unpack(f"<{sample_count}h", pcm_chunk[: sample_count * 2])
-    return max(abs(s) for s in samples)
 
 
 def frame_duration_ms(frame_sample_count: int, sample_rate_hz: int = SAMPLE_RATE_HZ) -> float:

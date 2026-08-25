@@ -35,7 +35,11 @@ class Settings(BaseModel):
     )
     vad_amplitude_threshold: int = Field(
         default=500,
-        description="Próg amplitudy PCM16 poniżej którego ramka liczy się jako cisza dla VAD satelity (patrz vad_silence_duration_ms).",
+        description="Próg amplitudy PCM16 poniżej którego ramka liczy się jako cisza dla VAD "
+        "satelity (patrz vad_silence_duration_ms). Ten sam próg sprawdzany jest też serwerowo "
+        "w VoiceSession.handle_utterance_end() — nagranie, którego szczytowa amplituda nigdy go "
+        "nie przekroczyła, jest odrzucane przed wysłaniem do STT (ochrona przed halucynacjami "
+        "Whisper/Groq na czystej ciszy/szumie).",
     )
 
 
