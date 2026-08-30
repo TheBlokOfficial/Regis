@@ -88,9 +88,17 @@ python -m uv run python -m pytest -q
 
 ## ⚙️ Konfiguracja
 
-Cała konfiguracja jest persystentna i trzymana w plikach JSON zarządzanych przez `ConfigStore` — **żaden parametr nie jest odczytywany ze zmiennych środowiskowych**:
+Konfiguracja jest persystentna i trzymana w plikach JSON zarządzanych przez `ConfigStore`,
+edytowalna w Web UI. Środowisko odpowiada wyłącznie za **wdrożenie i sekrety**:
 
-Ścieżki poniżej są względne wobec `services/server/`; cały katalog `data/` jest w `.gitignore`.
+| Zmienna | Rola |
+| :--- | :--- |
+| `REGIS_DATA_DIR`, `REGIS_CONFIG_DIR` | Gdzie leżą dane i konfiguracja (w kontenerze: wolumen). Bez nich: `services/server/{data,config}`. |
+| `REGIS_HOST`, `REGIS_PORT`, `REGIS_DEBUG` | Nadpisania wdrożeniowe. Celowo **rozłączne** ze zbiorem pól zapisywanych z Web UI — patrz `load_settings()` w [`server/config.py`](services/server/src/server/config.py). |
+| dowolna własna | Wartość klucza API lub tokenu wpisana w Web UI jako `env:NAZWA` (patrz [`shared/secrets.py`](packages/shared/src/shared/secrets.py)). Dzięki temu sekrety nie muszą leżeć w `data/`. |
+
+Wzorzec: [`.env.example`](.env.example). Ścieżki w tabeli poniżej są względne wobec katalogu
+danych; cały `data/` jest w `.gitignore`.
 
 | Co | Gdzie | Wygodna edycja |
 | :--- | :--- | :--- |
@@ -115,5 +123,7 @@ Szczegółowy opis wszystkich parametrów: [`docs/onboarding.md`](docs/onboardin
 
 Szczegółowe informacje znajdują się w katalogu [`docs/`](docs):
 - [**`docs/manifest.md`**](docs/manifest.md) – Manifest Architektoniczny Systemu Regis: warstwy, przepływy danych, świadome decyzje projektowe i plany rozwoju.
-- [**`docs/onboarding.md`**](docs/onboarding.md) – Przewodnik deweloperski: konfiguracja środowiska, mapa API i cykl pracy.
+- [**`docs/onboarding.md`**](docs/onboarding.md) – Przewodnik deweloperski: konfiguracja środowiska, mapa API, cykl pracy i procedura wydania.
+- [**`deploy/README.md`**](deploy/README.md) – Wdrożenie produkcyjne: Docker na Raspberry Pi 5, aktualizacje, kopia zapasowa, diagnostyka.
+- [**`CHANGELOG.md`**](CHANGELOG.md) – Historia wydań (wersja produktu żyje w `packages/shared/src/shared/version.py`).
 - [**`AGENTS.md`**](AGENTS.md) – Standardy jakości i instrukcje dla agentów AI pracujących nad projektem.

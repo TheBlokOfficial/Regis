@@ -1,0 +1,33 @@
+# Kontekst budowania to korzeń repozytorium (Dockerfile potrzebuje uv.lock i packages/),
+# więc bez tej listy do demona wędrowałby cały .venv i katalog danych.
+
+.git/
+.gitignore
+.idea/
+.vscode/
+.claude/
+
+# Środowiska i cache — obraz buduje własne przez `uv sync --frozen`
+.venv/
+venv/
+**/__pycache__/
+**/*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Dane i konfiguracja przychodzą z wolumenu, nigdy z obrazu.
+# Wzorce bez wiodącego ukośnika, bo katalogi istnieją i w korzeniu (deployment),
+# i wewnątrz usług (uruchomienie deweloperskie).
+data/
+config/
+.env
+.env.*
+!.env.example
+
+# Rzeczy nieużywane w obrazie serwera
+docs/
+deploy/
+dist/
+build/
+*.spec

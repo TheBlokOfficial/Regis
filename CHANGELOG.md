@@ -31,11 +31,18 @@ zainstalowana aplikacja, konfiguracja przez środowisko.
   Wstecznie zgodne: istniejące klucze wpisane wprost działają dalej, nie ma czego migrować.
   Model wielu nazwanych instancji zostaje nietknięty — każdy preset może wskazywać inną zmienną.
   Web UI pokazuje referencję wprost (to nazwa zmiennej, nie sekret) i podpowiada składnię.
+- **Obraz Dockera i runbook wdrożenia** (`services/server/Dockerfile`, `docker-compose.yml`,
+  `deploy/`) — cel: Raspberry Pi 5 / Pi OS Lite 64-bit, obraz budowany natywnie na Pi, bez QEMU
+  i bez rejestru. `network_mode: host` jest warunkiem koniecznym auto-discovery satelit
+  (UDP broadcast nie wychodzi z sieci bridge). `deploy/deploy.sh` aktualizuje wersję i czeka
+  na `/api/v1/health` zamiast kończyć się na `up -d`.
 - Jedno źródło prawdy dla wersji produktu (`shared/version.py`) + `CHANGELOG.md` i runbook wydania.
 - `GET /api/v1/health` zwraca `app_name` i `version` — dashboard Web UI pokazuje wreszcie nazwę
   aplikacji zamiast zawsze wpadać w gałąź zapasową.
 
 ### Zmienione
+- README nie twierdzi już, że „żaden parametr nie jest odczytywany ze zmiennych środowiskowych" —
+  po wprowadzeniu warstwy środowiskowej to zdanie przestało być prawdziwe.
 - Usunięte pole `version` z `Settings` i `config/settings.json` — wersja nie jest już rzeczą,
   którą użytkownik edytuje ręcznie w konfiguracji.
 - `HealthResponse.shared_version` → `HealthResponse.version` (wersja produktu, nie samego pakietu

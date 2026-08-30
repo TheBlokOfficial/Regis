@@ -1,0 +1,42 @@
+name: regis
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: services/server/Dockerfile
+    image: regis-server:${REGIS_VERSION:-dev}
+    container_name: regis-server
+    restart: unless-stopped
+
+    # ------------------------------------------------------------------------
+    # WARUNEK KONIECZNY auto-discovery, nie preferencja.
+    # `server/discovery.py` rozgłasza obecność serwera przez UDP `<broadcast>`, a to
+    # z sieci bridge NIE wychodzi do LAN-u — satelity przestałyby znajdować serwer
+    # i każda wymagałaby ręcznego `--server-url`. Sieć hosta działa natywnie na
+    # Raspberry Pi OS (i każdym Linuksie); na Docker Desktop dla Windows/macOS nie —
+    # tam trzeba by wrócić do jawnego adresu w satelitach.
+    #
+    # Skutek uboczny: sekcja `ports:` byłaby ignorowana, więc jej tu nie ma.
+    # Port bierze się WYŁĄCZNIE z `REGIS_PORT` albo z `config/settings.json`.
+    # ------------------------------------------------------------------------
+    network_mode: host
+
+    env_file:
+      # `required: false` wymaga Compose >= 2.24 — bez tego brak `.env` wywala start.
+      - path: .env
+        required: false
+
+    environment:
+      # Ścieżki wewnątrz kontenera; punkty montowania niżej. Ustawione też w obrazie,
+      # powtórzone tutaj, bo to one wiążą wolumen z aplikacją i nie chcemy, żeby
+      # ta zależność była widoczna dopiero po `docker inspect`.
+      REGIS_DATA_DIR: /data
+      REGIS_CONFIG_DIR: /config
+
+    volumes:
+      # Bind-mounty, nie wolumeny nazwane: pliki mają zostać zwykłymi plikami na
+      # hoście — backup to `tar` katalogu, a `data/backends/*.json` da się w razie
+      # czego otworzyć edytorem bez wchodzenia do kontenera.
+      - ./data:/data
+      - ./config:/config
