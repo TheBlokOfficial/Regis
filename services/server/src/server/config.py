@@ -22,6 +22,20 @@ class Settings(BaseModel):
     llm_default_max_tokens: int = Field(default=4096, description="Domyślna maksymalna liczba tokenów wyjściowych dla modeli LLM")
     max_history_messages: int = Field(default=40, description="Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM")
     max_tool_iterations: int = Field(default=8, description="Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej, zanim agent zakończy z tym co wygenerował")
+    satellite_session_idle_ttl_seconds: float = Field(
+        default=300.0,
+        description="Po ilu sekundach ciszy historia rozmowy z satelitą jest czyszczona (0 = nigdy). "
+        "Satelita używa jednego session_id (równego swojemu sender_id) przez cały czas istnienia, "
+        "więc bez tego limitu model dostaje wiadomości sprzed wielu godzin jako bieżącą rozmowę. "
+        "Dotyczy WYŁĄCZNIE klientów głosowych — czat Web UI ma własną listę sesji i nie wygasa "
+        "(politykę wnosi voice/gateway.py, kernel jej nie zna).",
+    )
+    max_persisted_messages: int = Field(
+        default=200,
+        description="Sufit liczby wiadomości utrwalanych w pliku jednej sesji (0 = bez limitu). "
+        "Przycinane są najstarsze, nieodwracalnie — także w historii widocznej w Web UI. "
+        "Niezależne od max_history_messages, które przycina tylko to, co idzie do modelu.",
+    )
     telemetry_retention_records: int = Field(
         default=2000,
         description="Ile najnowszych zrzutów wywołań LLM trzyma zakładka Logi (data/telemetry/generations.db). Rotacja usuwa nadmiar leniwie, co kilkadziesiąt zapisów.",

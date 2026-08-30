@@ -12,6 +12,12 @@ Pierwsze wydanie przeznaczone do realnego wdrożenia: serwer w kontenerze, satel
 zainstalowana aplikacja, konfiguracja przez środowisko.
 
 ### Dodane
+- **Wygaszanie sesji po bezczynności** — historia rozmowy z satelitą jest czyszczona po
+  `satellite_session_idle_ttl_seconds` (domyślnie 5 min). Satelita używa jednego `session_id`
+  przez cały czas istnienia, więc bez tego model dostawał wiadomości sprzed wielu godzin jako
+  bieżącą rozmowę. Czat Web UI nie wygasa — politykę wnosi brzeg kompozycji, nie kernel.
+- **Sufit utrwalanych wiadomości** (`max_persisted_messages`, domyślnie 200) — chroni plik sesji
+  przed nieskończonym narastaniem także tam, gdzie historia ma żyć długo.
 - Jedno źródło prawdy dla wersji produktu (`shared/version.py`) + `CHANGELOG.md` i runbook wydania.
 - `GET /api/v1/health` zwraca `app_name` i `version` — dashboard Web UI pokazuje wreszcie nazwę
   aplikacji zamiast zawsze wpadać w gałąź zapasową.

@@ -119,9 +119,16 @@ class VoiceConnection:
     # --------------------------------------------------------------------------
 
     def _on_transcript(self, transcript: str) -> None:
+        """Sesją satelity jest jej własny `sender_id` — jeden i ten sam przez cały czas
+        istnienia klienta. Dlatego to TU, na brzegu kompozycji, wnosimy politykę
+        wygaszania historii po bezczynności: kernel nie wie, że rozmawia z satelitą,
+        a czat Web UI (`network/routes/chat.py`) nie podaje jej wcale i nie wygasa."""
         try:
             self._agent_engine.start_interaction(
-                session_id=self.sender_id, prompt=transcript, sender_id=self.sender_id
+                session_id=self.sender_id,
+                prompt=transcript,
+                sender_id=self.sender_id,
+                session_idle_ttl_seconds=self._settings_loader().satellite_session_idle_ttl_seconds,
             )
         except RuntimeError as err:
             logger.warning(f"Nie odpalono interakcji [sender_id: '{self.sender_id}']: {err}")

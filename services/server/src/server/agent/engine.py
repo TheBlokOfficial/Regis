@@ -107,17 +107,28 @@ class AgentEngine:
     # Odpalanie tury
     # --------------------------------------------------------------------------
 
-    def start_interaction(self, session_id: str, prompt: str, sender_id: str | None = None) -> None:
+    def start_interaction(
+        self,
+        session_id: str,
+        prompt: str,
+        sender_id: str | None = None,
+        session_idle_ttl_seconds: float | None = None,
+    ) -> None:
         """Odpala turę w tle i **od razu wraca** — jednokierunkowy „wyślij i zapomnij".
 
         Nie subskrybuje `EventBus` w ogóle i nie czeka na wynik: wywołujący (typowo
         `server.voice`, gdzie gniazdo satelity ma już własną, ciągłą subskrypcję po
         swoim `sender_id`) dowiaduje się o odpowiedzi wyłącznie przez zdarzenia.
 
+        :param session_idle_ttl_seconds: Polityka wygaszania historii tej sesji po
+            bezczynności (patrz `MemoryManager`). Kernel jej nie wymyśla — podaje ją
+            brzeg kompozycji, który wie, jakim klientem jest wywołujący. `None`
+            (domyślne) = bez wygaszania.
         :raises RuntimeError: jeśli sesja jest już zajęta.
         """
         self._reject_if_busy(session_id)
         logger.info(f"Jednokierunkowa interakcja [Sesja: '{session_id}']: '{prompt}'")
+        self._touch_session(session_id, session_idle_ttl_seconds)
         self._spawn_turn(session_id, prompt, sender_id)
 
     async def interact_stream(
@@ -125,6 +136,7 @@ class AgentEngine:
         session_id: str = "session_default",
         prompt: str = "",
         sender_id: str | None = None,
+        session_idle_ttl_seconds: float | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Odpala turę i strumieniuje jej przebieg wywołującemu.
 
@@ -136,6 +148,7 @@ class AgentEngine:
         """
         self._reject_if_busy(session_id)
         logger.info(f"Strumieniowa interakcja [Sesja: '{session_id}']: '{prompt}'")
+        self._touch_session(session_id, session_idle_ttl_seconds)
 
         with SessionEventSubscription(self.event_bus, session_id) as subscription:
             self._spawn_turn(session_id, prompt, sender_id)
@@ -167,9 +180,15 @@ class AgentEngine:
         session_id: str = "session_default",
         prompt: str = "",
         sender_id: str | None = None,
+        session_idle_ttl_seconds: float | None = None,
     ) -> ChatResponseDTO:
         """Niestrumieniowa konwersacja — cienki wrapper na `interact_stream()` (DRY)."""
-        async for _ in self.interact_stream(session_id=session_id, prompt=prompt, sender_id=sender_id):
+        async for _ in self.interact_stream(
+            session_id=session_id,
+            prompt=prompt,
+            sender_id=sender_id,
+            session_idle_ttl_seconds=session_idle_ttl_seconds,
+        ):
             pass
 
         session = self.memory_manager.get_or_create_session(session_id)
@@ -180,6 +199,15 @@ class AgentEngine:
         )
 
     # --------------------------------------------------------------------------
+
+    def _touch_session(self, session_id: str, idle_ttl_seconds: float | None) -> None:
+        """Sięga po sesję PRZED odpaleniem tury — czyli przed dopisaniem pytania do pamięci.
+
+        To jedyne miejsce, w którym polityka wygaszania wnoszona przez wywołującego
+        trafia do pamięci; `TurnRunner` nie musi o niej wiedzieć ani jej przekazywać.
+        Sam odczyt wystarcza, bo wygaszanie przeterminowanej historii dzieje się
+        wewnątrz `MemoryManager.get_or_create_session()`."""
+        self.memory_manager.get_or_create_session(session_id, idle_ttl_seconds=idle_ttl_seconds)
 
     def _reject_if_busy(self, session_id: str) -> None:
         if self._tasks.is_busy(session_id):

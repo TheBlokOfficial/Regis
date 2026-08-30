@@ -6,6 +6,7 @@ from shared import __version__ as REGIS_VERSION
 
 from server.agent import AgentEngine
 from server.agent.context import ContextBuilder
+from server.agent.memory import MemoryManager
 from server.agent.prompts import AgentDefaultPromptStore
 from server.ai.llm import BackendRegistry, CircuitBreaker, LLMRouter, TokenBudgetTracker
 from server.ai.stt import STTRegistry, STTRouter
@@ -107,8 +108,13 @@ async def main() -> None:
 
     # 5. Inicjalizacja rdzenia Agenta z aktywnym dostawcą LLM, EventBus, skonfigurowanym limitem historii, fallbackowym promptem i WorldEngine
     context_builder = ContextBuilder(max_history_messages=settings.max_history_messages)
+    # Sufit utrwalanych wiadomości należy do kompozycji, nie do kernela: `MemoryManager`
+    # zna regułę, ale nie wie, skąd wziąć jej wartość. Wygaszanie po bezczynności
+    # wnosi osobno `voice/gateway.py` — per sesja, bo dotyczy tylko satelit.
+    memory_manager = MemoryManager(max_persisted_messages=settings.max_persisted_messages)
     agent_engine = AgentEngine(
         llm_provider=recording_llm,
+        memory_manager=memory_manager,
         context_builder=context_builder,
         event_bus=event_bus,
         prompt_store=prompt_store,

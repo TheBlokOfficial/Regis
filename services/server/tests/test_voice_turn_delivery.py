@@ -60,21 +60,26 @@ class EchoTTS(BaseTTSProvider):
 class FakeAgentEngine:
     def __init__(self) -> None:
         self.event_bus = EventBus()
+        self.interactions: list[dict[str, object]] = []
 
     def start_interaction(self, **kwargs: object) -> None:
-        del kwargs
+        self.interactions.append(kwargs)
 
 
-def _make_connection(tts: BaseTTSProvider | None = None) -> tuple[VoiceConnection, FakeWebSocket]:
+def _make_connection(
+    tts: BaseTTSProvider | None = None,
+    settings_loader: object = Settings,
+    engine: FakeAgentEngine | None = None,
+) -> tuple[VoiceConnection, FakeWebSocket]:
     websocket = FakeWebSocket()
     connection = VoiceConnection(
         sender_id=SENDER,
         websocket=websocket,  # type: ignore[arg-type]
-        agent_engine=FakeAgentEngine(),  # type: ignore[arg-type]
+        agent_engine=engine or FakeAgentEngine(),  # type: ignore[arg-type]
         wakeword_detector=ThresholdEnergyWakeWordDetector(),
         stt_provider=MockSTTProvider(),
         tts_provider=tts or EchoTTS(),
-        settings_loader=Settings,
+        settings_loader=settings_loader,  # type: ignore[arg-type]
         sender_states={},
         pending_capabilities={},
         is_registered=_always_registered,
@@ -160,3 +165,30 @@ async def test_speech_buffer_is_cleared_between_turns() -> None:
     await connection._speak_task
 
     assert tts.synthesized == ["Pierwsza.", "Druga."]
+
+
+# ------------------------------------------------------------------------------
+# Polityka wygaszania sesji — wnoszona przez brzeg kompozycji, nie przez kernel
+# ------------------------------------------------------------------------------
+
+
+def test_satellite_turn_carries_session_idle_ttl_from_settings() -> None:
+    """Satelita używa jednego `session_id` (= swój `sender_id`) przez cały czas
+    istnienia, więc to gateway — a nie kernel — musi wnieść limit bezczynności.
+    Bez tego przekazania mechanizm wygaszania jest w pamięci martwy."""
+    engine = FakeAgentEngine()
+    connection, _ = _make_connection(
+        settings_loader=lambda: Settings(satellite_session_idle_ttl_seconds=42.0),
+        engine=engine,
+    )
+
+    connection._on_transcript("zgaś światło")
+
+    assert engine.interactions == [
+        {
+            "session_id": SENDER,
+            "prompt": "zgaś światło",
+            "sender_id": SENDER,
+            "session_idle_ttl_seconds": 42.0,
+        }
+    ]
