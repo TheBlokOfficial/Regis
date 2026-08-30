@@ -89,7 +89,7 @@ server/
 ├── web/            # Wbudowana konsola SPA (HTML/CSS/JS)
 ├── config.py       # Settings (ConfigStore)
 ├── events.py       # ServerEventType
-├── discovery.py    # DiscoveryBroadcaster — UDP broadcast obecności serwera (auto-discovery satelit)
+├── discovery.py    # DiscoveryBroadcaster — beacon + odpowiedzi UDP na aktywne zapytania satelit
 └── main.py         # Kompozycja aplikacji: wstrzykuje WorldEngine do AgentEngine i do sieci
 ```
 
@@ -451,7 +451,7 @@ pipeline, który nigdy nie rozpozna słowa „Regis".
 - **`voice_frames.py` (2026-08-30)**: typowana postać kontraktu ramek — modele Pydantic + `encode_frame()`/`decode_server_frame()`/`decode_satellite_frame()`. Do tej pory `voice_protocol.py` deklarował **nazwy** ramek, ale nie potrafił ich zakodować ani zdekodować, więc obie usługi robiły to ręcznie i osobno (`json.dumps` po jednej stronie, `frame["silence_duration_ms"]` na surowym dicie po drugiej) — jedyny kontrakt między usługami nietypowany Pydantikiem. **Format na drucie się nie zmienia**, co pilnuje test złotego wzorca: satelitę aktualizuje się ręcznie, na innej maszynie, więc rozjazd wersji jest tu stanem normalnym. Nieznany typ ramki daje `None`, nie wyjątek — nowszy serwer może mówić więcej, niż starsza satelita zna. Podział na dwie rodziny jest asymetryczny celowo: serwer dekoduje wyłącznie ramki satelity i odwrotnie.
 - **`voice_protocol.py`**: Kontrakt ramek WS satelity (`SatelliteMessageType`/`ServerMessageType`/`SAMPLE_RATE_HZ`/`SAMPLE_WIDTH_BYTES`/`CHANNELS`) — przeniesiony tu z `server/voice/protocol.py`, bo od `desktop_satellite` (sekcja 3.7) jest to kontrakt między dwiema niezależnymi usługami, nie szczegół jednej z nich (ten sam powód, dla którego DTO REST żyją w `contracts.py`, nie w `server/network/`).
 - **`audio.py`**: `peak_amplitude()` — szczytowa amplituda porcji PCM16 mono. Konsolidacja trzech niezależnie powstałych, bajt-w-bajt identycznych kopii tej samej funkcji: lokalny VAD satelity (`desktop_satellite/vad.py::SilenceVadDetector`), serwerowy placeholder wake-worda (`server/ai/wakeword/detectors.py::ThresholdEnergyWakeWordDetector`) i serwerowa bramka przed STT (`voice/session.py::VoiceSession.handle_utterance_end`) — wszystkie trzy mierzą to samo pojęcie "głośności" ramki tym samym wzorem, więc czwarta kopia (przy dodawaniu bramki STT) przekroczyła próg uzasadniający DRY (Boy Scout Rule, `AGENTS.md`).
-- **`discovery.py`**: Kontrakt UDP auto-discovery — `DISCOVERY_UDP_PORT`, `DISCOVERY_MAGIC` (odsiewa obcy ruch UDP na tym porcie) i czyste funkcje `encode_beacon`/`decode_beacon` (JSON `{"service", "port"}`). Współdzielony przez `server/discovery.py` (nadawca) i `desktop_satellite/discovery.py` (odbiorca) — bez uwierzytelniania, spójnie z modelem zaufanej sieci lokalnej przyjętym dla `WS /ws/voice/{sender_id}` (sekcja 5).
+- **`discovery.py`**: Kontrakt UDP auto-discovery — `DISCOVERY_UDP_PORT`, `DISCOVERY_MAGIC`, beacon `{"service", "port"}` i aktywne zapytanie `{"service", "type": "discover"}`. Satelita wysyła zapytanie broadcastem, serwer odpowiada unicastem na ten sam socket; odpowiedź jest dzięki temu częścią ruchu zainicjowanego przez Windows i nie wymaga reguły zapory. Cykliczny beacon pozostaje dla zgodności ze starszymi klientami. Kontrakt jest współdzielony przez `server/discovery.py` i `desktop_satellite/discovery.py`, bez uwierzytelniania — spójnie z modelem zaufanej sieci lokalnej dla `WS /ws/voice/{sender_id}` (sekcja 5).
 
 ### 3.7 `desktop_satellite` — realny klient satelity desktopowej (`services/desktop_satellite/src/desktop_satellite`)
 
@@ -465,7 +465,7 @@ niczego z `services/server`, łączy je wyłącznie `packages/shared` i protokó
 - **`audio.py`**: `MicCapture`/`SpeakerPlayback` przez `sounddevice`+`numpy` (PortAudio, Windows/Linux) — PCM16 mono 16 kHz, ramki 20 ms. `SpeakerPlayback.play_cue()` **(2026-08-20)** odtwarza wake/stop-tone preferencyjnie jako wbudowany dźwięk systemowy Windows Speech Recognition (`C:\Windows\Media\Speech On.wav`/`Speech Sleep.wav` — te same dźwięki, które kiedyś towarzyszyły Cortanie; własność użytkownika/Windows, nigdy nie kopiowane do repo, odtwarzane przez `winsound.PlaySound`), z fallbackiem do `synth_tone()` (lokalnie syntezowany sinusoidalny beep) na Linux albo gdy plik nie istnieje. Zero strumieniowania dźwięku z serwera w obu wariantach.
 - **`main.py`**: CLI (`--server-url`/`--sender-id`/`--log-level`, wszystkie opcjonalne), pętla reconnect z backoffem (log + `asyncio.sleep`), czyste zamknięcie mikrofonu na `KeyboardInterrupt`.
 - **`config.py`**: `SatelliteSettings` (`ConfigStore`+`get_service_root`, mirror `server/config.py`) — `sender_id: str` z `default_factory=uuid.uuid4`, trwale zapisywany w `services/desktop_satellite/config/settings.json` przy pierwszym uruchomieniu (brak pliku). Bez flagi `--sender-id` `main.py` używa `load_or_create_sender_id()` — ten sam UUID przy każdym kolejnym starcie, bez ręcznego wpisywania.
-- **`discovery.py`**: `discover_server()` — nasłuchuje UDP broadcast serwera (`shared/discovery.py`), buduje `ws://{ip nadawcy}:{port z beaconu}/ws/voice`. Bez flagi `--server-url` `main.py` wywołuje to przed każdą próbą połączenia (bez cachowania ostatniego znanego adresu — KISS, broadcaster serwera działa non-stop, ponowne odkrycie kosztuje najwyżej jeden interwał rozgłoszenia).
+- **`discovery.py`**: `discover_server()` — co sekundę wysyła aktywne zapytanie UDP broadcast osobnym gniazdem przypiętym do każdego lokalnego adresu IPv4 i równolegle przyjmuje odpowiedzi unicast. Osobne gniazda są konieczne na wielointerfejsowym Windowsie: pojedynczy `255.255.255.255` wybiera jedną trasę (użytkownik ma Radmin VPN) i może ominąć fizyczny LAN. Przypięcie źródła wybiera interfejs bez zgadywania maski podsieci. Z odpowiedzi powstaje `ws://{ip nadawcy}:{port z beaconu}/ws/voice`. Bez flagi `--server-url` `main.py` wywołuje discovery przed każdą próbą połączenia; adres nie jest cachowany, więc zmiana DHCP serwera zostaje wykryta przy reconnect.
 - **Wake-word i STT/TTS: realne od tej sesji** (serwerowy `OnnxWakeWordDetector`, `GroqSTTProvider`/`ElevenLabsTTSProvider`, sekcja 3.5) — klient desktopowy dowodzi poprawności całego protokołu, lokalnego VAD i realnego pipeline'u głosowego (transkrypcja/synteza wymagają wklejenia własnych kluczy API w Web UI, zakładka Głos — bez kluczy łagodna degradacja do Mock*).
 
 ---
@@ -513,8 +513,9 @@ tylko rebuildu na tamtej maszynie. Python 3.13 jest tu bezpieczny: `onnxruntime`
 ma glibc 2.36.
 
 **`network_mode: host` jest warunkiem koniecznym, nie preferencją.** `server/discovery.py`
-rozgłasza obecność serwera przez UDP `<broadcast>`, dzięki czemu satelity znajdują go **bez
-żadnej konfiguracji po swojej stronie** — a broadcast z sieci bridge nie wychodzi do LAN-u.
+odbiera zapytania i rozgłasza obecność przez UDP broadcast, dzięki czemu satelity znajdują
+go **bez żadnej konfiguracji po swojej stronie** — broadcast z sieci bridge nie wychodzi
+do LAN-u, a odpowiedź wskazywałaby adres kontenera zamiast hosta.
 Konsekwencje: sekcja `ports:` byłaby ignorowana (port bierze się wyłącznie z `REGIS_PORT`
 albo `config/settings.json`), a na Docker Desktop dla Windows/macOS sieć hosta nie działa
 tak samo i każda satelita wymagałaby jawnego `--server-url`.

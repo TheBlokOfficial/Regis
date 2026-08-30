@@ -37,7 +37,14 @@ from shared.contracts import (
     UpdatePromptRequest,
 )
 from shared.correlation import TurnRef, bind_turn, current_turn, new_turn_id
-from shared.discovery import DISCOVERY_MAGIC, DISCOVERY_UDP_PORT, decode_beacon, encode_beacon
+from shared.discovery import (
+    DISCOVERY_MAGIC,
+    DISCOVERY_UDP_PORT,
+    decode_beacon,
+    encode_beacon,
+    encode_discovery_query,
+    is_discovery_query,
+)
 from shared.env import env_bool, env_int, env_str, load_dotenv
 from shared.event_bus import Event, EventBus, EventHandler
 from shared.json_repository import ActiveInstancePointer, JsonInstanceRepository
@@ -91,6 +98,7 @@ __all__ = [
     "DISCOVERY_UDP_PORT",
     "decode_beacon",
     "encode_beacon",
+    "encode_discovery_query",
     "Event",
     "GenerationAttemptDTO",
     "GenerationLogDetailDTO",
@@ -102,6 +110,7 @@ __all__ = [
     "ActiveInstancePointer",
     "HealthResponse",
     "JsonInstanceRepository",
+    "is_discovery_query",
     "LLMFallbackChainResponse",
     "LLMProviderDTO",
     "LLMProviderListResponse",

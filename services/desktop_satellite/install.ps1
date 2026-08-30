@@ -47,6 +47,7 @@ $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Regis
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($startMenu)
 $shortcut.TargetPath = Join-Path $target "regis-satellite.exe"
+$shortcut.Arguments = ""
 $shortcut.WorkingDirectory = $target
 $shortcut.Description = "Satelita głosowa Regis"
 $shortcut.Save()

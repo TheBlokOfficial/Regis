@@ -289,9 +289,12 @@ python -m uv run --package desktop_satellite python -m desktop_satellite.main --
 zależności `build`, nie w podstawowych), więc uruchomienie ze źródeł nie wymaga niczego
 ponad zwykłe `uv sync`.
 
-Bez flag: serwer rozgłasza swoją obecność w sieci lokalnej (UDP broadcast,
-`server/discovery.py`/`shared/discovery.py`, port `41530`) — satelita znajduje
-go automatycznie, bez ręcznego wpisywania IP. `sender_id` to trwały UUID4
+Bez flag: satelita wysyła aktywne zapytanie UDP broadcast na port `41530` osobno przez
+każdy lokalny interfejs IPv4 (ważne przy VPN-ach), a serwer
+(`server/discovery.py`/`shared/discovery.py`) odpowiada unicastem na ten sam socket.
+Odpowiedź przechodzi przez stanową zaporę Windows jako ruch zainicjowany przez klienta;
+stary cykliczny beacon pozostaje jako fallback. Dzięki temu satelita znajduje serwer
+automatycznie, bez ręcznego wpisywania IP i bez reguły zapory. `sender_id` to trwały UUID4
 wygenerowany przy pierwszym uruchomieniu; **jego lokalizacja zależy od postaci**:
 `%APPDATA%\Regis` / `~/.config/regis` w wersji zainstalowanej,
 `services/desktop_satellite/config/` przy uruchomieniu ze źródeł. To dwie różne

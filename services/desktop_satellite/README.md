@@ -49,8 +49,12 @@ Menu zasobnika nie jest ozdobą: w trybie bezokienkowym to jedyny sposób odczyt
 | Logi | `%APPDATA%\Regis\logs\satellite.log` | `~/.config/regis/logs/satellite.log` |
 | Autostart | `HKCU\...\CurrentVersion\Run` | `~/.config/autostart/regis-satellite.desktop` |
 
-Adres serwera znajduje automatycznie przez UDP broadcast (`desktop_satellite.discovery`)
-— nie trzeba niczego wpisywać. Po stronie satelity nie ma żadnej konfiguracji poza
+Adres serwera znajduje automatycznie przez aktywne UDP discovery (`desktop_satellite.discovery`):
+satelita wysyła broadcast z zapytaniem osobno przez każdy lokalny interfejs IPv4, a
+serwer odpowiada unicastem na ten sam socket. Jest to istotne na komputerach z VPN-em,
+gdzie pojedynczy broadcast systemowy może zostać skierowany poza fizyczny LAN.
+Dzięki temu stanowa zapora Windows przepuszcza odpowiedź bez ręcznej reguły — nie trzeba
+niczego wpisywać. Po stronie satelity nie ma żadnej konfiguracji poza
 włącz/wyłącz i autostartem; wszystkim steruje serwer.
 
 ---
