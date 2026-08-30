@@ -7,7 +7,7 @@ from server.ports.llm import LLMMessage, LLMRole
 logger = get_logger("regis.agent.context")
 
 DEFAULT_SYSTEM_PROMPT = (
-    "Jesteś inteligentnym asystentem i centralnym jądrem Regis OS Kernel.\n"
+    "Jesteś Regis — inteligentnym asystentem i centralnym jądrem systemu.\n"
     "Odpowiadaj zwięźle, konkretnie i pomocnie w języku polskim.\n\n"
     "Poniższy dynamiczny kontekst (jeśli obecny) pochodzi z niezależnego, "
     "konkretnego silnika świata — nie zakładaj między jego fragmentami "
