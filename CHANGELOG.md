@@ -36,11 +36,20 @@ zainstalowana aplikacja, konfiguracja przez środowisko.
   i bez rejestru. `network_mode: host` jest warunkiem koniecznym auto-discovery satelit
   (UDP broadcast nie wychodzi z sieci bridge). `deploy/deploy.sh` aktualizuje wersję i czeka
   na `/api/v1/health` zamiast kończyć się na `up -d`.
+- **Typowany kontrakt ramek WS** (`shared/voice_frames.py`) — jedyny kontrakt między usługami
+  nietypowany Pydantikiem dostał modele i kodek. Format na drucie bez zmian (test złotego
+  wzorca), więc stara satelita i nowy serwer pozostają zgodne.
+- **Rejestr obecności klienta** (`voice/presence.py`) zamiast trzech gołych kolekcji wędrujących
+  przez sygnatury dwóch fabryk routerów; `create_voice_router` schodzi z 9 do 7 parametrów,
+  a rozłączenie sprząta cały ślad jednym wywołaniem.
 - Jedno źródło prawdy dla wersji produktu (`shared/version.py`) + `CHANGELOG.md` i runbook wydania.
 - `GET /api/v1/health` zwraca `app_name` i `version` — dashboard Web UI pokazuje wreszcie nazwę
   aplikacji zamiast zawsze wpadać w gałąź zapasową.
 
 ### Zmienione
+- `GET /api/v1/voice/status` liczy `is_production_ready` z właściwości `is_placeholder`
+  konkretów, a nie z prefiksu nazwy klasy (`name.startswith("Mock")`) — dawna wersja
+  milcząco przestałaby działać przy pierwszym dev-providerze nazwanym inaczej.
 - README nie twierdzi już, że „żaden parametr nie jest odczytywany ze zmiennych środowiskowych" —
   po wprowadzeniu warstwy środowiskowej to zdanie przestało być prawdziwe.
 - Usunięte pole `version` z `Settings` i `config/settings.json` — wersja nie jest już rzeczą,

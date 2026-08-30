@@ -50,3 +50,7 @@ class STTRouter(BaseSTTProvider):
     async def get_active_provider_class_name(self) -> str:
         provider = await self._resolve()
         return type(provider).__name__
+
+    async def is_active_provider_placeholder(self) -> bool:
+        provider = await self._resolve()
+        return provider.is_placeholder

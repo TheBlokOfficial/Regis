@@ -14,6 +14,14 @@ class WakeWordDetector(Protocol):
     więc każde połączenie satelity dostaje świeżą instancję (patrz `main.py`,
     `_build_wakeword_detector_factory`)."""
 
+    is_placeholder: bool
+    """Czy to detektor dev/testowy (progu amplitudy), a nie realny model wake-worda.
+
+    Deklarowane przez sam konkret. Wcześniej `GET /voice/status` porównywał nazwę klasy
+    ze stringiem `"ThresholdEnergyWakeWordDetector"` — rozjazd nazwy albo dołożenie
+    drugiego placeholdera dawałoby `is_production_ready: true` dla pipeline'u, który
+    nigdy nie rozpozna słowa „Regis"."""
+
     def process(self, pcm_chunk: bytes) -> bool:
         """Karmi detektor kolejną porcją PCM16 mono; zwraca True dokładnie raz przy wykryciu."""
         ...

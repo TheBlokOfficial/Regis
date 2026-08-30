@@ -32,6 +32,9 @@ class ThresholdEnergyWakeWordDetector:
     bezpieczny do współdzielenia między satelitami.
     """
 
+    is_placeholder = True
+    """Placeholder — reaguje na głośność, nie na słowo. Patrz `ports/wakeword.py`."""
+
     def __init__(self, loud_frames_required: int = 3, amplitude_threshold: int = 2000) -> None:
         self._loud_frames_required = loud_frames_required
         self._amplitude_threshold = amplitude_threshold
@@ -68,6 +71,9 @@ class OnnxWakeWordDetector:
     (jednoosobowy, kilka satelit jednocześnie). Nowa instancja wymagana per
     połączenie — stan bufora nie jest bezpieczny do współdzielenia.
     """
+
+    is_placeholder = False
+    """Realny model. Patrz `ports/wakeword.py`."""
 
     _WINDOW_SECONDS = 2.0
     _STRIDE_SECONDS = 0.32

@@ -24,8 +24,8 @@
 | E5 rozbicie `WorldEngine` | ✅ | złoty wzorzec `build()`: prompt tury bajt w bajt |
 | E6 rozbicie routera World | ✅ | 65 operacji → 65, zero zmian kodów odpowiedzi |
 | E7 rozbicie `AgentEngine` | ✅ | złoty wzorzec tury: 14 zdarzeń + `metadata` bajt w bajt |
-| **E8 voice: kodek ramek + obecność klienta** | ⬜ | — |
-| **E9 Web UI** | ⬜ | — |
+| **E8 voice: kodek ramek + obecność klienta** | 🟡 | punkty 1,2,3,5 wdrożone 2026-08-30 (złoty wzorzec drutu: 10 ramek bajt w bajt + żywy klient na surowym JSON-ie). Punkt 4 (`voice/api/*`) odłożony razem z E9 |
+| **E9 Web UI** | ⬜ | odłożone do osobnej sesji (decyzja 2026-08-30) |
 | E10 dokumentacja | 🟡 | `manifest.md`/`onboarding.md`/`AGENTS.md` zaktualizowane dla E0-E7 |
 
 **Bilans E0-E7** — liczby netto, żeby nie wprowadzały w błąd:
@@ -875,6 +875,13 @@ bo w `data/sessions/*.json` leżą realne dane użytkownika, których się nie m
 ---
 
 ### E8 — `voice/`: obecność klienta + kodek protokołu (M, ryzyko: średnie)
+
+> **STATUS 2026-08-30**: punkty 1, 2, 3 i 5 wdrożone przy okazji przygotowania buildu
+> produkcyjnego satelity (dotykały tych samych plików). Punkt 4 — reorganizacja
+> `voice/routes.py` + `voice/provider_routes.py` do `voice/api/*` — **odłożony razem
+> z E9**: to porządkowanie nazw dla spójności z `world/api/`, w plikach po 200 i 143
+> linie, bez wpływu na zachowanie. Trwała treść punktów wdrożonych jest już
+> w `docs/manifest.md`.
 
 1. `shared/voice_frames.py` — modele Pydantic ramek + `encode_frame()` / `decode_frame()`.
    Serwer i satelita przestają robić `json.dumps`/`json.loads` na piechotę (**F7**).

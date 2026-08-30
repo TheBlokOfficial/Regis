@@ -22,6 +22,8 @@ from server.ports.stt import BaseSTTProvider
 class MockSTTProvider(BaseSTTProvider):
     """Deterministyczny dev-provider — nie woła żadnej chmury, zwraca stały tekst."""
 
+    is_placeholder = True
+
     def __init__(self, fixed_transcript: str = "Testowa wiadomość głosowa.") -> None:
         self._fixed_transcript = fixed_transcript
 

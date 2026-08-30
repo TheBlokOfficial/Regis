@@ -20,7 +20,8 @@ from server.ai.wakeword import ThresholdEnergyWakeWordDetector
 from server.config import Settings
 from server.events import ServerEventType
 from server.ports.tts import BaseTTSProvider
-from server.voice.gateway import VoiceConnection
+from server.voice.connection import VoiceConnection
+from server.voice.presence import ClientPresenceRegistry
 from shared import Event, EventBus, ServerMessageType
 
 SENDER = "snd_gateway"
@@ -80,8 +81,7 @@ def _make_connection(
         stt_provider=MockSTTProvider(),
         tts_provider=tts or EchoTTS(),
         settings_loader=settings_loader,  # type: ignore[arg-type]
-        sender_states={},
-        pending_capabilities={},
+        presence=ClientPresenceRegistry(),
         is_registered=_always_registered,
     )
     return connection, websocket

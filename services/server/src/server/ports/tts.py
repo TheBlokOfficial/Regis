@@ -24,6 +24,10 @@ class BaseTTSProvider(ABC):
     zbierająca strumień w jeden bufor (mirror `BaseLLMProvider.generate()`) — dla
     wywołujących, którym strumieniowanie jest obojętne (dziś: testy i skrypty)."""
 
+    is_placeholder: bool = False
+    """Czy to dostawca dev/testowy, a nie realna synteza. Deklarowane przez sam konkret —
+    patrz `BaseSTTProvider.is_placeholder`, ta sama historia zgadywania po nazwie klasy."""
+
     @abstractmethod
     def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         """Strumieniuje syntezowane audio (PCM16 mono, parametry próbkowania:
@@ -39,3 +43,8 @@ class BaseTTSProvider(ABC):
         """Nazwa klasy faktycznie realizującej zadanie. Domyślnie własna klasa —
         `TTSRouter` (`server.ai.tts`) nadpisuje, by zwrócić nazwę rozwiązanego konkretu."""
         return type(self).__name__
+
+    async def is_active_provider_placeholder(self) -> bool:
+        """Czy dostawca faktycznie realizujący zadanie jest placeholderem.
+        Mirror `get_active_provider_class_name()` — router nadpisuje, by odpytać konkret."""
+        return self.is_placeholder

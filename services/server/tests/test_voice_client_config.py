@@ -11,6 +11,7 @@ from server.config import Settings
 from server.main import _build_wakeword_detector_factory
 from server.ports.stt import BaseSTTProvider
 from server.ports.tts import BaseTTSProvider
+from server.voice.presence import ClientPresenceRegistry
 from server.voice.routes import create_voice_status_router
 from shared import ConfigStore, EventBus
 
@@ -22,11 +23,10 @@ def _make_client(tmp_path: Path) -> tuple[TestClient, ConfigStore[Settings]]:
         stt_provider=None,  # nieużywane przez ten endpoint
         tts_provider=None,
         wakeword_detector_class_name="OnnxWakeWordDetector",
-        connected_sender_ids=set(),
+        wakeword_is_placeholder=False,
+        presence=ClientPresenceRegistry(),
         config_store=config_store,
-        sender_states={},
         event_bus=EventBus(),
-        pending_capabilities={},
     )
     app.include_router(router, prefix="/api/v1/voice")
     return TestClient(app), config_store
@@ -121,18 +121,17 @@ class _RealisticTTS(BaseTTSProvider):
         yield b""  # nieosiągalne — czyni funkcję generatorem; provider tu nigdy nie syntezuje
 
 
-def _status_for_detector(tmp_path: Path, detector_name: str) -> dict:
+def _status_for_detector(tmp_path: Path, detector_name: str, is_placeholder: bool) -> dict:
     app = FastAPI()
     app.include_router(
         create_voice_status_router(
             stt_provider=_RealisticSTT(),
             tts_provider=_RealisticTTS(),
             wakeword_detector_class_name=detector_name,
-            connected_sender_ids=set(),
+            wakeword_is_placeholder=is_placeholder,
+            presence=ClientPresenceRegistry(),
             config_store=ConfigStore(Settings, tmp_path / "settings.json"),
-            sender_states={},
             event_bus=EventBus(),
-            pending_capabilities={},
         ),
         prefix="/api/v1/voice",
     )
@@ -140,11 +139,11 @@ def _status_for_detector(tmp_path: Path, detector_name: str) -> dict:
 
 
 def test_real_detector_with_real_providers_is_production_ready(tmp_path: Path) -> None:
-    assert _status_for_detector(tmp_path, "OnnxWakeWordDetector")["is_production_ready"] is True
+    assert _status_for_detector(tmp_path, "OnnxWakeWordDetector", is_placeholder=False)["is_production_ready"] is True
 
 
 def test_placeholder_detector_marks_pipeline_as_not_ready(tmp_path: Path) -> None:
     """Regresja: `is_production_ready` sprawdzało wcześniej tylko atrapy STT/TTS,
     więc pipeline z niezaładowanym modelem `.onnx` (cicha degradacja do detektora
     reagującego na głośność, nie na słowo) raportował się jako gotowy."""
-    assert _status_for_detector(tmp_path, "ThresholdEnergyWakeWordDetector")["is_production_ready"] is False
+    assert _status_for_detector(tmp_path, "ThresholdEnergyWakeWordDetector", is_placeholder=True)["is_production_ready"] is False

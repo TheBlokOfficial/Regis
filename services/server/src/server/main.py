@@ -19,6 +19,7 @@ from server.network.gateway import create_gateway_app
 from server.ports.wakeword import WakeWordDetector
 from server.telemetry import GenerationLogStore, RecordingLLMProvider, TurnAttemptCollector
 from server.voice.gateway import WakeWordDetectorFactory, create_voice_router
+from server.voice.presence import ClientPresenceRegistry
 from server.voice.provider_routes import create_voice_providers_router
 from server.voice.routes import create_voice_status_router
 from server.world import WorldEngine
@@ -161,18 +162,12 @@ async def main() -> None:
     #    aktywnego dostawcy/configu działa od razu, bez restartu. Wake-word: realny model
     #    .onnx (Settings.wakeword_model_path), z łagodną degradacją do placeholdera progu
     #    amplitudy gdy nieskonfigurowany/brak pliku.
-    # `sender_id` z aktualnie żywym połączeniem WS — mechaniczny fakt wypełniany przez
-    # gateway.py, czytany przez routes.py (panel Nadawcy w Web UI, Świat), bez importu
-    # między world/voice (patrz docs/manifest.md, sekcja 5).
-    connected_sender_ids: set[str] = set()
-    # Snapshot SessionState.name per sender_id (mirror connected_sender_ids) — dla
-    # GET /api/v1/voice/clients/status (hydratacja dashboardu "Klienci"); dalsze zmiany
-    # dochodzą już tylko przez GET /api/v1/voice/clients/watch (SSE, VoiceEventType).
-    sender_states: dict[str, str] = {}
-    # Możliwości zadeklarowane w handshake (mic/speaker), zanim klient zostanie
-    # zatwierdzony — Web UI czyta je z GET /api/v1/voice/connected, żeby rejestracja
-    # zapisała w World prawdziwe capabilities zamiast zgadywać typ klienta.
-    pending_capabilities: dict[str, list[str]] = {}
+    # Kto jest podłączony, w jakim jest stanie i co zadeklarował w handshake —
+    # mechaniczny fakt wypełniany przez gateway.py, czytany przez routes.py (panel
+    # Nadawcy i dashboard Klienci w Web UI), bez importu między world/voice
+    # (patrz docs/manifest.md, sekcja 5). Jeden obiekt zamiast trzech gołych kolekcji
+    # wędrujących przez sygnatury dwóch fabryk routerów.
+    presence = ClientPresenceRegistry()
 
     async def is_registered(sender_id: str) -> bool:
         """Jedyne miejsce, w którym "kto jest zatwierdzonym klientem" jest wiązane z
@@ -193,21 +188,20 @@ async def main() -> None:
         wakeword_detector_factory=wakeword_detector_factory,
         stt_provider=voice_stt_provider,
         tts_provider=voice_tts_provider,
-        connected_sender_ids=connected_sender_ids,
+        presence=presence,
         settings_loader=load_settings,
-        sender_states=sender_states,
-        pending_capabilities=pending_capabilities,
         is_registered=is_registered,
     )
     voice_status_router = create_voice_status_router(
         stt_provider=voice_stt_provider,
         tts_provider=voice_tts_provider,
-        connected_sender_ids=connected_sender_ids,
         wakeword_detector_class_name=wakeword_detector_class_name,
+        # Detektor powstaje per połączenie, więc o placeholderowość pytamy jedną świeżą
+        # instancję tutaj — wybór modelu vs. progu amplitudy zapada raz, przy starcie.
+        wakeword_is_placeholder=wakeword_detector_factory().is_placeholder,
+        presence=presence,
         config_store=config_store,
-        sender_states=sender_states,
         event_bus=event_bus,
-        pending_capabilities=pending_capabilities,
     )
     voice_providers_router = create_voice_providers_router(stt_registry=stt_registry, tts_registry=tts_registry)
 

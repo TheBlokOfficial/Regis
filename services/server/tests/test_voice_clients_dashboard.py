@@ -12,21 +12,22 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from server.config import Settings
 from server.voice.events import VoiceEventType
+from server.voice.presence import ClientPresenceRegistry
 from server.voice.routes import create_voice_status_router
 from shared import ConfigStore, Event, EventBus
 
 
 def _make_client(tmp_path: Path, sender_states: dict[str, str], event_bus: EventBus) -> TestClient:
+    presence = ClientPresenceRegistry(states=dict(sender_states))
     app = FastAPI()
     router = create_voice_status_router(
         stt_provider=None,
         tts_provider=None,
         wakeword_detector_class_name="OnnxWakeWordDetector",
-        connected_sender_ids=set(),
+        wakeword_is_placeholder=False,
+        presence=presence,
         config_store=ConfigStore(Settings, tmp_path / "settings.json"),
-        sender_states=sender_states,
         event_bus=event_bus,
-        pending_capabilities={},
     )
     app.include_router(router, prefix="/api/v1/voice")
     return TestClient(app)

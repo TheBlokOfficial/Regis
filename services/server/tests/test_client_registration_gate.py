@@ -28,6 +28,7 @@ from server.config import Settings
 from server.network.gateway import create_gateway_app
 from server.ports.llm import BaseLLMProvider, LLMMessage
 from server.voice.gateway import create_voice_router
+from server.voice.presence import ClientPresenceRegistry
 from shared import EventBus
 
 REGISTERED = "znany_klient"
@@ -104,10 +105,8 @@ def _voice_app(agent_engine: _FakeAgentEngine) -> FastAPI:
             wakeword_detector_factory=ThresholdEnergyWakeWordDetector,
             stt_provider=MockSTTProvider(),
             tts_provider=MockTTSProvider(),
-            connected_sender_ids=set(),
+            presence=ClientPresenceRegistry(),
             settings_loader=Settings,
-            sender_states={},
-            pending_capabilities={},
             is_registered=_is_registered,
         ),
         prefix="/ws",

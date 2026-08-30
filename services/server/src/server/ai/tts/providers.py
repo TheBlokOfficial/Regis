@@ -27,6 +27,8 @@ class MockTTSProvider(BaseTTSProvider):
     """Deterministyczny dev-provider — strumieniuje ciszę o długości ~proporcjonalnej do
     tekstu, w kawałkach po `_MOCK_CHUNK_DURATION_SECONDS`."""
 
+    is_placeholder = True
+
     async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         duration_seconds = max(_MIN_DURATION_SECONDS, min(len(text) / _CHARS_PER_SECOND, _MAX_DURATION_SECONDS))
         total_samples = int(SAMPLE_RATE_HZ * duration_seconds)

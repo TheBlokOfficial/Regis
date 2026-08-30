@@ -5,7 +5,16 @@ from __future__ import annotations
 
 import pytest
 from desktop_satellite.session import SatelliteSession, SessionState
-from shared import SatelliteMessageType, ServerMessageType
+from shared import (
+    ClientConfigFrame,
+    ErrorFrame,
+    PlayStopToneFrame,
+    SatelliteMessageType,
+    TtsEndFrame,
+    TtsStartFrame,
+    TurnEndFrame,
+    WakeDetectedFrame,
+)
 
 
 class FakeLink:
@@ -100,7 +109,7 @@ async def test_mic_frame_in_listening_only_streams_audio() -> None:
 @pytest.mark.anyio
 async def test_wake_detected_transitions_to_recording_and_plays_tone() -> None:
     session, _, speaker = _make_session(NeverTriggerVad())
-    await session.handle_server_frame({"type": ServerMessageType.WAKE_DETECTED.value})
+    await session.handle_server_frame(WakeDetectedFrame())
     assert session.state == SessionState.RECORDING_UTTERANCE
     assert len(speaker.played) == 1
     assert speaker.cues == ["Speech On"]
@@ -134,11 +143,11 @@ async def test_full_tts_cycle_streams_audio_and_returns_to_listening() -> None:
     session, link, speaker = _make_session(NeverTriggerVad())
     session.state = SessionState.PROCESSING
 
-    await session.handle_server_frame({"type": ServerMessageType.PLAY_STOP_TONE.value})
+    await session.handle_server_frame(PlayStopToneFrame())
     assert len(speaker.played) == 1  # stop-tone
     assert speaker.cues == ["Speech Sleep"]
 
-    await session.handle_server_frame({"type": ServerMessageType.TTS_START.value})
+    await session.handle_server_frame(TtsStartFrame())
     assert session.state == SessionState.SPEAKING
     assert speaker.stream_started_count == 1
 
@@ -147,7 +156,7 @@ async def test_full_tts_cycle_streams_audio_and_returns_to_listening() -> None:
     # Strumien pozostaje otwarty MIEDZY fragmentami — jeszcze nie zamkniety.
     assert speaker.stream_open is True
 
-    await session.handle_server_frame({"type": ServerMessageType.TTS_END.value})
+    await session.handle_server_frame(TtsEndFrame())
     assert speaker.streamed_chunks == [b"chunk1", b"chunk2"]
     assert speaker.stream_stopped_count == 1
     assert speaker.stream_open is False
@@ -166,7 +175,7 @@ async def test_turn_end_frame_returns_to_listening_without_sound() -> None:
     session, link, speaker = _make_session(NeverTriggerVad())
     session.state = SessionState.PROCESSING
 
-    await session.handle_server_frame({"type": ServerMessageType.TURN_END.value})
+    await session.handle_server_frame(TurnEndFrame())
 
     assert session.state == SessionState.LISTENING_WAKEWORD
     assert speaker.played == []
@@ -178,7 +187,7 @@ async def test_turn_end_frame_returns_to_listening_without_sound() -> None:
 async def test_error_frame_resets_to_listening() -> None:
     session, _, _ = _make_session(NeverTriggerVad())
     session.state = SessionState.RECORDING_UTTERANCE
-    await session.handle_server_frame({"type": ServerMessageType.ERROR.value, "detail": "boom"})
+    await session.handle_server_frame(ErrorFrame(detail="boom"))
     assert session.state == SessionState.LISTENING_WAKEWORD
 
 
@@ -205,7 +214,7 @@ class ConfigLink(FakeLink):
 
 @pytest.mark.anyio
 async def test_await_client_config_applies_server_values() -> None:
-    link = ConfigLink({"type": "client_config", "silence_duration_ms": 900.0, "amplitude_threshold": 700})
+    link = ConfigLink(ClientConfigFrame(silence_duration_ms=900.0, amplitude_threshold=700))
     speaker = FakeSpeaker()
     captured: list[tuple[float, int]] = []
 
@@ -222,7 +231,7 @@ async def test_await_client_config_applies_server_values() -> None:
 
 @pytest.mark.anyio
 async def test_await_client_config_falls_back_on_unexpected_frame() -> None:
-    link = ConfigLink({"type": "wake_detected"})
+    link = ConfigLink(WakeDetectedFrame())
     speaker = FakeSpeaker()
     captured: list[tuple[float, int]] = []
 

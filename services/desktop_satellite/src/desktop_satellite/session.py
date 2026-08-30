@@ -18,10 +18,20 @@ import asyncio
 from enum import Enum, auto
 from typing import Callable
 
-from shared import SatelliteMessageType, ServerMessageType, get_logger
+from shared import (
+    ClientConfigFrame,
+    ErrorFrame,
+    PlayStopToneFrame,
+    SatelliteMessageType,
+    TtsEndFrame,
+    TtsStartFrame,
+    TurnEndFrame,
+    WakeDetectedFrame,
+    get_logger,
+)
 
 from desktop_satellite.audio import MicCapture, SpeakerPlayback, synth_tone
-from desktop_satellite.protocol_client import SatelliteLink, ServerFrame, parse_server_message_type
+from desktop_satellite.protocol_client import IncomingFrame, SatelliteLink
 from desktop_satellite.vad import SilenceVadDetector
 
 logger = get_logger("regis.desktop_satellite.session")
@@ -87,11 +97,12 @@ class SatelliteSession:
             logger.warning("Serwer nie przysłał CLIENT_CONFIG w czasie — używam lokalnych defaultów VAD.")
             return self._vad_factory_defaults()
 
-        if isinstance(frame, dict) and parse_server_message_type(frame) == ServerMessageType.CLIENT_CONFIG:
-            silence_ms = float(frame["silence_duration_ms"])
-            amplitude = int(frame["amplitude_threshold"])
-            logger.info(f"Konfiguracja VAD z serwera: cisza={silence_ms:.0f}ms, próg amplitudy={amplitude}.")
-            return self._vad_factory(silence_ms, amplitude)
+        if isinstance(frame, ClientConfigFrame):
+            logger.info(
+                f"Konfiguracja VAD z serwera: cisza={frame.silence_duration_ms:.0f}ms, "
+                f"próg amplitudy={frame.amplitude_threshold}."
+            )
+            return self._vad_factory(frame.silence_duration_ms, frame.amplitude_threshold)
 
         logger.warning(f"Oczekiwano CLIENT_CONFIG, dostano: {frame!r} — używam lokalnych defaultów VAD.")
         return self._vad_factory_defaults()
@@ -128,7 +139,7 @@ class SatelliteSession:
         # PROCESSING/SPEAKING: nie strumieniujemy mikrofonu — uniknięcie nagrywania
         # własnego odtwarzania bez echo-cancellation (ten sam powód co server-side).
 
-    async def handle_server_frame(self, frame: ServerFrame) -> None:
+    async def handle_server_frame(self, frame: IncomingFrame) -> None:
         if isinstance(frame, (bytes, bytearray)):
             if self.state == SessionState.SPEAKING:
                 # Fragment leci PROSTO na otwarty strumień (patrz `TTS_START` niżej) —
@@ -136,26 +147,27 @@ class SatelliteSession:
                 await self._speaker.write_chunk(bytes(frame))
             return
 
-        message_type = parse_server_message_type(frame)
-        if message_type == ServerMessageType.WAKE_DETECTED:
+        if isinstance(frame, WakeDetectedFrame):
             await self._on_wake_detected()
-        elif message_type == ServerMessageType.PLAY_STOP_TONE:
+        elif isinstance(frame, PlayStopToneFrame):
             await self._speaker.play_cue(STOP_SOUND_NAME, synth_tone(STOP_TONE_HZ, TONE_DURATION_MS))
-        elif message_type == ServerMessageType.TTS_START:
+        elif isinstance(frame, TtsStartFrame):
             self.state = SessionState.SPEAKING
             await self._speaker.start_stream()
-        elif message_type == ServerMessageType.TTS_END:
+        elif isinstance(frame, TtsEndFrame):
             await self._on_tts_end()
-        elif message_type == ServerMessageType.TURN_END:
+        elif isinstance(frame, TurnEndFrame):
             # Tura skończona, ale nie ma czego odtworzyć (np. model wykonał samo wywołanie
             # narzędzia). Bez dźwięku — wracamy do nasłuchu, tak jakby nic nie zaszło.
             logger.info("Tura zakończona bez odpowiedzi głosowej — wracam do nasłuchu.")
             self._reset_to_listening()
-        elif message_type == ServerMessageType.ERROR:
-            logger.warning(f"Błąd zgłoszony przez serwer: {frame.get('detail')}")
+        elif isinstance(frame, ErrorFrame):
+            logger.warning(f"Błąd zgłoszony przez serwer: {frame.detail}")
             self._reset_to_listening()
         else:
-            logger.warning(f"Nieznany typ wiadomości od serwera: {frame.get('type')!r}.")
+            # `None` = ramka nierozpoznana; kodek zalogował już jej treść. Ignorujemy,
+            # zamiast zrywać połączenie — nowszy serwer może mówić więcej niż my znamy.
+            logger.debug("Pominięto nierozpoznaną ramkę serwera.")
 
     async def _on_wake_detected(self) -> None:
         assert self._vad is not None, "SatelliteSession.run() nie zostało wywołane."

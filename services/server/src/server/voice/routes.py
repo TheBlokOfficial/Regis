@@ -7,10 +7,10 @@ prefiksem `/api/v1/voice`, analogicznie do `/api/v1/world`.
 `get_active_provider_class_name()` — dla `STTRouter`/`TTSRouter` rozwiązuje
 aktualny konkret na żywo, patrz `server.ai.stt`/`server.ai.tts`).
 
-`GET /connected` — `sender_id` z aktualnie żywym połączeniem WS
-(`connected_sender_ids`, wypełniany przez `gateway.py`, wstrzykiwany z
-`main.py` jako współdzielony `set`) — pozwala Web UI (panel Nadawcy, Świat)
-pokazać satelity podłączone, ale jeszcze niezarejestrowane w `World`.
+`GET /connected` — `sender_id` z aktualnie żywym połączeniem WS (rejestr obecności
+`voice/presence.py`, wypełniany przez `gateway.py`, wstrzykiwany z `main.py`) —
+pozwala Web UI (panel Nadawcy, Świat) pokazać satelity podłączone, ale jeszcze
+niezarejestrowane w `World`.
 
 CRUD dostawców STT/TTS (`GET/POST/PUT/DELETE /stt/providers*`, `.../tts/providers*`)
 i shim kompatybilności `GET/PUT /providers/config` żyją osobno, w
@@ -32,6 +32,7 @@ from server.config import Settings
 from server.ports.stt import BaseSTTProvider
 from server.ports.tts import BaseTTSProvider
 from server.voice.events import VoiceEventType
+from server.voice.presence import ClientPresenceRegistry
 
 
 class VoiceStatusDTO(BaseModel):
@@ -94,11 +95,10 @@ def create_voice_status_router(
     stt_provider: BaseSTTProvider,
     tts_provider: BaseTTSProvider,
     wakeword_detector_class_name: str,
-    connected_sender_ids: set[str],
+    wakeword_is_placeholder: bool,
+    presence: ClientPresenceRegistry,
     config_store: ConfigStore[Settings],
-    sender_states: dict[str, str],
     event_bus: EventBus,
-    pending_capabilities: dict[str, list[str]],
 ) -> APIRouter:
     """Tworzy router statusu — providerzy/nazwa detektora wstrzykiwane z `main.py`."""
     router = APIRouter()
@@ -107,28 +107,33 @@ def create_voice_status_router(
     async def get_status() -> VoiceStatusDTO:
         stt_name = await stt_provider.get_active_provider_class_name()
         tts_name = await tts_provider.get_active_provider_class_name()
+        # Placeholder wake-worda liczy się tak samo jak Mock STT/TTS — jest dev-providerem
+        # wprost wg własnego docstringu (`ai/wakeword/detectors.py`) i reaguje na sekwencję
+        # głośnych ramek, nie na słowo. Bez tego `is_production_ready` mogło zwrócić True
+        # dla pipeline'u, który nigdy nie rozpozna "Regis", bo model .onnx się nie załadował.
+        #
+        # Pytamy o WŁAŚCIWOŚĆ konkretu (`is_placeholder`), nie o prefiks jego nazwy klasy.
+        # Dawne `name.startswith("Mock")` i porównanie ze stringiem nazwy detektora
+        # działały dopóty, dopóki nikt nie nazwał dev-providera inaczej.
+        placeholders = (
+            await stt_provider.is_active_provider_placeholder(),
+            await tts_provider.is_active_provider_placeholder(),
+            wakeword_is_placeholder,
+        )
         return VoiceStatusDTO(
             stt_provider=stt_name,
             tts_provider=tts_name,
             wakeword_detector=wakeword_detector_class_name,
-            # Placeholder wake-worda liczy się tak samo jak Mock STT/TTS — jest
-            # dev-providerem wprost wg własnego docstringu (`ai/wakeword/detectors.py`) i
-            # reaguje na sekwencję głośnych ramek, nie na słowo. Bez tego
-            # `is_production_ready` mogło zwrócić True dla pipeline'u, który nigdy
-            # nie rozpozna "Regis", bo model .onnx się nie załadował.
-            is_production_ready=(
-                not any(name.startswith("Mock") for name in (stt_name, tts_name))
-                and wakeword_detector_class_name != "ThresholdEnergyWakeWordDetector"
-            ),
+            is_production_ready=not any(placeholders),
         )
 
     @router.get("/connected", response_model=ConnectedSendersDTO, tags=["Voice"])
     async def get_connected() -> ConnectedSendersDTO:
-        ordered = sorted(connected_sender_ids)
+        ordered = sorted(presence.connected_ids())
         return ConnectedSendersDTO(
             sender_ids=ordered,
             senders=[
-                ConnectedSenderDTO(sender_id=sid, capabilities=pending_capabilities.get(sid, [])) for sid in ordered
+                ConnectedSenderDTO(sender_id=sid, capabilities=presence.capabilities_of(sid)) for sid in ordered
             ],
         )
 
@@ -156,7 +161,7 @@ def create_voice_status_router(
 
     @router.get("/clients/status", response_model=ClientStatusSnapshotDTO, tags=["Voice"])
     async def get_clients_status() -> ClientStatusSnapshotDTO:
-        return ClientStatusSnapshotDTO(states=dict(sender_states))
+        return ClientStatusSnapshotDTO(states=dict(presence.states))
 
     @router.get("/clients/watch", tags=["Voice"])
     async def watch_clients() -> StreamingResponse:
