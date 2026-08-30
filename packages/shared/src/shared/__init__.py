@@ -41,6 +41,7 @@ from shared.discovery import DISCOVERY_MAGIC, DISCOVERY_UDP_PORT, decode_beacon,
 from shared.event_bus import Event, EventBus, EventHandler
 from shared.json_repository import ActiveInstancePointer, JsonInstanceRepository
 from shared.logging import get_logger, setup_logging
+from shared.version import __version__
 from shared.voice_protocol import (
     CHANNELS,
     SAMPLE_RATE_HZ,
@@ -49,7 +50,6 @@ from shared.voice_protocol import (
     ServerMessageType,
 )
 
-__version__ = "0.1.0"
 __all__ = [
     "AgentDefaultPromptDTO",
     "CancelChatApiRequest",
@@ -107,4 +107,5 @@ __all__ = [
     "get_service_root",
     "sanitize_identifier",
     "setup_logging",
+    "__version__",
 ]

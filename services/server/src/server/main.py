@@ -2,6 +2,7 @@ import asyncio
 
 import uvicorn
 from shared import EventBus, get_logger, get_service_root, setup_logging
+from shared import __version__ as REGIS_VERSION
 
 from server.agent import AgentEngine
 from server.agent.context import ContextBuilder
@@ -62,7 +63,7 @@ def _build_wakeword_detector_factory(settings: Settings) -> tuple[WakeWordDetect
 
 async def main() -> None:
     settings = load_settings()
-    logger.info(f"Uruchamianie {settings.app_name} (v{settings.version})...")
+    logger.info(f"Uruchamianie {settings.app_name} (v{REGIS_VERSION})...")
 
     # 1. Tworzenie centralnej magistrali zdarzeń (Event Bus), współdzielonej przez AgentEngine
     event_bus = EventBus()

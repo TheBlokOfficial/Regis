@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
+from shared import __version__ as REGIS_VERSION
 
 from server.agent import AgentEngine
 from server.agent.prompts import AgentDefaultPromptStore
@@ -28,7 +29,7 @@ def create_gateway_app(
     app = FastAPI(
         title="Regis Agent OS - Gateway",
         description="Bramka sieciowa FastAPI z wbudowanym interfejsem Web Console",
-        version="0.1.0",
+        version=REGIS_VERSION,
     )
 
     # Rejestracja centralnego routera używanych punktów końcowych API

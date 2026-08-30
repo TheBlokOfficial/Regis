@@ -3,10 +3,15 @@ from shared import ConfigStore, get_service_root
 
 
 class Settings(BaseModel):
-    """Główna konfiguracja aplikacji serwera Regis."""
+    """Główna konfiguracja aplikacji serwera Regis.
+
+    **Nie ma tu pola `version`** — wersja produktu jest wyprowadzana ze stałej
+    `shared.__version__` (`packages/shared/src/shared/version.py`) i nie należy do
+    rzeczy, które użytkownik edytuje w pliku konfiguracyjnym. Wcześniejsze pole
+    `version` żyło własnym życiem obok czterech innych kopii tego samego numeru.
+    """
 
     app_name: str = Field(default="Regis", description="Nazwa aplikacji")
-    version: str = Field(default="0.1.0", description="Wersja aplikacji")
     host: str = Field(default="0.0.0.0", description="Adres nasłuchiwania HTTP/WebSocket")
     port: int = Field(default=8000, description="Port serwera HTTP/WebSocket")
     debug: bool = Field(

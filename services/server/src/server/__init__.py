@@ -1,3 +1,5 @@
-"""Usługa serwera głównego Regis."""
+"""Usługa serwera głównego Regis.
 
-__version__ = "0.1.0"
+Bez własnego `__version__` — wersją produktu jest `shared.__version__`
+(`packages/shared/src/shared/version.py`), jedyne źródło prawdy w monorepo.
+"""

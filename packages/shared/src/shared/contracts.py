@@ -7,9 +7,10 @@ class HealthResponse(BaseModel):
     """Odpowiedź dla punktu końcowego GET /api/v1/health."""
 
     system: str = Field(default="Regis Agent OS", description="Nazwa systemu")
+    app_name: str = Field(..., description="Nazwa aplikacji z konfiguracji serwera (Settings.app_name)")
     gateway_status: str = Field(default="online", description="Status bramki sieciowej")
     agent_engine_status: str = Field(default="ready", description="Status silnika agenta")
-    shared_version: str = Field(..., description="Wersja pakietu shared")
+    version: str = Field(..., description="Wersja produktu (shared.__version__) — jedyne źródło prawdy")
 
 
 class LLMProviderDTO(BaseModel):

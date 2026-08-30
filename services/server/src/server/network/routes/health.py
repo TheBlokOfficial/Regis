@@ -1,6 +1,8 @@
-import shared
 from fastapi import APIRouter
 from shared import HealthResponse
+from shared import __version__ as REGIS_VERSION
+
+from server.config import load_settings
 
 
 def create_health_router() -> APIRouter:
@@ -14,11 +16,14 @@ def create_health_router() -> APIRouter:
         tags=["System"],
     )
     async def health() -> HealthResponse:
+        # `load_settings()` na świeżo przy każdym żądaniu, nie w closure — ten sam
+        # wzorzec "instant effect" co w routerach dostawców: zmiana nazwy w pliku
+        # konfiguracyjnym jest widoczna bez restartu serwera.
         return HealthResponse(
-            system="Regis Agent OS",
+            app_name=load_settings().app_name,
             gateway_status="online",
             agent_engine_status="ready",
-            shared_version=shared.__version__,
+            version=REGIS_VERSION,
         )
 
     return router

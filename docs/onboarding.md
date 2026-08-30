@@ -309,3 +309,26 @@ Podczas prac nad projektem należy bezwzględnie stosować ustandaryzowany cykl 
    - Sprawdź zmodyfikowane pliki (`git status`).
    - Stwórz czytelny, zwięzły commit z opisem wykonanych zmian.
    - **Zapytaj o zgodę przed** `git push origin master` — wysyłka nigdy nie jest automatyczna.
+---
+
+## 7. Wydanie (wersjonowanie)
+
+Wersja produktu ma **jedno źródło prawdy**: stała `__version__` w
+[`packages/shared/src/shared/version.py`](../packages/shared/src/shared/version.py). Czytają ją
+log startowy serwera, `GET /api/v1/health`, tytuł OpenAPI, tag obrazu Dockera i metadane buildu
+satelity. Numery `version` w plikach `pyproject.toml` to wersje *pakietów* — nikt ich nie publikuje
+i **nie ruszamy ich przy wydaniu**.
+
+Wersjonowanie wg SemVer, tag gita z prefiksem `v` (`v0.2.0`).
+
+Procedura:
+
+1. Podnieś `__version__` w `shared/version.py`.
+2. Uzupełnij sekcję wydania w [`CHANGELOG.md`](../CHANGELOG.md) i zamień „w przygotowaniu" na datę.
+3. Komplet kontroli jakości (sekcja „Kontrola jakości" wyżej) — zero trafień, zielone testy.
+4. Commit, następnie tag:
+   ```bash
+   git tag -a v0.2.0 -m "Regis 0.2.0"
+   ```
+5. Po zgodzie właściciela repozytorium: `git push origin master --follow-tags`.
+6. Wdrożenie serwera: `deploy/deploy.sh` na maszynie docelowej (patrz [`deploy/README.md`](../deploy/README.md)).

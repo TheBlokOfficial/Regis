@@ -4,6 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "server"
+# Wersja PAKIETU — nieistotna, nic go nie publikuje ani nie instaluje po numerze.
+# Wersją PRODUKTU jest `shared.__version__` (packages/shared/src/shared/version.py).
 version = "0.1.0"
 description = "Główny serwer obsługujący WebSockets oraz API REST (FastAPI)"
 readme = "README.md"

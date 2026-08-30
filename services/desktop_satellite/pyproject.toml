@@ -4,6 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "desktop_satellite"
+# Wersja PAKIETU — nieistotna, nic go nie publikuje ani nie instaluje po numerze.
+# Wersją PRODUKTU jest `shared.__version__` (packages/shared/src/shared/version.py).
 version = "0.1.0"
 description = "Satelita desktopowa (Windows/Linux) — klient WS łączący się z /ws/voice serwera Regis"
 readme = "README.md"
