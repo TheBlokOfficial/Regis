@@ -116,10 +116,10 @@ export function renderClientConfigFormMarkup(config, status) {
         </div>
       </div>
       <p class="section-hint">
-        Detekcja wake-worda dzieje się w 100% na serwerze. VAD (koniec wypowiedzi) liczy
-        się lokalnie na satelicie, ale jego próg jest stąd centralnie wysyłany przy
-        każdym połączeniu — zmiana zadziała po następnym reconnect satelity, bez
-        restartu serwera.
+        Wake-word jest rozpoznawany na serwerze, ale ciszę odcina lokalna bramka satelity
+        z buforem wstecznym. Ten sam próg amplitudy służy potem lokalnemu VAD końca
+        wypowiedzi. Jest centralnie wysyłany przy każdym połączeniu — zmiana zadziała
+        po następnym reconnect satelity, bez restartu serwera.
       </p>
       ${renderPipelineStatusMarkup(status)}
       <div class="form-actions">

@@ -52,6 +52,12 @@ class UtteranceEndFrame(BaseModel):
     type: Literal[SatelliteMessageType.UTTERANCE_END] = SatelliteMessageType.UTTERANCE_END
 
 
+class WakeStreamStartFrame(BaseModel):
+    """Początek nowej porcji audio przepuszczonej przez lokalną bramkę energii."""
+
+    type: Literal[SatelliteMessageType.WAKE_STREAM_START] = SatelliteMessageType.WAKE_STREAM_START
+
+
 class PlaybackDoneFrame(BaseModel):
     """Satelita skończyła fizyczne odtwarzanie audio odpowiedzi."""
 
@@ -59,7 +65,7 @@ class PlaybackDoneFrame(BaseModel):
 
 
 SatelliteFrame = Annotated[
-    Union[HelloFrame, UtteranceEndFrame, PlaybackDoneFrame],
+    Union[HelloFrame, WakeStreamStartFrame, UtteranceEndFrame, PlaybackDoneFrame],
     Field(discriminator="type"),
 ]
 
@@ -128,6 +134,7 @@ _SERVER_CONTROL_FRAMES: dict[ServerMessageType, Type[BaseModel]] = {
 }
 
 _SATELLITE_CONTROL_FRAMES: dict[SatelliteMessageType, Type[BaseModel]] = {
+    SatelliteMessageType.WAKE_STREAM_START: WakeStreamStartFrame,
     SatelliteMessageType.UTTERANCE_END: UtteranceEndFrame,
     SatelliteMessageType.PLAYBACK_DONE: PlaybackDoneFrame,
 }

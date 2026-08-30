@@ -30,9 +30,10 @@ from shared import (
     get_logger,
 )
 
-from desktop_satellite.audio import MicCapture, SpeakerPlayback, synth_tone
+from desktop_satellite.audio import FRAME_DURATION_MS, MicCapture, SpeakerPlayback, synth_tone
 from desktop_satellite.protocol_client import IncomingFrame, SatelliteLink
 from desktop_satellite.vad import SilenceVadDetector
+from desktop_satellite.wake_gate import WakeAudioGate
 
 logger = get_logger("regis.desktop_satellite.session")
 
@@ -73,6 +74,7 @@ class SatelliteSession:
         self._speaker = speaker
         self._vad_factory = vad_factory
         self._vad: SilenceVadDetector | None = None
+        self._wake_gate: WakeAudioGate | None = None
 
     async def run(self, mic: MicCapture) -> None:
         """Wysyła handshake, czeka na `CLIENT_CONFIG` serwera (parametry VAD), po czym
@@ -102,12 +104,14 @@ class SatelliteSession:
                 f"Konfiguracja VAD z serwera: cisza={frame.silence_duration_ms:.0f}ms, "
                 f"próg amplitudy={frame.amplitude_threshold}."
             )
+            self._wake_gate = WakeAudioGate(FRAME_DURATION_MS, frame.amplitude_threshold)
             return self._vad_factory(frame.silence_duration_ms, frame.amplitude_threshold)
 
         logger.warning(f"Oczekiwano CLIENT_CONFIG, dostano: {frame!r} — używam lokalnych defaultów VAD.")
         return self._vad_factory_defaults()
 
     def _vad_factory_defaults(self) -> SilenceVadDetector:
+        self._wake_gate = WakeAudioGate(FRAME_DURATION_MS, 500)
         return self._vad_factory(1500.0, 500)
 
     async def _pump_mic(self, mic: MicCapture) -> None:
@@ -126,7 +130,12 @@ class SatelliteSession:
 
     async def handle_mic_frame(self, chunk: bytes) -> None:
         if self.state == SessionState.LISTENING_WAKEWORD:
-            await self._link.send_audio(chunk)
+            assert self._wake_gate is not None, "SatelliteSession.run() nie zostało wywołane."
+            emission = self._wake_gate.process(chunk)
+            if emission.starts_stream:
+                await self._link.send_control(SatelliteMessageType.WAKE_STREAM_START)
+            for frame in emission.frames:
+                await self._link.send_audio(frame)
             return
         if self.state == SessionState.RECORDING_UTTERANCE:
             assert self._vad is not None, "SatelliteSession.run() nie zostało wywołane."
@@ -185,5 +194,7 @@ class SatelliteSession:
 
     def _reset_to_listening(self) -> None:
         assert self._vad is not None, "SatelliteSession.run() nie zostało wywołane."
+        assert self._wake_gate is not None, "SatelliteSession.run() nie zostało wywołane."
         self.state = SessionState.LISTENING_WAKEWORD
         self._vad.reset()
+        self._wake_gate.reset()

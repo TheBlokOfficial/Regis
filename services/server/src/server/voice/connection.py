@@ -28,6 +28,7 @@ from shared import (
     PlaybackDoneFrame,
     ServerMessageType,
     UtteranceEndFrame,
+    WakeStreamStartFrame,
     decode_satellite_frame,
     encode_frame,
     get_logger,
@@ -275,6 +276,8 @@ class VoiceConnection:
         frame = decode_satellite_frame(raw)
         if isinstance(frame, UtteranceEndFrame):
             await self.session.handle_utterance_end()
+        elif isinstance(frame, WakeStreamStartFrame):
+            self.session.handle_wake_stream_start()
         elif isinstance(frame, PlaybackDoneFrame):
             await self.session.handle_playback_done()
         elif frame is None:

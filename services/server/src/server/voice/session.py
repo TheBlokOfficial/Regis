@@ -112,6 +112,11 @@ class VoiceSession:
         # PROCESSING/SPEAKING: satelita nie powinna strumieniować mikrofonu (uniknięcie
         # nagrywania własnego odtwarzania bez echo-cancellation) — ramki po cichu ignorowane.
 
+    def handle_wake_stream_start(self) -> None:
+        """Rozpoczyna niezależną porcję audio przepuszczoną przez bramkę satelity."""
+        if self.state == SessionState.LISTENING_WAKEWORD:
+            self._wakeword_detector.reset()
+
     async def handle_utterance_end(self) -> None:
         """Satelita zgłosiła koniec wypowiedzi (własny VAD, 1.5s ciszy)."""
         if self.state != SessionState.RECORDING_UTTERANCE:

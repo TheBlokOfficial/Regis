@@ -58,12 +58,15 @@ class AlwaysTriggerWakeWordDetector:
 
 
 class NeverTriggerWakeWordDetector:
+    def __init__(self) -> None:
+        self.reset_count = 0
+
     def process(self, pcm_chunk: bytes) -> bool:
         del pcm_chunk
         return False
 
     def reset(self) -> None:
-        pass
+        self.reset_count += 1
 
     @property
     def last_score(self) -> float | None:
@@ -158,6 +161,18 @@ async def test_audio_frames_ignored_before_wake_word():
 
     assert session.state.name == "LISTENING_WAKEWORD"
     assert link.control_messages == []
+
+
+def test_wake_stream_start_resets_detector_only_while_listening():
+    detector = NeverTriggerWakeWordDetector()
+    session, _ = _make_session(detector, on_transcript=lambda t: None)
+
+    session.handle_wake_stream_start()
+    assert detector.reset_count == 1
+
+    session.state = session.state.RECORDING_UTTERANCE
+    session.handle_wake_stream_start()
+    assert detector.reset_count == 1
 
 
 @pytest.mark.anyio

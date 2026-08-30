@@ -20,6 +20,7 @@ from shared import (
     ServerMessageType,
     TurnEndFrame,
     UtteranceEndFrame,
+    WakeStreamStartFrame,
     decode_satellite_frame,
     decode_server_frame,
     encode_frame,
@@ -31,6 +32,7 @@ from shared import (
 # w `voice/gateway.py` i `desktop_satellite/protocol_client.py`.
 WIRE_FORMAT = {
     "hello": ({"type": "hello", "capabilities": ["mic", "speaker"]}, HelloFrame(capabilities=["mic", "speaker"])),
+    "wake_stream_start": ({"type": "wake_stream_start"}, WakeStreamStartFrame()),
     "utterance_end": ({"type": "utterance_end"}, UtteranceEndFrame()),
     "playback_done": ({"type": "playback_done"}, PlaybackDoneFrame()),
     "wake_detected": ({"type": "wake_detected"}, server_control_frame(ServerMessageType.WAKE_DETECTED)),
@@ -54,7 +56,11 @@ def test_wire_format_is_unchanged() -> None:
 
 def test_round_trip_in_both_directions() -> None:
     for name, (wire, frame) in WIRE_FORMAT.items():
-        decode = decode_satellite_frame if wire["type"] in ("hello", "utterance_end", "playback_done") else decode_server_frame
+        decode = (
+            decode_satellite_frame
+            if wire["type"] in ("hello", "wake_stream_start", "utterance_end", "playback_done")
+            else decode_server_frame
+        )
         assert decode(json.dumps(wire)) == frame, name
 
 

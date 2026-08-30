@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 from desktop_satellite.session import SatelliteSession, SessionState
+from desktop_satellite.wake_gate import WakeAudioGate
 from shared import (
     ClientConfigFrame,
     ErrorFrame,
@@ -95,14 +96,21 @@ def _make_session(vad) -> tuple[SatelliteSession, FakeLink, FakeSpeaker]:
     speaker = FakeSpeaker()
     session = SatelliteSession(link=link, speaker=speaker, vad_factory=lambda *_: vad)
     session._vad = vad
+    session._wake_gate = WakeAudioGate(
+        frame_duration_ms=20.0,
+        amplitude_threshold=500,
+        preroll_ms=20.0,
+        hangover_ms=20.0,
+    )
     return session, link, speaker
 
 
 @pytest.mark.anyio
-async def test_mic_frame_in_listening_only_streams_audio() -> None:
+async def test_loud_mic_frame_in_listening_starts_gated_stream() -> None:
     session, link, _ = _make_session(NeverTriggerVad())
     await session.handle_mic_frame(b"\x01\x02")
     assert link.audio_chunks == [b"\x01\x02"]
+    assert link.control_messages == [SatelliteMessageType.WAKE_STREAM_START]
     assert session.state == SessionState.LISTENING_WAKEWORD
 
 

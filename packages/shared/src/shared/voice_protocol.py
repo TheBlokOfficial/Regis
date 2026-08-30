@@ -30,6 +30,10 @@ class SatelliteMessageType(str, Enum):
     """Pierwsza wiadomość po otwarciu połączenia: {"type": "hello", "capabilities": ["mic", "speaker"]}.
     Lista, nie sztywny enum — przyszły connector bez audio może zadeklarować mniej."""
 
+    WAKE_STREAM_START = "wake_stream_start"
+    """Lokalna bramka energii otworzyła nową porcję audio do detekcji wake-worda.
+    Serwer zeruje poprzedni bufor modelu, aby nie sklejać dźwięków oddalonych w czasie."""
+
     UTTERANCE_END = "utterance_end"
     """VAD satelity wykrył min. 1.5s ciszy po wake-wordzie — koniec wypowiedzi."""
 
