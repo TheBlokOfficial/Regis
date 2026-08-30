@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
-from shared import ConfigStore, get_service_root
+from shared import ConfigStore, config_dir, env_bool, env_int, env_str, get_logger
+
+logger = get_logger("regis.config")
 
 
 class Settings(BaseModel):
@@ -62,14 +64,42 @@ class Settings(BaseModel):
     )
 
 
-# Automatyczne odnajdywanie korzenia usługi (services/server)
-SERVICE_DIR = get_service_root(__file__)
-CONFIG_PATH = SERVICE_DIR / "config" / "settings.json"
+# Katalog konfiguracji: `$REGIS_CONFIG_DIR`, w przeciwnym razie `services/server/config`
+# (patrz `shared/paths.py` — w kontenerze i w bundlu PyInstallera korzeń usługi nie istnieje).
+CONFIG_PATH = config_dir(__file__) / "settings.json"
 
 # Instancja menedżera konfiguracji serwera
 config_store = ConfigStore(Settings, CONFIG_PATH)
 
+HOST_VARIABLE = "REGIS_HOST"
+PORT_VARIABLE = "REGIS_PORT"
+DEBUG_VARIABLE = "REGIS_DEBUG"
+
 
 def load_settings() -> Settings:
-    """Wczytuje i zwraca zwalidowane ustawienia serwera."""
-    return config_store.load()
+    """Wczytuje ustawienia z pliku i nakłada wąski zestaw nadpisań ze środowiska.
+
+    **Nadpisywane są wyłącznie pola wdrożeniowe** — `host`, `port`, `debug`. To nie jest
+    arbitralne ograniczenie, tylko warunek poprawności: `PUT /api/v1/voice/client-config`
+    (`voice/routes.py`) czyta ustawienia, podmienia kilka pól i **zapisuje całość
+    z powrotem do pliku**. Gdyby overlay obejmował pole edytowalne z Web UI, pierwszy
+    zapis z przeglądarki zabetonowałby w JSON-ie wartość pochodzącą ze środowiska —
+    cicho i nieodwracalnie.
+
+    Zbiór nadpisywany tutaj (`host`/`port`/`debug`) i zbiór zapisywany przez Web UI
+    (`wakeword_threshold`, `vad_*`) **muszą pozostać rozłączne**. Dokładając nowe
+    nadpisanie, sprawdź najpierw, czy tamten endpoint go nie zapisuje.
+    """
+    settings = config_store.load()
+    overrides: dict[str, object] = {}
+    for field_name, value in (
+        ("host", env_str(HOST_VARIABLE)),
+        ("port", env_int(PORT_VARIABLE)),
+        ("debug", env_bool(DEBUG_VARIABLE)),
+    ):
+        if value is not None:
+            overrides[field_name] = value
+    if not overrides:
+        return settings
+    logger.debug(f"Nadpisania ze środowiska: {overrides}")
+    return settings.model_copy(update=overrides)

@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
-from shared import ChatMessageDTO, ChatSessionSummaryDTO, ConfigStore, get_logger, get_service_root, sanitize_identifier
+from shared import ChatMessageDTO, ChatSessionSummaryDTO, ConfigStore, get_logger, sanitize_identifier
+from shared import data_dir as shared_data_dir
 
 logger = get_logger("regis.agent.memory")
 
@@ -159,12 +160,7 @@ class MemoryManager:
         self.max_persisted_messages: int | None = (
             max_persisted_messages if max_persisted_messages and max_persisted_messages > 0 else None
         )
-        if data_dir:
-            self.sessions_dir = Path(data_dir).resolve()
-        else:
-            service_root = get_service_root(__file__)
-            self.sessions_dir = (service_root / "data" / "sessions").resolve()
-
+        self.sessions_dir = Path(data_dir).resolve() if data_dir else shared_data_dir(__file__) / "sessions"
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self._sessions: dict[str, Session] = {}
         

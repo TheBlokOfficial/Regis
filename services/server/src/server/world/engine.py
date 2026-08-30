@@ -25,7 +25,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from shared import JsonInstanceRepository, get_logger, get_service_root
+from shared import JsonInstanceRepository, get_logger
+from shared import data_dir as shared_data_dir
 
 from server.agent.context_provider import ContextBuild
 from server.world.client import HomeAssistantClient
@@ -65,8 +66,7 @@ class WorldEngine:
     urządzenia, grupy i przypisania nadawców do pokoi. Implementuje `WorldInterface`."""
 
     def __init__(self, data_dir: Optional[Path] = None, client_factory: Optional[ClientFactoryFn] = None) -> None:
-        service_root = get_service_root(__file__)
-        self.base_data_dir = (data_dir or (service_root / "data" / "world")).resolve()
+        self.base_data_dir = (data_dir or (shared_data_dir(__file__) / "world")).resolve()
         self.groups_dir = self.base_data_dir / "groups"
         self.rooms_dir = self.base_data_dir / "rooms"
         self.config_path = self.base_data_dir / "config.json"

@@ -5,7 +5,8 @@ import asyncio
 from pathlib import Path
 from typing import Any, Optional
 
-from shared import ConfigStore, get_logger, get_service_root
+from shared import ConfigStore, get_logger
+from shared import data_dir as shared_data_dir
 
 from server.ai.legacy_config import VoiceProvidersConfig
 from server.ai.provider_registry import ProviderRegistry
@@ -23,7 +24,7 @@ class TTSRegistry(ProviderRegistry[TTSInstanceFileContent, TTSInstanceConfig, Ba
 
     def __init__(self, data_dir: Optional[Path] = None) -> None:
         super().__init__(
-            base_data_dir=data_dir or (get_service_root(__file__) / "data"),
+            base_data_dir=data_dir or shared_data_dir(__file__),
             instances_dir_name="tts_backends",
             active_file_name="active_tts_backend.json",
             content_cls=TTSInstanceFileContent,

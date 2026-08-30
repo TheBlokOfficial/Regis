@@ -81,7 +81,8 @@ def test_wakeword_threshold_reloads_without_restart(tmp_path: Path, monkeypatch)
 
     settings = Settings(wakeword_model_path=str(model_path), wakeword_threshold=0.3)
     monkeypatch.setattr("server.main.load_settings", lambda: config_store.load())
-    monkeypatch.setattr("server.main.get_service_root", lambda _f: tmp_path)
+    # Bez podmiany korzenia usługi: `wakeword_model_path` jest tu ścieżką BEZWZGLĘDNĄ,
+    # a `_resolve_wakeword_model_path` obsługuje ją wprost (patrz `server/main.py`).
     config_store.save(settings)
 
     class FakeOnnxWakeWordDetector:

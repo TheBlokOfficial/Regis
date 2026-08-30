@@ -18,6 +18,14 @@ zainstalowana aplikacja, konfiguracja przez środowisko.
   bieżącą rozmowę. Czat Web UI nie wygasa — politykę wnosi brzeg kompozycji, nie kernel.
 - **Sufit utrwalanych wiadomości** (`max_persisted_messages`, domyślnie 200) — chroni plik sesji
   przed nieskończonym narastaniem także tam, gdzie historia ma żyć długo.
+- **Warstwa ścieżek** (`shared/paths.py`) — `REGIS_DATA_DIR` / `REGIS_CONFIG_DIR` decydują,
+  gdzie usługa trzyma dane i konfigurację. Bez tego `data/` w kontenerze lądowałoby
+  w `site-packages` i znikało przy aktualizacji obrazu, a satelita zamrożona PyInstallerem
+  generowałaby nowy `sender_id` przy każdym starcie.
+- **Konfiguracja ze środowiska** (`shared/env.py`) — wczytywanie `.env` (własny parser, bez
+  nowej zależności) i nadpisania `REGIS_HOST` / `REGIS_PORT` / `REGIS_DEBUG`. Zmienne obecne
+  w środowisku wygrywają z plikiem, więc `docker compose` jest przewidywalny. Wzorzec
+  `.env.example` w korzeniu repozytorium.
 - Jedno źródło prawdy dla wersji produktu (`shared/version.py`) + `CHANGELOG.md` i runbook wydania.
 - `GET /api/v1/health` zwraca `app_name` i `version` — dashboard Web UI pokazuje wreszcie nazwę
   aplikacji zamiast zawsze wpadać w gałąź zapasową.

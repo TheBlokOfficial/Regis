@@ -18,7 +18,7 @@ import asyncio
 from typing import Literal
 
 from pydantic import BaseModel
-from shared import ConfigStore, get_service_root
+from shared import ConfigStore, data_dir
 
 GroqSttModel = Literal["whisper-large-v3-turbo", "whisper-large-v3"]
 
@@ -40,7 +40,7 @@ class VoiceProvidersConfig(BaseModel):
     elevenlabs_model_id: str = DEFAULT_ELEVENLABS_MODEL_ID
 
 
-_CONFIG_PATH = get_service_root(__file__) / "data" / "voice" / "config.json"
+_CONFIG_PATH = data_dir(__file__) / "voice" / "config.json"
 
 
 async def load_voice_providers_config() -> VoiceProvidersConfig:

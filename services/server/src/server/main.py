@@ -1,7 +1,8 @@
 import asyncio
+from pathlib import Path
 
 import uvicorn
-from shared import EventBus, get_logger, get_service_root, setup_logging
+from shared import EventBus, data_dir, get_logger, load_dotenv, setup_logging
 from shared import __version__ as REGIS_VERSION
 
 from server.agent import AgentEngine
@@ -29,12 +30,37 @@ from server.world import WorldEngine
 # Wczytanie configu musi poprzedzić setup_logging — `Settings.debug` (dotąd martwe pole)
 # steruje poziomem: true = DEBUG, m.in. score wake-worda przy każdym inference
 # (`ai/wakeword/detectors.py::OnnxWakeWordDetector.process()`), false (domyślnie) = INFO.
+# `.env` PRZED `load_settings()` — nadpisania środowiskowe (REGIS_HOST/PORT/DEBUG) oraz
+# katalogi (REGIS_DATA_DIR/REGIS_CONFIG_DIR) muszą być widoczne, zanim cokolwiek policzy
+# sobie ścieżkę albo wczyta konfigurację. Zmienne już obecne w środowisku mają
+# pierwszeństwo przed plikiem (patrz `shared/env.py`), więc `docker compose` wygrywa.
+_env_file = load_dotenv(__file__)
 _startup_settings = load_settings()
 setup_logging(
     level="DEBUG" if _startup_settings.debug else "INFO",
-    log_file=get_service_root(__file__) / "data" / "logs" / "regis.log",
+    log_file=data_dir(__file__) / "logs" / "regis.log",
 )
 logger = get_logger("regis.main")
+if _env_file is not None:
+    logger.info(f"Konfiguracja środowiskowa wczytana z [{_env_file}].")
+
+
+def _resolve_wakeword_model_path(configured: str) -> Path:
+    """Ścieżka do modelu `.onnx` — bezwzględna albo względna wobec katalogu danych.
+
+    Zgodność wsteczna: dotychczasowe konfiguracje trzymają `"data/wakeword/regis.onnx"`,
+    czyli ścieżkę względną wobec KORZENIA USŁUGI, bo tak ją kiedyś rozwiązywano. Odkąd
+    katalog danych może leżeć gdziekolwiek (`REGIS_DATA_DIR`), punktem odniesienia jest
+    on sam — wiodące `data/` jest więc obcinane. Bez tego wake-word po cichu spadłby do
+    placeholdera progu amplitudy: brak pliku kończy się tu `warning`, nie błędem.
+    """
+    candidate = Path(configured).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    parts = candidate.parts
+    if parts and parts[0] == "data":
+        candidate = Path(*parts[1:])
+    return data_dir(__file__) / candidate
 
 
 def _build_wakeword_detector_factory(settings: Settings) -> tuple[WakeWordDetectorFactory, str]:
@@ -51,7 +77,7 @@ def _build_wakeword_detector_factory(settings: Settings) -> tuple[WakeWordDetect
     if not settings.wakeword_model_path:
         return ThresholdEnergyWakeWordDetector, ThresholdEnergyWakeWordDetector.__name__
 
-    model_path = get_service_root(__file__) / settings.wakeword_model_path
+    model_path = _resolve_wakeword_model_path(settings.wakeword_model_path)
     if not model_path.exists():
         logger.warning(f"Plik modelu wake-word nie istnieje [{model_path}] — używam placeholdera progu amplitudy.")
         return ThresholdEnergyWakeWordDetector, ThresholdEnergyWakeWordDetector.__name__
@@ -81,7 +107,7 @@ async def main() -> None:
     #    dekorator je odbiera (patrz `telemetry/recorder.py`).
     backend_registry = BackendRegistry()
     generation_log = GenerationLogStore(
-        db_path=get_service_root(__file__) / "data" / "telemetry" / "generations.db",
+        db_path=data_dir(__file__) / "telemetry" / "generations.db",
         retention_records=settings.telemetry_retention_records,
         max_record_bytes=settings.telemetry_max_record_bytes,
     )

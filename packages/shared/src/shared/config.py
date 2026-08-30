@@ -114,6 +114,13 @@ class ConfigStore(Generic[T]):
 def get_service_root(start_path: Path | str, marker_filename: str = "pyproject.toml") -> Path:
     """Odnajduje główny katalog usługi w monorepo (szukając pliku marker_filename w górę drzewa).
 
+    **Nie używaj tego do wyliczania ścieżek danych i konfiguracji** — od tego jest
+    `shared/paths.py` (`data_dir()`/`config_dir()`). Marker `pyproject.toml` nie istnieje
+    ani obok pakietu zainstalowanego w `site-packages` (kontener), ani w bundlu
+    PyInstallera (satelita); w obu przypadkach funkcja spada wtedy na katalog samego
+    modułu, cicho i z katastrofalnym skutkiem. Tutaj zostaje jako **fallback** dla
+    uruchomienia z checkoutu, wołany wyłącznie przez `shared/paths.py`.
+
     :param start_path: Ścieżka początkowa (zazwyczaj __file__ wywołującego modułu).
     :param marker_filename: Nazwa pliku wskaźnikowego (domyślnie 'pyproject.toml').
     :return: Bezwzględna ścieżka Path do głównego katalogu usługi.

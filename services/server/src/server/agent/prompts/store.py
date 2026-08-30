@@ -12,7 +12,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from shared import ConfigStore, get_logger, get_service_root
+from shared import ConfigStore, get_logger
+from shared import data_dir as shared_data_dir
 
 from server.agent.context.builder import DEFAULT_SYSTEM_PROMPT
 from server.agent.prompts.models import AgentDefaultPromptConfig
@@ -31,8 +32,7 @@ class AgentDefaultPromptStore:
     """
 
     def __init__(self, data_dir: Optional[Path] = None) -> None:
-        service_root = get_service_root(__file__)
-        self.base_data_dir = (data_dir or (service_root / "data")).resolve()
+        self.base_data_dir = (data_dir or shared_data_dir(__file__)).resolve()
         self.config_path = self.base_data_dir / "agent_default_prompt.json"
         self.store = ConfigStore(AgentDefaultPromptConfig, self.config_path)
         self._lock = asyncio.Lock()

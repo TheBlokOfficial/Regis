@@ -38,9 +38,11 @@ from shared.contracts import (
 )
 from shared.correlation import TurnRef, bind_turn, current_turn, new_turn_id
 from shared.discovery import DISCOVERY_MAGIC, DISCOVERY_UDP_PORT, decode_beacon, encode_beacon
+from shared.env import env_bool, env_int, env_str, load_dotenv
 from shared.event_bus import Event, EventBus, EventHandler
 from shared.json_repository import ActiveInstancePointer, JsonInstanceRepository
 from shared.logging import get_logger, setup_logging
+from shared.paths import config_dir, data_dir, is_frozen, user_state_dir
 from shared.version import __version__
 from shared.voice_protocol import (
     CHANNELS,
@@ -103,8 +105,16 @@ __all__ = [
     "bind_turn",
     "new_turn_id",
     "UpdatePromptRequest",
+    "config_dir",
+    "data_dir",
+    "env_bool",
+    "env_int",
+    "env_str",
     "get_logger",
     "get_service_root",
+    "is_frozen",
+    "load_dotenv",
+    "user_state_dir",
     "sanitize_identifier",
     "setup_logging",
     "__version__",

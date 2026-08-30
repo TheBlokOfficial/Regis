@@ -6,7 +6,8 @@ import asyncio
 from pathlib import Path
 from typing import Optional
 
-from shared import ConfigStore, get_logger, get_service_root
+from shared import ConfigStore, get_logger
+from shared import data_dir as shared_data_dir
 
 from server.ai.llm.factory import LLMFactory
 from server.ai.llm.fallback_chain import FallbackChainConfig
@@ -24,7 +25,7 @@ class BackendRegistry(ProviderRegistry[BackendFileContent, BackendInstanceConfig
 
     def __init__(self, data_dir: Optional[Path] = None) -> None:
         super().__init__(
-            base_data_dir=data_dir or (get_service_root(__file__) / "data"),
+            base_data_dir=data_dir or shared_data_dir(__file__),
             instances_dir_name="backends",
             active_file_name="active_backend.json",
             content_cls=BackendFileContent,
