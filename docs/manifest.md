@@ -25,10 +25,14 @@ Regis/
 │   └── onboarding.md # Jednolity przewodnik deweloperski
 │   └── specs/        # Efemeryczne briefy implementacyjne (cykl życia: AGENTS.md, sekcja "Dokumentacja")
 ├── packages/         # Wspólne pakiety kodowe
-│   └── shared/       # Paczka shared (ConfigStore, EventBus, DTO, kontrakt WS voice_protocol, logging)
+│   └── shared/       # Paczka shared (ConfigStore, EventBus, DTO, kodek ramek WS, ścieżki/env/sekrety, logging)
 ├── services/         # Niezależne usługi sieciowe
 │   ├── server/       # Główna usługa serwera Regis (bramka REST/SSE, kernel, silnik świata, Web UI)
 │   └── desktop_satellite/  # Klient WS satelity desktopowej (Windows/Linux) — mikrofon/głośnik
+├── deploy/           # Wdrożenie produkcyjne: runbook instalacji i skrypt aktualizacji
+├── docker-compose.yml # Serwer w kontenerze (sieć hosta, wolumeny na data/ i config/)
+├── .env.example      # Wzorzec konfiguracji środowiskowej (katalogi, nadpisania, sekrety)
+├── CHANGELOG.md      # Historia wydań
 ├── pyproject.toml    # Główna konfiguracja workspace, grupy dev (pytest, anyio) oraz pytest
 └── README.md         # Wprowadzenie do projektu
 ```
@@ -73,7 +77,9 @@ server/
 │   ├── store.py             # GenerationLogStore — SQLite, kolejka zapisu, rotacja (JEDYNA baza w projekcie)
 │   └── models.py            # GenerationRecord / MessageSnapshot / AttemptSnapshot
 ├── voice/          # Pipeline głosowy satelit — peer WorldEngine, rozłączny (patrz sekcja 3.6)
-│   ├── gateway.py           # WS endpoint /voice/{sender_id}, VoiceConnection (handshake, ciągła subskrypcja EventBus)
+│   ├── gateway.py           # WS endpoint /voice/{sender_id} — montaż, zdarzenia connect/disconnect, sprzątanie
+│   ├── connection.py        # VoiceConnection: doręczenie, handshake, ciągła subskrypcja EventBus
+│   ├── presence.py          # ClientPresenceRegistry — kto podłączony, w jakim stanie, z jakimi możliwościami
 │   ├── session.py           # VoiceSession — automat stanu jednej rozmowy
 │   ├── events.py            # VoiceEventType — zdarzenia satelit dla dashboardu "Klienci"
 │   ├── routes.py            # Status pipeline'u, rejestr żywych połączeń, config klienta, SSE dashboardu
@@ -273,6 +279,11 @@ pokoi ani nie blokuje na nich akcji.
 - **`SessionTaskRegistry` (`tasks.py`)**: Jedno miejsce prawdy o tym, które sesje generują odpowiedź, oraz bufor dotychczasowego tekstu. Wcześniej były to dwa równoległe słowniki w `AgentEngine`, które trzeba było pamiętać sprzątać w tym samym `finally`. Bufor czyta ktoś **z zewnątrz** tury: `GET /chat/sessions/{id}/history` dokleja go jako wiadomość częściową, gdy karta przeglądarki dołącza do sesji już generującej.
 - **`context_provider.py`**: `WorldInterface` (`typing.Protocol`, jedna metoda `build(sender_id) -> ContextBuild`), `ContextBuild` (`tool_definitions`/`system_prompt`/`dispatch`) i `NullWorldInterface` (`system_prompt=None`) — **jedyna wiedza kernela o istnieniu świata zewnętrznego**. Analogia: ta sama rola co `BaseLLMProvider` względem konkretnych dostawców LLM.
 - **`MemoryManager` (`memory/session.py`)**: Odpowiada za utrwalanie historii rozmów per sesja na dysku (`data/sessions/*.json`). Do `content` wiadomości trafia **wyłącznie finalny tekst odpowiedzi** — pośrednie wiadomości `assistant`/`tool` z pętli ReAct żyją tylko w pamięci na czas jednej interakcji, a rozumowanie modelu ląduje obok, w `metadata.reasoning` (`ReasoningRunPayload`: `seq`/`text_offset`/`content`, mirror `metadata.steps`). Podział ma konkretny cel: `content` jest odsyłany modelowi jako historia w każdej kolejnej turze i czytany na głos przez TTS, więc chain of thought w tym polu kosztował tokeny i psuł mowę (sekcja 5, "Reasoning rozdzielony strukturalnie").
+  **Dwie reguły przeciw nieskończonemu narastaniu historii (2026-08-30)** mieszkają tutaj, a nie u wywołującego, bo obowiązują każdego klienta kernela, nie jedną bramkę:
+  - **wygaszanie po bezczynności** — `Session.idle_ttl_seconds`, sprawdzane **leniwie**, przy następnym sięgnięciu po sesję (`get_or_create_session`). Bez timera i bez wątku w tle, bo `updated_at` niesie już całą potrzebną informację (ten sam wzorzec co leniwa rotacja telemetrii, sekcja 3.8). Czyszczona jest wyłącznie **historia** — ID, tytuł i `created_at` zostają, bo satelita jest rozpoznawana po `session_id` równym swojemu `sender_id` i rotacja identyfikatora zerwałaby jej tożsamość w rejestrze klientów. Powód istnienia reguły: satelita używa jednego `session_id` przez cały czas swojego istnienia, więc bez limitu model dostawał `max_history_messages` wiadomości sprzed wielu godzin jako „bieżącą rozmowę";
+  - **sufit liczby utrwalanych wiadomości** — `max_persisted_messages` (domyślnie 200), przycinany przy każdym dopisaniu; dotyczy też sesji bez TTL-a, więc chroni plik na dysku również tam, gdzie historia ma żyć długo. Świadoma strata: najstarsze wiadomości znikają nieodwracalnie, także z widoku w Web UI.
+
+  **Politykę wnosi brzeg kompozycji, nie kernel.** `AgentEngine.start_interaction()`/`interact_stream()` przyjmują opcjonalne `session_idle_ttl_seconds`; podaje je `voice/connection.py` (z `Settings.satellite_session_idle_ttl_seconds`), a `network/routes/chat.py` nie podaje nic — czat Web UI ma własną listę sesji i nie wygasa. Kernel nie wie, że rozmawia z satelitą. Reguły są niezależne od `ContextBuilder.max_history_messages`, który przycina to, co idzie do modelu; tu chodzi o rozmiar i świeżość samej pamięci.
 - **`ContextBuilder` (`context/builder.py`)**: Komponuje ostateczny prompt dla LLM, łącząc instrukcje systemowe z historią sesji. Przycina historię do `max_history_messages` najnowszych wiadomości (domyślnie 40, konfigurowalne w `settings.json`), by uniknąć przekroczenia limitu kontekstu modelu w długich konwersacjach. Przycinanie działa na podstawie liczby wiadomości, nie realnego zliczania tokenów. Parametr `tools_available` warunkowo dokleja jedno neutralne zdanie o dostępności narzędzi — nigdy nie wymienia ich nazw ani pochodzenia. Parametr `system_prompt` (już gotowy string — wkład World albo fallback kernela) jest wklejany wprost jako treść systemowa, bez żadnego dalszego sklejania czy formatowania po stronie kernela.
 - **`AgentDefaultPromptStore` (`prompts/store.py`)**: Jedna wartość (`data/agent_default_prompt.json`), bez CRUD — fallback używany **wyłącznie** gdy `ContextBuild.system_prompt is None` (brak World albo `NullWorldInterface`, np. testy headless / przenośność kernela). Przy pierwszym uruchomieniu bez pliku próbuje best-effort migracji z dawnego legacy `data/prompts/*.json`+`active_prompt.json`; w przeciwnym razie zasiewa `DEFAULT_SYSTEM_PROMPT`. Właściwy, edytowalny CRUD tożsamości (do 3 przełączalnych profili) żyje dziś w `world/prompts.py` — World jest jedynym autorem promptu, gdy jest podłączony (patrz sekcja 3.4, sekcja 5).
 
@@ -404,6 +415,23 @@ publiczny kontrakt `AgentEngine` — dokładnie ten sam, z którego korzysta
   **Rejestracja nadawców, ostateczny podział (ta sama sesja, druga iteracja po feedbacku)**: pierwszy kontakt z nieznanym nadawcą (satelita podłączona przez WS, albo ID tej przeglądarki) dzieje się **wyłącznie w zakładce Głos** — przycisk "Zarejestruj" woła `POST /api/v1/world/senders` od razu, z `room_id: null` (World i tak przyjmuje pusty pokój). Zakładka **Świat** (panel Nadawcy, `satellites_panel.js`) stała się czystą listą już zarejestrowanych — zero tworzenia nowych wpisów (usunięty formularz "+ Nowa rejestracja" i skrót "Zarejestruj tę przeglądarkę", oba przeniesione do Głosu), tylko picker pokoju per wiersz (`renderSelectMarkup`/`initSelect`, mirror `devices_panel.js`) wołający ten sam `POST /api/v1/world/senders` jako upsert (`WorldEngine.register_sender`: "rejestruje lub nadpisuje") do zmiany przypisania pokoju, plus usuwanie. Cross-domenowe wywołanie zapisu (Głos woła World-owy endpoint) jest świadomie dopuszczone — granicę narusza dopiero *renderowanie* cudzej domeny w niewłaściwym pliku/zakładce, nie samo wywołanie REST innej domeny z UI.
 - **`services/server/scripts/voice_satellite_sim.py`**: symulator satelity (Python + `websockets`) przechodzący cały cykl protokołu bez żadnego sprzętu — dziś głównie do testów regresyjnych; realny klient istnieje w `services/desktop_satellite/` (sekcja 3.7).
 
+**Rejestr obecności klienta (`voice/presence.py`, 2026-08-30)** — `ClientPresenceRegistry`
+odpowiada na trzy pytania o żywe połączenia: kto jest podłączony (panel „Nadawcy" pokazuje
+dzięki temu satelity podłączone, ale jeszcze niezatwierdzone), w jakim jest stanie (snapshot
+do hydratacji dashboardu „Klienci"; dalsze zmiany idą SSE) i co zadeklarował w handshake
+(żeby rejestracja z Web UI zapisała w World **prawdziwe** capabilities zamiast zgadywać typ
+klienta). Wcześniej były to **trzy gołe kolekcje** tworzone w `main.py` i wędrujące przez
+sygnatury dwóch fabryk routerów; przy rozłączeniu trzeba było pamiętać o sprzątnięciu
+wszystkich trzech, w trzech osobnych linijkach — wzorzec, w którym pierwszy zapomniany wpis
+zostaje w pamięci na zawsze i objawia się jako klient „podłączony", którego nie ma. Zero
+wiedzy o rejestracji, pokoju czy tożsamości: to należy do `World` (sekcja 5).
+
+**`is_production_ready` pyta o właściwość, nie o nazwę klasy (2026-08-30)** — `GET /voice/status`
+liczy tę flagę z `is_placeholder` zadeklarowanego przez sam konkret (`ports/{stt,tts,wakeword}.py`).
+Dawne `name.startswith("Mock")` i porównanie ze stringiem `"ThresholdEnergyWakeWordDetector"`
+działały dopóty, dopóki nikt nie nazwał dev-providera inaczej — a fałszywe `true` oznaczałoby
+pipeline, który nigdy nie rozpozna słowa „Regis".
+
 ### 3.6 Warstwa Wspólna (`packages/shared/src/shared`)
 - **`ConfigStore` (`config.py`)**: Centralny zarządca persystentnej konfiguracji w formacie JSON z automatyczną walidacją i domyślnymi wartościami.
 - **`EventBus` (`event_bus.py`)**: Asynchroniczna magistrala zdarzeń pub/sub (`subscribe`/`publish`). **W pełni wpięta w przepływ strumieniowania** — `AgentEngine` publikuje zdarzenia `ServerEventType.CHAT_CHUNK/DONE/ERROR/CANCELLED` oraz `TOOL_CALL_START/TOOL_CALL_RESULT` (kroki pętli ReAct), otagowane `session_id` **i** `target_client_id` (patrz sekcja 3.5, `ToolResult.redirect_sender_id`), a `interact_stream` subskrybuje je i tłumaczy z powrotem na strumień ustrukturyzowanych `StreamEvent` (`agent/engine.py`) dla wywołującego. **Treść `CHAT_ERROR` jest zawsze ogólna** (`TurnRunner._finish_failed`, `agent/turn.py`) — pełny techniczny szczegół wyjątku trafia wyłącznie do `logger.error` (konsola + `data/logs/regis.log`), nigdy do `EventBus`/pamięci sesji/UI. Powód: surowe błędy API dostawców LLM potrafią nieść wewnętrzne dane konta (zaobserwowane na żywo: ID organizacji Groq w treści błędu 429) — nie powinny wyciekać do żadnego z trzech odbiorców zdarzenia (SSE Chat UI, `interact()`, `voice/gateway.py`::`_on_error_or_cancelled` wysyłający `detail` do satelity), które wszystkie czerpią z tego samego payloadu, więc jedna sanityzacja u źródła zabezpiecza wszystkie na raz. Dzięki temu rdzeń nie zna bezpośrednio odbiorców — dziś dwóch: SSE (HTTP, `routes/chat.py`, subskrypcja per-request) i WS satelit głosowych (`server/voice/gateway.py`, subskrypcja ciągła per-połączenie, patrz sekcja 3.5). `routes/chat.py` serializuje `StreamEvent` na ramki SSE z polem `type` (`chunk`/`tool_start`/`tool_result`). Ustrukturyzowany ślad kroków (`ToolStepPayload`: `call_id`/`name`/`text_offset`/`arguments`/`content`/`is_error`) trafia też — gdy tura użyła narzędzi — do `metadata.steps` finalnej wiadomości `assistant` w `MemoryManager`, więc Web UI potrafi odtworzyć całe drzewko ReAct (tekst/COT przeplecione z wywołaniami narzędzi) zarówno na żywo, jak i po powrocie do historii sesji.
@@ -416,6 +444,11 @@ publiczny kontrakt `AgentEngine` — dokładnie ten sam, z którego korzysta
   - Prywatne słownictwo Home Assistant/satelit (config, katalog, grupy, rejestracje) żyje lokalnie w `world/dto.py`, nie tutaj — nie ma potrzeby generycznego kształtu skoro istnieje dokładnie jeden silnik.
 - **`logging.py`**: Jednolita konfiguracja logów dla całego monorepo z ustandaryzowanymi nazwami kategorii (`regis.main`, `regis.agent`, `regis.world`, itp.). `setup_logging(level, log_file=None)` — konsola zawsze (kolorowany `MinimalColorFormatter`), opcjonalnie też plik z rotacją (`RotatingFileHandler`, 5 MB × 3 kopie, `PlainFileFormatter` bez kodów ANSI, pełna data). `main.py` przekazuje `data/logs/regis.log` (gitignorowane jak reszta `data/`) — dodane 2026-08-21, bo błędy tury (np. surowa treść odpowiedzi błędu API dostawcy LLM, potencjalnie z wewnętrznym ID organizacji) świadomie **nie** trafiają wprost do użytkownika (patrz niżej, `TurnRunner._finish_failed`) i bez pliku ginęłyby bezpowrotnie po przewinięciu terminala.
 - **`correlation.py` (2026-08-25)**: `TurnRef` + `ContextVar` `current_turn` + `bind_turn()` — tożsamość tury przenoszona przez cały asynchroniczny przebieg bez przekazywania jej przez sygnatury. Mieszka w warstwie wspólnej, bo **ustawia ją kernel, a odczytuje obserwator** (`server/telemetry`): gdyby należała do obserwatora, `agent/` musiałby go zaimportować. Korelacja jest bytem tej samej natury co logowanie — infrastrukturą przekrojową, nie domeną. Działa, bo tura żyje w dokładnie jednym `asyncio.Task` (`AgentEngine._spawn_turn`), więc kontekst propaguje się w dół automatycznie. Patrz sekcja 3.8.
+- **`version.py`**: `__version__` — **jedyne źródło prawdy o wersji produktu** w całym monorepo. Czytają je log startowy serwera, `GET /api/v1/health`, tytuł OpenAPI, plakietki w Web UI, tag obrazu Dockera i `deploy/deploy.sh`. Numery `version` w plikach `pyproject.toml` to wersje *pakietów*, których nikt nie publikuje — świadomie nieruszane przy wydaniu. Wcześniej ten sam numer był wpisany ręcznie w siedmiu miejscach i każde starzało się osobno.
+- **`paths.py`**: `data_dir()`/`config_dir()` (`REGIS_DATA_DIR`/`REGIS_CONFIG_DIR`, fallback na korzeń usługi), `user_state_dir()` i `is_frozen()`. Powstało, bo `get_service_root()` szuka `pyproject.toml` **w górę od pliku źródłowego** — wzorzec działający wyłącznie przy uruchomieniu z checkoutu i przewracający się w obu postaciach produkcyjnych: w obrazie Dockera pakiet siedzi w `site-packages` (gdzie tego pliku nie ma, więc `data/` lądowałoby tam i znikało przy aktualizacji), a w bundlu PyInstallera źródła są w katalogu tymczasowym (więc satelita generowałaby nowy `sender_id` przy każdym starcie). Jedna warstwa naprawia oba przypadki; `get_service_root()` zostaje wyłącznie jako jej fallback.
+- **`env.py`**: wczytanie `.env` (własny parser, ~25 linii — `python-dotenv` byłby zależnością wielokrotnie większą od potrzeby, precedens: `discovery.py`) oraz typowane gettery. **Zmienne obecne w środowisku wygrywają z plikiem**, żeby `docker compose`/`docker run -e` były przewidywalne. Nadpisania na `Settings` są celowo wąskie (`REGIS_HOST`/`REGIS_PORT`/`REGIS_DEBUG`) i **muszą pozostać rozłączne** ze zbiorem pól zapisywanych przez `PUT /api/v1/voice/client-config` — ten endpoint czyta ustawienia i zapisuje całość z powrotem do pliku, więc nadpisanie pola edytowalnego z Web UI zostałoby przy pierwszym zapisie zabetonowane w JSON-ie.
+- **`secrets.py`**: referencje `env:NAZWA` w wartościach opcji dostawców i w tokenie Home Assistant. Nie migracja kluczy do `.env`, tylko **pośrednictwo** — bo dostawcy są wielo-instancyjni („Groq (kontakt@)", „Groq (zapasowy)" to dwa presety z osobnymi kluczami, zarządzane CRUD-em), więc jedna zmienna `GROQ_API_KEY` nie miałaby sensu; wiązanie musi zostać przy instancji. Prefiks jest jednoznaczny, więc rozwiązywanie nie potrzebuje wiedzy o tym, które pole jest sekretne, i mieści się w **dwóch punktach na granicy budowy konkretu**: `ProviderRegistry.build_provider()` (LLM/STT/TTS razem) i `WorldEngine._build_client()`. `load_all_instances()` celowo **nie** rozwiązuje niczego — zasila warstwę REST i CRUD, więc prawdziwy klucz nie ma prawa się tam pojawić. Maskowanie przepuszcza referencje: to nazwa zmiennej, nie sekret, i jest jedynym sygnałem, po którym poznaje się, że instancja bierze klucz ze środowiska.
+- **`voice_frames.py` (2026-08-30)**: typowana postać kontraktu ramek — modele Pydantic + `encode_frame()`/`decode_server_frame()`/`decode_satellite_frame()`. Do tej pory `voice_protocol.py` deklarował **nazwy** ramek, ale nie potrafił ich zakodować ani zdekodować, więc obie usługi robiły to ręcznie i osobno (`json.dumps` po jednej stronie, `frame["silence_duration_ms"]` na surowym dicie po drugiej) — jedyny kontrakt między usługami nietypowany Pydantikiem. **Format na drucie się nie zmienia**, co pilnuje test złotego wzorca: satelitę aktualizuje się ręcznie, na innej maszynie, więc rozjazd wersji jest tu stanem normalnym. Nieznany typ ramki daje `None`, nie wyjątek — nowszy serwer może mówić więcej, niż starsza satelita zna. Podział na dwie rodziny jest asymetryczny celowo: serwer dekoduje wyłącznie ramki satelity i odwrotnie.
 - **`voice_protocol.py`**: Kontrakt ramek WS satelity (`SatelliteMessageType`/`ServerMessageType`/`SAMPLE_RATE_HZ`/`SAMPLE_WIDTH_BYTES`/`CHANNELS`) — przeniesiony tu z `server/voice/protocol.py`, bo od `desktop_satellite` (sekcja 3.7) jest to kontrakt między dwiema niezależnymi usługami, nie szczegół jednej z nich (ten sam powód, dla którego DTO REST żyją w `contracts.py`, nie w `server/network/`).
 - **`audio.py`**: `peak_amplitude()` — szczytowa amplituda porcji PCM16 mono. Konsolidacja trzech niezależnie powstałych, bajt-w-bajt identycznych kopii tej samej funkcji: lokalny VAD satelity (`desktop_satellite/vad.py::SilenceVadDetector`), serwerowy placeholder wake-worda (`server/ai/wakeword/detectors.py::ThresholdEnergyWakeWordDetector`) i serwerowa bramka przed STT (`voice/session.py::VoiceSession.handle_utterance_end`) — wszystkie trzy mierzą to samo pojęcie "głośności" ramki tym samym wzorem, więc czwarta kopia (przy dodawaniu bramki STT) przekroczyła próg uzasadniający DRY (Boy Scout Rule, `AGENTS.md`).
 - **`discovery.py`**: Kontrakt UDP auto-discovery — `DISCOVERY_UDP_PORT`, `DISCOVERY_MAGIC` (odsiewa obcy ruch UDP na tym porcie) i czyste funkcje `encode_beacon`/`decode_beacon` (JSON `{"service", "port"}`). Współdzielony przez `server/discovery.py` (nadawca) i `desktop_satellite/discovery.py` (odbiorca) — bez uwierzytelniania, spójnie z modelem zaufanej sieci lokalnej przyjętym dla `WS /ws/voice/{sender_id}` (sekcja 5).
@@ -462,6 +495,61 @@ zmienialny przez użytkownika w środku rozmowy) oraz `turn_context`, który
   grep -rn "from server.telemetry" services/server/src/server/agent/ services/server/src/server/ai/
   ```
   (poprawny wynik: brak trafień)
+
+---
+
+### 3.9 Warstwa wdrożeniowa (2026-08-30)
+
+Nie jest to warstwa kodu, tylko zestaw decyzji, bez których projekt zostaje prototypem
+uruchamianym z konsoli. Wszystkie mieszkają poza usługami: `services/server/Dockerfile`,
+`docker-compose.yml`, `deploy/`, `services/desktop_satellite/{build,install}.*`.
+
+**Serwer: kontener na Raspberry Pi 5** (Pi OS Lite 64-bit, arm64). Obraz budowany
+**natywnie na Pi**, bez QEMU i bez rejestru obrazów — aktualizacja to `deploy/deploy.sh`,
+który przełącza tag, przebudowuje obraz i **czeka na `/api/v1/health`**, zamiast kończyć
+się na `docker compose up -d`. Przeniesienie na mini-PC amd64 nie wymaga zmian w Dockerfile,
+tylko rebuildu na tamtej maszynie. Python 3.13 jest tu bezpieczny: `onnxruntime` 1.29
+(zależność `livekit-wakeword`) publikuje koło `cp313-manylinux_2_28_aarch64`, a bookworm
+ma glibc 2.36.
+
+**`network_mode: host` jest warunkiem koniecznym, nie preferencją.** `server/discovery.py`
+rozgłasza obecność serwera przez UDP `<broadcast>`, dzięki czemu satelity znajdują go **bez
+żadnej konfiguracji po swojej stronie** — a broadcast z sieci bridge nie wychodzi do LAN-u.
+Konsekwencje: sekcja `ports:` byłaby ignorowana (port bierze się wyłącznie z `REGIS_PORT`
+albo `config/settings.json`), a na Docker Desktop dla Windows/macOS sieć hosta nie działa
+tak samo i każda satelita wymagałaby jawnego `--server-url`.
+
+**Dane i konfiguracja to bind-mounty, nie wolumeny nazwane** (`./data`, `./config`) — pliki
+mają zostać zwykłymi plikami na hoście: backup to `tar` katalogu, a `data/backends/*.json`
+da się w razie czego otworzyć edytorem bez wchodzenia do kontenera. Model wake-word
+(`data/wakeword/regis.onnx`) jest gitignorowany, więc **nie przyjeżdża z repozytorium** —
+jego brak nie jest błędem, tylko cichą degradacją do placeholdera progu amplitudy, dlatego
+`deploy.sh` o nim ostrzega.
+
+**Satelita: aplikacja bez okna z ikoną w zasobniku.** Tryb bezokienkowy zabiera jedyny
+dotychczasowy kanał onboardingu — README kazał odczytać `sender_id` z **logu startowego**,
+żeby zarejestrować klienta w Web UI. Menu zasobnika przejmuje tę rolę i dlatego nie jest
+ozdobą. `pystray` na Windows wymaga wątku głównego, więc punkt wejścia jest rozbity:
+pętla `asyncio` mieszka w `app.py` (wątek roboczy, wystawia stan przez callback), a wątek
+główny należy do ikony (`tray.py`). Autostart (`autostart.py`) to **przełącznik w menu**,
+nigdy skutek uboczny instalacji: Windows przez `HKCU\...\Run` (`winreg` ze stdlib, bez
+uprawnień administratora), Linux przez XDG `~/.config/autostart` — nie systemd, bo ten
+startuje przed sesją graficzną, a satelita potrzebuje działającego PulseAudio/PipeWire.
+
+Trzy pułapki buildu, każda cicha, każda rozbrojona:
+- `--noconsole` oznacza brak `sys.stdout`; `StreamHandler(None)` wysypywał się przy
+  pierwszym logu, czyli natychmiast po starcie, bez żadnego śladu (stąd warunek
+  w `shared/logging.py` i plik logu **zawsze**, nie tylko w trybie bezokienkowym);
+- build zrobiony przez `uv run` na współdzielonym `.venv` monorepo dał aplikację padającą
+  na `DLL load failed while importing _ssl` — stąd samodzielny interpreter zarządzany przez
+  `uv` i osobne `.venv-build` (build nie ma też prawa przestawiać wspólnego `.venv` na same
+  zależności satelity i psuć środowiska serwera);
+- PortAudio nie jest widoczne dla statycznej analizy PyInstallera — dołącza je hook contrib,
+  a skrypty budujące **sprawdzają jego obecność w gotowym bundlu**, bo brak tej biblioteki
+  nie wywala builda, tylko aplikację, i to dopiero przy pierwszym wake-wordzie.
+
+Pełne runbooki: [`deploy/README.md`](../deploy/README.md) (serwer) i
+[`services/desktop_satellite/README.md`](../services/desktop_satellite/README.md) (satelita).
 
 ---
 
@@ -655,9 +743,33 @@ Klient (Web UI)        REST Gateway            AgentEngine         Task (Asyncio
 - **Zasada symetrii Fakt↔narzędzie**: Każda informacja proaktywnie podana w `system_prompt` musi być **również** dostępna reaktywnie, przez narzędzie zwracające dokładnie tę samą treść (dowód: `get_time` — narzędzie i fragment `system_prompt` liczone z tego samego `datetime.now()` w jednym `build()`). Wyjątek: framing czysto instrukcyjny (np. "komunikujesz się głosem, pisz krótko") nie wymaga bliźniaczego narzędzia — nie jest wiedzą do odpytania na żądanie, tylko zawsze-obecną instrukcją.
 - **World jest jedynym autorem promptu tury, kernel trzyma wyłącznie prosty fallback**: Wcześniejszy model (`ContextBuild.dynamic_context: str`, doklejany do promptu wybranego w kernelu przez `agent/prompts/` CRUD: `system_content += "\n\n" + dynamic_context`) zmuszał dwóch niepowiązanych autorów (kernel + World) do nieformalnego respektowania wspólnej hierarchii formatowania (Markdown, nagłówki) przy sklejaniu dwóch fragmentów promptu. **Zrewidowane**: `ContextBuild.system_prompt: str | None` — gdy World jest podłączony, sam dokleja swój aktywny profil tożsamości (`world/prompts.py`, `WorldPromptStore`, do 3 przełączalnych profili — jeden zawsze pusty domyślny "Profil 1") do dynamicznych faktów, zwraca **kompletny, gotowy string**. Kernel niczego nie skleja — wkleja wprost, albo (gdy `system_prompt is None`, tylko `NullWorldInterface`/testy headless) używa własnego, jednowartościowego fallbacku (`agent/prompts/`, `AgentDefaultPromptStore`, bez CRUD). Uzasadnienie filozoficzne: `agent/` to ogólny, domenowo-pusty kernel — nie powinien być *tożsamością* konkretnej instancji agenta; odcięcie World i tak redukuje agenta do zwykłego chatbota, więc utrata tożsamości razem z World nie jest wadą, tylko naturalną konsekwencją tego, czym World *jest*. **Jeśli w przyszłości pojawi się realny przypadek, w którym kernel MUSI mieć bogatą, edytowalną tożsamość niezależną od World (nie tylko fallback) — wróć do tej decyzji z konkretnym przypadkiem w ręku.**
 
+- **Klucze API zostają przy instancji dostawcy, środowisko podaje wartość (2026-08-30)**:
+  odrzucona została migracja kluczy do `.env` w rozumieniu „jedna zmienna na dostawcę".
+  Powód: dostawcy są wielo-instancyjni i zarządzani CRUD-em z Web UI, więc `GROQ_API_KEY`
+  nie ma jak wskazać, o który z trzech presetów Groq chodzi. Zamiast tego wartość opcji może
+  być **referencją** `env:NAZWA` (`shared/secrets.py`) — wstecznie zgodne, bez momentu
+  przełączenia i bez migracji istniejących danych. Warto pamiętać, czego to **nie** naprawia:
+  klucze nigdy nie wyciekały do repozytorium (`.gitignore` blokuje `data/`), więc rozwiązywany
+  problem to wstrzyknięcie klucza do kontenera, nie wyciek.
+
+- **Wygaszanie sesji jest leniwe i mieszka w kernelu (2026-08-30)**: reguła „historia
+  bezczynna dłużej niż N sekund zaczyna od zera" należy do `MemoryManager`, nie do bramki WS,
+  bo obowiązuje każdego wywołującego kernela. Sprawdzenie jest czystą funkcją `updated_at`,
+  więc **nie ma timera ani wątku w tle** — sesja, po którą nikt nie sięga, nikomu nie szkodzi.
+  Politykę wnosi brzeg kompozycji (satelity dostają wartość z `Settings`, czat Web UI nie
+  dostaje żadnej), więc kernel nadal nie wie, z jakim typem klienta rozmawia. Patrz sekcja 3.2.
+
+- **Wersja produktu ma jedno źródło i nie jest polem konfiguracji (2026-08-30)**:
+  `shared/version.py`. Usunięto ją z `Settings`/`settings.json` — numer wersji nie jest rzeczą,
+  którą użytkownik edytuje w pliku konfiguracyjnym, a siedem ręcznie utrzymywanych kopii
+  starzało się każda osobno. Wersje w `pyproject.toml` zostają jako wersje pakietów; nikt ich
+  nie publikuje i nie rusza się ich przy wydaniu.
+
 ### Zaplanowane, jeszcze niezaimplementowane
 
 1. **Pamięć Długoterminowa i Wektorowa**: Planowana integracja modułów pamięci wektorowej i semantycznej w usłudze `server`.
 2. **Fizyczni klienci satelit (ESP32/desktop)**: Klient desktopowy (Windows/Linux, `services/desktop_satellite/`, sekcja 3.7) **istnieje od dwóch sesji wstecz** — pełny cykl audio (mikrofon+głośnik) przez `sounddevice`, lokalny VAD końca wypowiedzi, lokalnie syntezowane tony wake/stop (z fallbackiem do dźwięków systemowych Windows), auto-discovery serwera. Wake-word (`OnnxWakeWordDetector`) i STT/TTS (`GroqSTTProvider`/`ElevenLabsTTSProvider`, sekcja 3.5) są dziś realne — wymagają tylko wklejenia własnych kluczy API w Web UI (zakładka Klienci, dawniej Głos). Bez klucza TTS działa łagodna degradacja do `MockTTSProvider` (cisza); bez klucza STT `STTFactory` rzuca `STTNotConfiguredError` zamiast fabrykować fałszywą transkrypcję (patrz sekcja 3.5, rewizja 2026-08-21). Firmware ESP32 (I2S mikrofon/głośnik, lokalne tony wake/stop) nadal nie istnieje. Web UI pozostaje jedynym zawsze dostępnym nadawcą tekstowym: generuje i trwale zapisuje własny opaque `sender_id` w `localStorage` (`web/js/sender_id.js`) i wysyła go z każdym `POST /api/v1/chat*`, a zakładka "Świat" pozwala zarejestrować tę przeglądarkę (albo dowolny inny `sender_id`, w tym satelitę desktopową) pod pokojem.
 3. **Widoczność kroków ReAct SPRZED dołączenia do sesji już w toku**: Od rewizji "wyślij i zapomnij + `watch_session()`" (sekcja 4.1) kroki narzędzi, które wystąpią PO otwarciu kanału obserwującego, renderują się już na żywo. Nadal niewidoczne: kroki, które wystąpiły ZANIM ktoś zaczął obserwować (np. przed przeładowaniem strony w trakcie długiej pętli ReAct) — `metadata.steps` z tamtego okresu istnieje dopiero po zakończeniu całej tury, w historii.
-4. **Uporządkowanie warstwy Web UI**: Backend przeszedł refaktoryzację 2026-08-24, Web UI jeszcze nie. Znane, udokumentowane zaległości: 65 kopii bloku `try/fetch/!ok/catch` w czterech klientach domenowych (`web/js/network/clients/`), trzy kopie pętli czytnika SSE, `api_client.js` jako 60 metod czystej delegacji, nazwy plików nieodpowiadające zakładkom (`views/extensions*` to zakładka **Świat**, `voice_config.js` to **Klienci** — nazwy pochodzą z porzuconej wielorozszerzeniowości i ze starej nazwy zakładki), trzy różne konwencje cyklu życia widoku oraz dwa pliki po ~750 linii (`chat.js`, `chat/step_rail.js`) mieszające renderowanie DOM, transport SSE i czystą logikę segmentów. Zakres i kolejność: `REFACTORING_PLAN.md`, etap E9.
+4. **Uporządkowanie warstwy Web UI**: Backend przeszedł refaktoryzację 2026-08-24, Web UI jeszcze nie. Znane, udokumentowane zaległości: 65 kopii bloku `try/fetch/!ok/catch` w czterech klientach domenowych (`web/js/network/clients/`), trzy kopie pętli czytnika SSE, `api_client.js` jako 60 metod czystej delegacji, nazwy plików nieodpowiadające zakładkom (`views/extensions*` to zakładka **Świat**, `voice_config.js` to **Klienci** — nazwy pochodzą z porzuconej wielorozszerzeniowości i ze starej nazwy zakładki), trzy różne konwencje cyklu życia widoku oraz dwa pliki po ~750 linii (`chat.js`, `chat/step_rail.js`) mieszające renderowanie DOM, transport SSE i czystą logikę segmentów. Zakres i kolejność: `REFACTORING_PLAN.md`, etap E9 (świadomie odłożony na osobną sesję
+2026-08-30, razem z punktem 4 etapu E8 — reorganizacją `voice/routes.py` do `voice/api/*`;
+pozostałe punkty E8, czyli typowany kodek ramek i rejestr obecności, są już wdrożone).

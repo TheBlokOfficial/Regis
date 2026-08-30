@@ -22,7 +22,34 @@ python -m uv sync
 
 ## 2. Konfiguracja
 
-System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga: żaden parametr konfiguracyjny nie jest obecnie odczytywany ze zmiennych środowiskowych** — cała konfiguracja jest persystentna i zarządzana wyłącznie przez moduł `ConfigStore` (`packages/shared/src/shared/config.py`), w postaci plików JSON na dysku.
+System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. Konfiguracja jest
+persystentna i zarządzana przez `ConfigStore` (`packages/shared/src/shared/config.py`),
+w postaci plików JSON na dysku, edytowalna w Web UI. **Środowisko odpowiada wyłącznie za
+wdrożenie i sekrety** — wzorzec: [`.env.example`](../.env.example).
+
+| Zmienna | Rola |
+| :--- | :--- |
+| `REGIS_DATA_DIR` / `REGIS_CONFIG_DIR` | Gdzie usługa trzyma dane i konfigurację. Bez nich: `services/server/{data,config}`. W kontenerze wskazują wolumen. Patrz `shared/paths.py`. |
+| `REGIS_SATELLITE_CONFIG_DIR` | To samo dla satelity — **własna zmienna**, bo obie usługi potrafią działać na jednej maszynie. |
+| `REGIS_HOST` / `REGIS_PORT` / `REGIS_DEBUG` | Nadpisania wdrożeniowe na `Settings`. Zbiór jest celowo wąski i **musi pozostać rozłączny** z polami zapisywanymi przez `PUT /api/v1/voice/client-config` — ten endpoint zapisuje całość ustawień z powrotem do pliku, więc nadpisanie pola edytowalnego z Web UI zostałoby przy pierwszym zapisie zabetonowane w JSON-ie. |
+| `REGIS_ENV_FILE` | Jawne wskazanie pliku `.env` (domyślnie szukany w górę drzewa od korzenia usługi). |
+| dowolna własna | Wartość klucza API albo tokenu HA wpisana w Web UI jako `env:NAZWA` — patrz „Sekrety" niżej. |
+
+**Zmienne obecne w środowisku wygrywają z plikiem `.env`**, żeby `docker compose` i
+`docker run -e` były przewidywalne.
+
+### Sekrety: `env:NAZWA` zamiast klucza w pliku
+
+W dowolnym polu klucza API (zakładka **Dostawcy**) albo w tokenie Home Assistant
+(zakładka **Świat**) możesz wpisać `env:NAZWA_ZMIENNEJ` zamiast samego sekretu. Wartość
+zostanie pobrana ze środowiska w chwili budowy dostawcy (`shared/secrets.py`). Dzięki temu
+katalog `data/` da się kopiować i archiwizować bez wynoszenia kluczy, a kontener dostaje je
+przez `env_file`. Każda instancja może wskazywać **inną** zmienną — wiązanie zostaje przy
+presecie, więc trzy osobne konta Groq nadal są trzema osobnymi presetami.
+
+Referencje **nie są maskowane** w odpowiedziach REST ani w UI: to nazwa zmiennej, nie
+sekret, i jest jedynym sygnałem, po którym poznasz, że dana instancja bierze klucz ze
+środowiska. Klucze wpisane wprost działają dalej, bez żadnej migracji.
 
 ### Parametry serwera (`services/server/config/settings.json`, model `Settings` w `server/config.py`):
 - **`host`**: Adres nasłuchiwania interfejsu sieciowego (domyślnie: `0.0.0.0`).
@@ -31,14 +58,16 @@ System Regis obsługuje zarówno dostawców lokalnych, jak i chmurowych. **Uwaga
 - **`llm_default_max_tokens`**: Domyślna maksymalna liczba tokenów wyjściowych (domyślnie: `4096`).
 - **`max_history_messages`**: Maksymalna liczba ostatnich wiadomości z historii sesji dołączana do kontekstu LLM (domyślnie: `40`).
 - **`max_tool_iterations`**: Maksymalna liczba rund wywołań narzędzi w jednej pętli agentycznej (domyślnie: `8`).
+- **`satellite_session_idle_ttl_seconds`**: Po ilu sekundach ciszy historia rozmowy z satelitą jest czyszczona (domyślnie: `300`, `0` = nigdy). Satelita używa jednego `session_id` (równego swojemu `sender_id`) przez cały czas istnienia, więc bez limitu model dostaje wiadomości sprzed wielu godzin jako bieżącą rozmowę. Dotyczy **wyłącznie klientów głosowych** — czat Web UI ma własną listę sesji i nie wygasa. Wygaszanie jest leniwe (sprawdzane przy następnym sięgnięciu po sesję), czyszczona jest sama historia; ID i tytuł sesji zostają.
+- **`max_persisted_messages`**: Sufit liczby wiadomości utrwalanych w pliku jednej sesji (domyślnie: `200`, `0` = bez limitu). Przycinane są najstarsze, **nieodwracalnie**, także w historii widocznej w Web UI. Niezależne od `max_history_messages`, które przycina tylko to, co idzie do modelu.
 - **`telemetry_retention_records`**: Ile najnowszych zrzutów wywołań LLM trzyma zakładka **Logi** (domyślnie: `2000`, plik `data/telemetry/generations.db`). Rotacja jest leniwa — uruchamia się co kilkadziesiąt zapisów, nie z timera, więc chwilowo w bazie może być nieco więcej wpisów niż limit.
 - **`telemetry_max_record_bytes`**: Sufit rozmiaru zrzutu kontekstu w jednym wpisie telemetrii (domyślnie: `262144`, czyli 256 KB). Po przekroczeniu ucinane są **treści** wiadomości — struktura (ile wiadomości, w jakich rolach) zostaje nietknięta, a wpis dostaje flagę `truncated` widoczną w UI jako badge „ucięto”.
-- **`wakeword_model_path`**: Ścieżka (względna wobec katalogu usługi) do wytrenowanego modelu wake-word `.onnx` (domyślnie: puste — placeholder progu amplitudy `ThresholdEnergyWakeWordDetector`, łagodna degradacja gdy plik nieskonfigurowany/nie istnieje). Model kopiuje się ręcznie, np. do `data/wakeword/<nazwa>.onnx` (katalog `data/` jest w `.gitignore`).
+- **`wakeword_model_path`**: Ścieżka do wytrenowanego modelu wake-word `.onnx` — bezwzględna albo względna wobec **katalogu danych** (`REGIS_DATA_DIR`, domyślnie `services/server/data`). Dotychczasowe konfiguracje z wiodącym `data/` działają dalej: prefiks jest obcinany dla zgodności wstecznej (domyślnie: puste — placeholder progu amplitudy `ThresholdEnergyWakeWordDetector`, łagodna degradacja gdy plik nieskonfigurowany/nie istnieje). Model kopiuje się ręcznie, np. do `data/wakeword/<nazwa>.onnx` (katalog `data/` jest w `.gitignore`).
 - **`wakeword_threshold`**: Próg pewności detekcji wake-word, 0-1 (domyślnie: `0.65` — dla konkretnego modelu użyj wartości `optimal_threshold` z jego metryk ewaluacyjnych). Konfigurowalne przez Web UI (zakładka **Klienci**, `GET/PUT /api/v1/voice/client-config`), działa od razu bez restartu.
 - **`vad_silence_duration_ms`** / **`vad_amplitude_threshold`**: Parametry VAD satelity (koniec wypowiedzi) — domyślnie `1500.0`/`500`. Algorytm wykonuje się lokalnie na satelicie (zero rundtripu na decyzję), ale próg jest centralnie skonfigurowany tutaj i wysyłany satelicie raz, zaraz po handshake (`ServerMessageType.CLIENT_CONFIG`, `shared/voice_protocol.py`) — zmiana działa po następnym reconnect satelity, bez restartu serwera. Konfigurowalne przez to samo `GET/PUT /api/v1/voice/client-config` (zakładka **Klienci**, formularz "Konfiguracja klienta"). `vad_amplitude_threshold` ma drugie, serwerowe zastosowanie: `VoiceSession.handle_utterance_end()` sprawdza nim całe nagranie tuż przed wysłaniem do STT — jeśli szczytowa amplituda nigdy go nie przekroczyła (satelita nagrała samą ciszę/szum, np. przypadkowe wyzwolenie wake-worda), transkrypcja jest pomijana, żeby Whisper/Groq nie zhalucynował pojedynczego słowa z niczego. Czas trwania nagrania świadomie nie jest tu sygnałem — satelita zawsze czeka pełne `vad_silence_duration_ms` ciszy przed końcem nagrywania, więc nawet pusta wypowiedź ma ten sam ~1.5 s ogon co realna, krótka mowa.
 
 ### Parametry dostawców LLM (`services/server/data/backends/*.json`, zarządzane przez `BackendRegistry`):
-- **`options.api_key`**: Klucz API wymagany do komunikacji z dostawcą OpenRouter (pole w instancji backendu, nie zmienna środowiskowa).
+- **`options.api_key`**: Klucz API dostawcy — pole instancji backendu. Może być literałem albo referencją `env:NAZWA` (patrz „Sekrety" wyżej).
 - **`options.base_url`**: Adres serwera Ollama (domyślnie: `http://localhost:11434`).
 - **`options.tpm_limit`**: Opcjonalny limit tokenów/min presetu (np. `8000` dla darmowego tieru Groq) — włącza proaktywne pomijanie przez `TokenBudgetTracker` w łańcuchu fallbacku (patrz niżej); brak pola = tracker nie sprawdza budżetu dla tego presetu.
 
@@ -142,6 +171,22 @@ python -m uv run --package server python -m server.main
 > jest dostępny. Odblokowanie go wymaga zmiany w kodzie (fabryka aplikacji
 > + `lifespan`), nie w dokumentacji.
 
+### Uruchomienie produkcyjne (Docker):
+
+Cel: Raspberry Pi 5 / Pi OS Lite 64-bit, obraz budowany natywnie na Pi.
+
+```bash
+cp .env.example .env   # uzupełnij klucze i ewentualnie REGIS_PORT
+docker compose up -d
+docker compose logs -f
+```
+
+Aktualizacja i wycofanie zmiany: `./deploy/deploy.sh [tag]` — skrypt przełącza wersję,
+przebudowuje obraz i **czeka na `/api/v1/health`** zamiast kończyć się na `up -d`.
+
+Pełny runbook (pierwsza instalacja, kopia zapasowa, diagnostyka, uzasadnienie
+`network_mode: host`): [`deploy/README.md`](../deploy/README.md).
+
 ### Dostępne punkty końcowe REST, SSE i Web UI:
 - **Interaktywna dokumentacja Swagger UI**: `http://127.0.0.1:8000/docs`
 - **Lokalny Interfejs Web UI**: `http://127.0.0.1:8000/`
@@ -223,20 +268,45 @@ końcówki tury: `tts_start`/audio/`tts_end` oraz `turn_end`.
 ### Uruchomienie satelity desktopowej (realny mikrofon/głośnik):
 Wymaga uruchomionego serwera. Klient (`services/desktop_satellite/`, patrz
 `docs/manifest.md` sekcja 3.7) łączy się z `WS /ws/voice/{sender_id}`,
-strumieniuje mikrofon, lokalnie wykrywa koniec wypowiedzi i odtwarza odpowiedź:
+strumieniuje mikrofon, lokalnie wykrywa koniec wypowiedzi i odtwarza odpowiedź.
+
+**Postać produkcyjna** (aplikacja bez okna, ikona w zasobniku, autostart):
+
 ```bash
-python -m uv run --package desktop_satellite python -m desktop_satellite.main
+# Windows
+.uild.ps1 ; .\install.ps1
+# Linux
+./build.sh && ./install.sh
 ```
+
+**Praca nad kodem** (tryb konsolowy, dawne zachowanie):
+
+```bash
+python -m uv run --package desktop_satellite python -m desktop_satellite.main --console
+```
+
+`--console` włącza się też sam, gdy `pystray`/`Pillow` nie są zainstalowane (są w grupie
+zależności `build`, nie w podstawowych), więc uruchomienie ze źródeł nie wymaga niczego
+ponad zwykłe `uv sync`.
+
 Bez flag: serwer rozgłasza swoją obecność w sieci lokalnej (UDP broadcast,
 `server/discovery.py`/`shared/discovery.py`, port `41530`) — satelita znajduje
 go automatycznie, bez ręcznego wpisywania IP. `sender_id` to trwały UUID4
-wygenerowany przy pierwszym uruchomieniu i zapisany w
-`services/desktop_satellite/config/settings.json` (`desktop_satellite/config.py`)
-— kolejne starty używają tego samego ID. Zarejestruj wygenerowany `sender_id`
-(widoczny w logu startowym) w Web UI — zakładka **Ustawienia → Klienci**, gdzie
-podłączona satelita pojawia się na liście oczekujących; pokój przypisuje się jej
-potem w zakładce **Świat**. Opcje `--server-url`/`--sender-id` pozwalają pominąć
-auto-discovery/trwały UUID (np. inna podsieć, testy).
+wygenerowany przy pierwszym uruchomieniu; **jego lokalizacja zależy od postaci**:
+`%APPDATA%\Regis` / `~/.config/regis` w wersji zainstalowanej,
+`services/desktop_satellite/config/` przy uruchomieniu ze źródeł. To dwie różne
+lokalizacje, więc przejście na wersję zainstalowaną bez przeniesienia pliku dałoby **nowy
+`sender_id`** — robią to za Ciebie skrypty `install.*`.
+
+Zarejestruj `sender_id` w Web UI — zakładka **Ustawienia → Klienci**, gdzie podłączona
+satelita pojawia się na liście oczekujących; pokój przypisuje się jej potem w zakładce
+**Świat**. W trybie produkcyjnym `sender_id` kopiuje się z **menu ikony w zasobniku** —
+bez konsoli nie ma logu startowego, z którego dawniej się go odczytywało. Opcje
+`--server-url`/`--sender-id` pozwalają pominąć auto-discovery/trwały UUID (np. inna
+podsieć, testy).
+
+Szczegóły postaci produkcyjnej i pułapek buildu:
+[`services/desktop_satellite/README.md`](../services/desktop_satellite/README.md).
 
 Wake-word wykrywa **wyłącznie serwer**, realnym modelem `.onnx` gdy skonfigurowany
 (`wakeword_model_path` wyżej). STT/TTS są realne (Groq/ElevenLabs) i wymagają
