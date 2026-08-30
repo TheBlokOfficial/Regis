@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class HealthResponse(BaseModel):
     """Odpowiedź dla punktu końcowego GET /api/v1/health."""
 
-    system: str = Field(default="Regis Agent OS", description="Nazwa systemu")
+    system: str = Field(default="Regis", description="Nazwa systemu")
     app_name: str = Field(..., description="Nazwa aplikacji z konfiguracji serwera (Settings.app_name)")
     gateway_status: str = Field(default="online", description="Status bramki sieciowej")
     agent_engine_status: str = Field(default="ready", description="Status silnika agenta")
@@ -154,7 +154,7 @@ class ProviderMetadataResponse(BaseModel):
 
 
 # ==========================================================================
-# KONTRAKTY DLA CZATU I PAMIĘCI SESJI (AGENT OS CHAT & SESSION CONTRACTS)
+# KONTRAKTY DLA CZATU I PAMIĘCI SESJI
 # ==========================================================================
 
 

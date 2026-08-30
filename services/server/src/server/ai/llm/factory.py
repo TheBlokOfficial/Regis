@@ -104,7 +104,7 @@ class LLMFactory:
                 max_tokens=max_tokens,
                 extra_headers={
                     "HTTP-Referer": "https://github.com/TheBlokOfficial/Regis",
-                    "X-Title": "Regis OS",
+                    "X-Title": "Regis",
                 },
                 extra_payload=extra_payload,
             )

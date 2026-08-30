@@ -31,7 +31,7 @@ class SessionDataModel(BaseModel):
 
 
 class Session:
-    """Reprezentacja pojedynczej sesji konwersacyjnej w backendzie Agent OS."""
+    """Reprezentacja pojedynczej sesji konwersacyjnej w kernelu Regis."""
 
     def __init__(
         self,
@@ -128,7 +128,7 @@ class Session:
 
 
 class MemoryManager:
-    """Centralny zarządca pamięci sesji i trwałości historii konwersacji w Agent OS Kernel.
+    """Centralny zarządca pamięci sesji i trwałości historii konwersacji w kernelu Regis.
 
     Przechowuje sesje w pamięci RAM oraz utrwala je na dysku
     w plikach JSON w katalogu `data/sessions/` przy użyciu ConfigStore z pakietu shared.

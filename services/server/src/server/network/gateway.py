@@ -27,7 +27,7 @@ def create_gateway_app(
 ) -> FastAPI:
     """Tworzy i konfiguruje bramkę sieciową FastAPI z wbudowaną konsolą WWW i punktami końcowymi."""
     app = FastAPI(
-        title="Regis Agent OS - Gateway",
+        title="Regis - Gateway",
         description="Bramka sieciowa FastAPI z wbudowanym interfejsem Web Console",
         version=REGIS_VERSION,
     )

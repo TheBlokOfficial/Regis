@@ -1,4 +1,4 @@
-"""Moduł definicji i kontraktów zdarzeń wewnętrznych serwera Regis OS."""
+"""Moduł definicji i kontraktów zdarzeń wewnętrznych serwera Regis."""
 
 from enum import Enum
 

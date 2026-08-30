@@ -8,7 +8,7 @@ import { createWatchChannel } from './chat/chat_watch_channel.js';
 import { initSessionManager } from './chat/chat_session_manager.js';
 
 /**
- * Moduł widoku "Czat z Agentem" - interfejs kontrolno-debugujący w Web Console Regis OS.
+ * Moduł widoku "Czat z Agentem" - interfejs kontrolno-debugujący w konsoli Regis.
  *
  * Cienki "klej" spinający trzy wydzielone moduły: szablon HTML (`chat_template.js`), kanał
  * SSE obserwujący aktywną sesję (`chat_watch_channel.js`) i zarządzanie listą sesji/popoverem

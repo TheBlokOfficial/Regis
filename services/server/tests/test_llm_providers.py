@@ -71,7 +71,7 @@ async def test_ollama_provider_max_tokens_num_predict():
     [
         (
             "https://openrouter.ai/api/v1",
-            {"HTTP-Referer": "https://github.com/TheBlokOfficial/Regis", "X-Title": "Regis OS"},
+            {"HTTP-Referer": "https://github.com/TheBlokOfficial/Regis", "X-Title": "Regis"},
             {"reasoning": {"effort": "none"}},
         ),
         ("https://api.groq.com/openai/v1", None, None),

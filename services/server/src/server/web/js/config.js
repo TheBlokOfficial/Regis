@@ -10,7 +10,6 @@ export function getConfig() {
   return {
     SERVER_HOST: origin,
     WS_HOST: wsHost,
-    APP_TITLE: "Regis OS Control Console",
-    VERSION: "0.1.0",
+    APP_TITLE: "Regis",
   };
 }

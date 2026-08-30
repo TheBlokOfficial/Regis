@@ -39,7 +39,7 @@ _SESSION_BUSY = "Sesja '{session_id}' przetwarza obecnie inne zapytanie. Odczeka
 
 
 class AgentEngine:
-    """Rdzeń Systemu Operacyjnego Agenta AI (Agent OS Kernel)."""
+    """Rdzeń agenta Regis — domenowo pusty kernel."""
 
     def __init__(
         self,

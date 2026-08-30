@@ -21,10 +21,10 @@ export class DashboardView {
       <div class="dashboard-grid">
         <div class="page-header">
           <div>
-            <h2 class="page-header-title">Regis Agent OS</h2>
+            <h2 class="page-header-title">Regis</h2>
             <p class="page-header-desc">Lokalna platforma agentów AI — status węzła i skróty do konfiguracji.</p>
           </div>
-          <span class="badge-muted">v0.1.0</span>
+          <span class="badge-muted" id="dashboard-version">v—</span>
         </div>
 
         <div class="stat-panel">
@@ -76,6 +76,11 @@ export class DashboardView {
     const nameEl = document.getElementById('dashboard-status-name');
     const badgeEl = document.getElementById('dashboard-status-badge');
     if (!nameEl || !badgeEl) return;
+
+    // Wersja produktu przychodzi z `/api/v1/health` (shared/version.py) — jedyne źródło
+    // prawdy. Dawniej była wpisana w szablonie na sztywno i milcząco się starzała.
+    const versionEl = document.getElementById('dashboard-version');
+    if (versionEl && healthData?.version) versionEl.textContent = `v${healthData.version}`;
 
     if (healthData) {
       nameEl.textContent = healthData.app_name ? `${healthData.app_name} działa poprawnie` : 'Serwer działa poprawnie';

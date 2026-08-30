@@ -20,7 +20,7 @@ def create_api_router(
     is_registered: RegistrationCheck | None = None,
     generation_log: GenerationLogStore | None = None,
 ) -> APIRouter:
-    """Centralny rejestr agregujący zmodularyzowane pod-routery REST i SSE API serwera Regis OS."""
+    """Centralny rejestr agregujący zmodularyzowane pod-routery REST i SSE API serwera Regis."""
     main_router = APIRouter()
 
     main_router.include_router(create_health_router())

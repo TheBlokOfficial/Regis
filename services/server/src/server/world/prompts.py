@@ -1,4 +1,4 @@
-"""Magazyn profili promptu systemowego Świata Regis OS.
+"""Magazyn profili promptu systemowego Świata Regis.
 
 World jest jedynym autorem promptu tej tury, gdy jest podłączony (patrz
 `agent/context_provider.py`, `ContextBuild.system_prompt`) — sam dokleja

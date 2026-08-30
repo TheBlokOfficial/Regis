@@ -1,4 +1,4 @@
-"""Magazyn fallbackowego promptu systemowego kernela Agenta Regis OS.
+"""Magazyn fallbackowego promptu systemowego kernela agenta Regis.
 
 Jedna wartość, bez CRUD — używana wyłącznie gdy żaden silnik świata nie
 dostarcza własnego `ContextBuild.system_prompt` (np. `NullWorldInterface`,

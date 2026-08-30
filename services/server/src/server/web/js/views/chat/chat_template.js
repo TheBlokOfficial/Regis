@@ -73,7 +73,7 @@ export function renderEmptyStateMarkup() {
     <div class="chat-empty-state" id="chat-empty-state">
       <div class="empty-state-icon" id="chat-empty-icon">${Icons.MessageSquare()}</div>
       <div class="empty-state-title">Jak mogę pomóc?</div>
-      <div class="empty-state-desc">Jestem Agentem Regis OS. O co chcesz zapytać?</div>
+      <div class="empty-state-desc">Jestem Regis. O co chcesz zapytać?</div>
     </div>
   `;
 }
@@ -101,7 +101,7 @@ export function renderUserMessageMarkup(formattedContent) {
 }
 
 export function renderAgentMessageMarkup(formattedContent) {
-  // Bez awatara/nazwy nadawcy — jedyny agent w systemie, powtarzanie "Regis OS" przy
+  // Bez awatara/nazwy nadawcy — jedyny agent w systemie, powtarzanie "Regis" przy
   // każdej turze nie niesie informacji (lewe wyrównanie już jednoznacznie odróżnia
   // agenta od usera, którego bąbelki są po prawej).
   return `

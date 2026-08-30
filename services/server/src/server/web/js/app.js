@@ -4,11 +4,11 @@ import { TabManager } from './tab_manager.js';
 import { Icons } from './icons.js';
 
 /**
- * Punkt wejścia aplikacji konsoli roboczej Regis Agent OS.
+ * Punkt wejścia aplikacji konsoli roboczej Regis.
  */
 document.addEventListener('DOMContentLoaded', async () => {
   const config = getConfig();
-  console.log(`🚀 Uruchamianie ${config.APP_TITLE} (v${config.VERSION})...`);
+  console.log(`🚀 Uruchamianie ${config.APP_TITLE}...`);
 
   // 1. Wstrzyknięcie monochromatycznych ikon SVG do elementów nawigacji
   mountIcons();
@@ -25,6 +25,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Aktualizacja wskaźnika w stopce sidebaru (tylko Online / Offline)
     const sidebarDot = document.getElementById('sidebar-status-dot');
     const sidebarText = document.getElementById('sidebar-status-text');
+
+    // Wersja z `/api/v1/health`, nie z pliku frontendu — `shared/version.py` jest
+    // jedynym miejscem, w którym numer produktu żyje (patrz CHANGELOG.md).
+    const versionEl = document.getElementById('sidebar-version');
+    if (versionEl && health?.version) versionEl.textContent = `v${health.version}`;
 
     if (health) {
       if (sidebarDot) sidebarDot.className = 'status-indicator-dot online';

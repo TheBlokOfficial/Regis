@@ -6,7 +6,7 @@ import { VoiceClient } from './clients/voice_client.js';
 import { TelemetryClient } from './clients/telemetry_client.js';
 
 /**
- * Klient REST API do komunikacji z serwerem Regis OS (Same-Origin).
+ * Klient REST API do komunikacji z serwerem Regis (Same-Origin).
  *
  * Fasada nad pięcioma klientami domenowymi (`network/clients/`), mirrorująca
  * podział backendu (`agent/`, `world/`, `voice/`, `telemetry/`, `network/routes/chat`) —

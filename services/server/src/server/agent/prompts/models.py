@@ -1,4 +1,4 @@
-"""Model danych dla fallbackowego promptu systemowego kernela Agenta Regis OS."""
+"""Model danych dla fallbackowego promptu systemowego kernela agenta Regis."""
 
 from pydantic import BaseModel, Field
 
