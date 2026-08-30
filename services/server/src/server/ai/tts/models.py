@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from server.ai.provider_models import ProviderInstanceContent
 
 
 class TTSProviderType(str, Enum):
@@ -10,12 +11,10 @@ class TTSProviderType(str, Enum):
     ELEVENLABS = "ELEVENLABS"
 
 
-class TTSInstanceFileContent(BaseModel):
+class TTSInstanceFileContent(ProviderInstanceContent):
     """Struktura zawartości pliku JSON instancji TTS (bez duplikacji ID na dysku)."""
 
     type: TTSProviderType = Field(description="Typ dostawcy TTS")
-    name: str = Field(description="Wyświetlana nazwa instancji")
-    options: dict[str, Any] = Field(default_factory=dict, description="Worek z opcjami specyficznymi dla dostawcy")
 
 
 class TTSInstanceConfig(TTSInstanceFileContent):

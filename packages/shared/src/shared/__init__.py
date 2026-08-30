@@ -43,6 +43,7 @@ from shared.event_bus import Event, EventBus, EventHandler
 from shared.json_repository import ActiveInstancePointer, JsonInstanceRepository
 from shared.logging import get_logger, setup_logging
 from shared.paths import config_dir, data_dir, is_frozen, user_state_dir
+from shared.secrets import SECRET_REF_PREFIX, is_secret_ref, resolve_secret, resolve_secret_refs
 from shared.version import __version__
 from shared.voice_protocol import (
     CHANNELS,
@@ -113,7 +114,11 @@ __all__ = [
     "get_logger",
     "get_service_root",
     "is_frozen",
+    "is_secret_ref",
     "load_dotenv",
+    "resolve_secret",
+    "resolve_secret_refs",
+    "SECRET_REF_PREFIX",
     "user_state_dir",
     "sanitize_identifier",
     "setup_logging",

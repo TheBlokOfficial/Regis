@@ -1,6 +1,7 @@
 import { Icons } from '../../../icons.js';
 import { flashButtonResult, lockButtonForAction } from '../../../utils/button_flash.js';
 import { escapeAttr } from '../../../utils/dom.js';
+import { SECRET_REF_PREFIX, isSecretRef } from '../../../utils/secrets.js';
 
 /**
  * Panel "Konfiguracja" — singleton Home Assistant (`base_url`/`access_token`).
@@ -13,7 +14,13 @@ import { escapeAttr } from '../../../utils/dom.js';
  */
 export function renderConfigForm(view) {
   const isConfigured = Boolean(view.config.base_url && view.config.access_token);
-  const tokenPlaceholder = isConfigured ? truncateMaskedToken(view.config.access_token) : 'Wklej token dostępu...';
+  // Referencja `env:NAZWA` nie jest sekretem — serwer jej nie maskuje (`world/api/mappers.py`),
+  // więc i tu pokazujemy ją w całości, zamiast przepuszczać przez skracanie kropek.
+  const tokenPlaceholder = isSecretRef(view.config.access_token)
+    ? view.config.access_token
+    : isConfigured
+      ? truncateMaskedToken(view.config.access_token)
+      : 'Wklej token dostępu...';
   return `
     <div class="form-card ha-config-form-card">
       <div class="form-row">
@@ -31,6 +38,7 @@ export function renderConfigForm(view) {
       </div>
       <p class="section-hint ha-token-hint">
         Token wygenerujesz w profilu użytkownika Home Assistant → Bezpieczeństwo → Długoterminowe tokeny dostępu.
+        Możesz też wpisać <code>${SECRET_REF_PREFIX}NAZWA_ZMIENNEJ</code>, żeby wziąć go ze środowiska zamiast zapisywać w pliku.
       </p>
       <div class="form-actions ha-config-actions">
         <button type="button" class="btn" id="ha-btn-test-config">Testuj połączenie</button>

@@ -7,6 +7,8 @@ Zero logiki domenowej — wyłącznie przepisanie pól i maskowanie sekretu.
 
 from __future__ import annotations
 
+from shared import is_secret_ref
+
 from server.ai.provider_crud import mask_secret_value
 from server.world.dto import (
     ConditionSpecDTO,
@@ -27,8 +29,9 @@ def mask_token(token: str) -> str:
 
     Ta sama maska co dla kluczy API dostawców AI (`ai/provider_crud.py`) — token
     Home Assistant to jedyny sekret poza nimi, który opuszcza serwer w postaci
-    podglądowej, więc nie ma powodu, żeby wyglądał inaczej."""
-    if not token:
+    podglądowej, więc nie ma powodu, żeby wyglądał inaczej. Referencja `env:NAZWA`
+    przechodzi bez maski z tego samego powodu co tam: to nazwa zmiennej, nie sekret."""
+    if not token or is_secret_ref(token):
         return token
     return mask_secret_value(token)
 

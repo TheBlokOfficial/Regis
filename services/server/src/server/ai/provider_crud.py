@@ -25,7 +25,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Callable, Type
 
-from shared import ProviderMetadataResponse
+from shared import ProviderMetadataResponse, is_secret_ref
 
 from server.ai.provider_registry import ProviderRegistry
 
@@ -80,14 +80,18 @@ class ProviderCrud:
     def mask_secrets(self, provider_type: str, options: dict[str, Any]) -> dict[str, Any]:
         """Zamienia wartości pól sekretnych na kropki z czterema ostatnimi znakami.
 
-        Klucze API nie powinny nigdy opuszczać serwera w czystym tekście przez REST."""
+        Klucze API nie powinny nigdy opuszczać serwera w czystym tekście przez REST.
+
+        **Referencje `env:NAZWA` przechodzą bez maski** — to nazwa zmiennej środowiskowej,
+        a nie sekret. Zamaskowanie jej odebrałoby użytkownikowi jedyną informację, po
+        której poznaje, że dana instancja bierze klucz ze środowiska, a nie z pliku."""
         secret_fields = self._secret_field_names(provider_type)
         if not secret_fields:
             return options
         masked = dict(options)
         for field_name in secret_fields:
             value = masked.get(field_name)
-            if isinstance(value, str) and value:
+            if isinstance(value, str) and value and not is_secret_ref(value):
                 masked[field_name] = mask_secret_value(value)
         return masked
 

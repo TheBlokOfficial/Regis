@@ -23,15 +23,23 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Generic, Type, TypeVar
 
-from pydantic import BaseModel
-from shared import ActiveInstancePointer, ConfigStore, JsonInstanceRepository, get_logger, sanitize_identifier
+from shared import (
+    ActiveInstancePointer,
+    ConfigStore,
+    JsonInstanceRepository,
+    get_logger,
+    resolve_secret_refs,
+    sanitize_identifier,
+)
+
+from server.ai.provider_models import ProviderInstanceContent
 
 logger = get_logger("regis.ai.registry")
 
-TContent = TypeVar("TContent", bound=BaseModel)
+TContent = TypeVar("TContent", bound=ProviderInstanceContent)
 """Zawartość pliku instancji: `{type, name, options}`."""
 
-TInstance = TypeVar("TInstance", bound=BaseModel)
+TInstance = TypeVar("TInstance", bound=ProviderInstanceContent)
 """To samo plus `id` odczytane z nazwy pliku — postać używana w pamięci serwera."""
 
 TProvider = TypeVar("TProvider")
@@ -92,7 +100,10 @@ class ProviderRegistry(ABC, Generic[TContent, TInstance, TProvider]):
 
     @abstractmethod
     def _create_provider(self, config: TInstance) -> TProvider:
-        """Buduje gotowy konkret dostawcy z konfiguracji instancji (fabryka domeny)."""
+        """Buduje gotowy konkret dostawcy z konfiguracji instancji (fabryka domeny).
+
+        **Nie wołaj tego wprost** — od budowania dostawcy jest `build_provider()`, które
+        najpierw rozwiązuje referencje `env:NAZWA` w opcjach."""
 
     # --------------------------------------------------------------------------
     # Wspólna mechanika
@@ -121,7 +132,23 @@ class ProviderRegistry(ABC, Generic[TContent, TInstance, TProvider]):
             self._defaults_ensured = True
 
     def _to_instance(self, instance_id: str, content: TContent) -> TInstance:
-        return self._instance_cls(id=instance_id, **content.model_dump())
+        # `model_validate` zamiast wywołania konstruktora: `id` (tu) i `type` (w
+        # `create_instance`) są polami PODKLAS, nie wspólnej bazy `ProviderInstanceContent`
+        # — konstruktor typowany po bazie ich nie zna. Walidacja jest ta sama.
+        return self._instance_cls.model_validate({"id": instance_id, **content.model_dump()})
+
+    def build_provider(self, config: TInstance) -> TProvider:
+        """Gotowy konkret dostawcy — **jedyne** dopuszczalne wejście do fabryki domeny.
+
+        Tutaj, i tylko tutaj, wartości `env:NAZWA` zamieniają się w prawdziwe sekrety
+        (`shared/secrets.py`). Granica jest celowo postawiona na budowie konkretu, a nie
+        na odczycie z dysku: `load_all_instances()` zasila też warstwę REST i CRUD, więc
+        rozwiązana postać klucza nigdy nie może się tam pojawić. Jeden punkt obsługuje
+        wszystkie trzy domeny (LLM/STT/TTS), bo prefiks referencji jest jednoznaczny
+        i nie wymaga wiedzy o tym, które pole jest sekretne.
+        """
+        resolved = config.model_copy(update={"options": resolve_secret_refs(config.options)})
+        return self._create_provider(resolved)
 
     async def create_instance(
         self,
@@ -132,7 +159,7 @@ class ProviderRegistry(ABC, Generic[TContent, TInstance, TProvider]):
     ) -> TInstance:
         """Tworzy nową instancję i zapisuje ją jako plik JSON."""
         await self._ensure_defaults()
-        content = self._content_cls(type=provider_type, name=name, options=options)
+        content = self._content_cls.model_validate({"type": provider_type, "name": name, "options": options})
         instance_id = await self._repository.create(content, custom_id=custom_id)
         return self._to_instance(instance_id, content)
 
@@ -221,7 +248,7 @@ class ProviderRegistry(ABC, Generic[TContent, TInstance, TProvider]):
             selected = all_instances[first_id]
             await self.set_active_backend_id(first_id)
 
-        return self._create_provider(selected)
+        return self.build_provider(selected)
 
     async def _load_active_pointer(self) -> ActiveInstancePointer:
         """Odczyt wskaźnika **bez** nabywania locka — wołający już go trzyma."""

@@ -1,6 +1,7 @@
 import { Icons } from '../../icons.js';
 import { renderSelectMarkup } from '../select.js';
 import { escapeAttr, escapeHtml } from '../../utils/dom.js';
+import { SECRET_REF_PREFIX, isSecretRef } from '../../utils/secrets.js';
 
 /**
  * Czyste funkcje renderujące HTML sekcji presetów dostawcy — wydzielone z
@@ -162,15 +163,27 @@ export function renderFieldMarkup(idPrefix, opt, value) {
 
   // `type="number"` odpada świadomie — natywne strzałki góra/dół przeglądarki są
   // jednym z domyślnych kontrolek, których ten projekt nie używa.
-  const inputType = opt.type === 'password' ? 'password' : 'text';
   const shown = value === undefined || value === null ? '' : String(value);
+  // Referencja `env:NAZWA` to nazwa zmiennej środowiskowej, nie sekret — serwer nie
+  // maskuje jej w odpowiedzi (`ai/provider_crud.py`), więc i tutaj pokazujemy ją
+  // wprost. Ukrycie jej za kropkami odebrałoby jedyny sygnał, że ta instancja bierze
+  // klucz ze środowiska, a nie z pliku.
+  const valueIsSecretRef = isSecretRef(shown);
+  const inputType = opt.type === 'password' && !valueIsSecretRef ? 'password' : 'text';
+  // Podpowiedź dokładana ZAWSZE dla pól sekretnych, obok ewentualnej podpowiedzi ze
+  // schematu — inaczej dostawcy, którzy mają własny opis pola (a mają go wszyscy
+  // z kluczem API), nigdy by o referencjach nie powiedzieli.
+  const secretHint =
+    opt.type === 'password'
+      ? `<p class="provider-field-hint">Możesz wpisać <code>${SECRET_REF_PREFIX}NAZWA_ZMIENNEJ</code>, żeby wziąć klucz ze środowiska zamiast zapisywać go w pliku.</p>`
+      : '';
   return `
     <div class="provider-field" data-opt-name="${escapeAttr(opt.name)}" data-opt-kind="input">
       <label for="${id}">${escapeHtml(opt.label)}</label>
       <input type="${inputType}" id="${id}" class="form-control provider-field-input"
         data-opt-name="${escapeAttr(opt.name)}"
         value="${escapeAttr(shown)}" placeholder="${escapeHtml(opt.placeholder || '')}" />
-      ${hint}
+      ${hint}${secretHint}
     </div>
   `;
 }

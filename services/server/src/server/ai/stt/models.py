@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from server.ai.provider_models import ProviderInstanceContent
 
 
 class STTProviderType(str, Enum):
@@ -10,12 +11,10 @@ class STTProviderType(str, Enum):
     GROQ = "GROQ"
 
 
-class STTInstanceFileContent(BaseModel):
+class STTInstanceFileContent(ProviderInstanceContent):
     """Struktura zawartości pliku JSON instancji STT (bez duplikacji ID na dysku)."""
 
     type: STTProviderType = Field(description="Typ dostawcy STT")
-    name: str = Field(description="Wyświetlana nazwa instancji")
-    options: dict[str, Any] = Field(default_factory=dict, description="Worek z opcjami specyficznymi dla dostawcy")
 
 
 class STTInstanceConfig(STTInstanceFileContent):

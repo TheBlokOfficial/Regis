@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from server.ai.provider_models import ProviderInstanceContent
 
 
 class ProviderType(str, Enum):
@@ -12,12 +13,10 @@ class ProviderType(str, Enum):
     GROQ = "GROQ"
 
 
-class BackendFileContent(BaseModel):
+class BackendFileContent(ProviderInstanceContent):
     """Struktura zawartości pliku JSON instancji backendu (bez duplikacji ID na dysku)."""
 
     type: ProviderType = Field(description="Typ dostawcy modeli LLM")
-    name: str = Field(description="Wyświetlana nazwa instancji")
-    options: dict[str, Any] = Field(default_factory=dict, description="Worek z opcjami specyficznymi dla dostawcy")
 
 
 class BackendInstanceConfig(BackendFileContent):

@@ -40,8 +40,11 @@ class BackendRegistry(ProviderRegistry[BackendFileContent, BackendInstanceConfig
 
     def create_provider_instance(self, instance: BackendInstanceConfig) -> BaseLLMProvider:
         """Buduje konkret dla DOWOLNEJ instancji, nie tylko aktywnej — używane przez
-        `LLMRouter` do rozwiązania każdego kandydata w łańcuchu fallbacku."""
-        return self._create_provider(instance)
+        `LLMRouter` do rozwiązania każdego kandydata w łańcuchu fallbacku.
+
+        Przez `build_provider()`, nie `_create_provider()`: kandydat z łańcucha ma prawo
+        mieć klucz podany jako `env:NAZWA` dokładnie tak samo jak instancja aktywna."""
+        return self.build_provider(instance)
 
     async def get_fallback_chain(self) -> list[str]:
         """Uporządkowana lista ID presetów do prób, od najwyższego priorytetu.

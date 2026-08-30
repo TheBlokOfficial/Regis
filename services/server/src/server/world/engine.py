@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from shared import JsonInstanceRepository, get_logger
+from shared import JsonInstanceRepository, get_logger, resolve_secret
 from shared import data_dir as shared_data_dir
 
 from server.agent.context_provider import ContextBuild
@@ -112,9 +112,20 @@ class WorldEngine:
         self._defaults_ensured = True
 
     def _build_client(self, config: HomeAssistantConfig) -> HomeAssistantClient:
+        """Jedyne miejsce, w którym powstaje klient HA — więc jedyne, w którym token
+        `env:NAZWA` zamienia się w prawdziwy sekret (`shared/secrets.py`, mirror
+        `ProviderRegistry.build_provider()` dla dostawców AI).
+
+        Sprawdzenia „czy HA jest skonfigurowane" wyżej patrzą na wartość SUROWĄ, więc
+        referencja liczy się jako konfiguracja obecna. Nieustawiona zmienna kończy się
+        odmową po stronie Home Assistant, a nie cichym wyłączeniem narzędzi — to ta sama
+        łagodna degradacja co przy błędnym tokenie wpisanym ręcznie."""
         if self._client_factory is not None:
             return self._client_factory(config)
-        return HomeAssistantClient(base_url=config.base_url, access_token=config.access_token)
+        return HomeAssistantClient(
+            base_url=config.base_url,
+            access_token=resolve_secret(config.access_token, field_name="access_token"),
+        )
 
     # --------------------------------------------------------------------------
     # Konfiguracja singletona Home Assistant

@@ -26,6 +26,11 @@ zainstalowana aplikacja, konfiguracja przez środowisko.
   nowej zależności) i nadpisania `REGIS_HOST` / `REGIS_PORT` / `REGIS_DEBUG`. Zmienne obecne
   w środowisku wygrywają z plikiem, więc `docker compose` jest przewidywalny. Wzorzec
   `.env.example` w korzeniu repozytorium.
+- **Referencje sekretów `env:NAZWA`** (`shared/secrets.py`) — wartość klucza API dostawcy albo
+  tokenu Home Assistant może wskazywać zmienną środowiskową zamiast trzymać sekret w pliku.
+  Wstecznie zgodne: istniejące klucze wpisane wprost działają dalej, nie ma czego migrować.
+  Model wielu nazwanych instancji zostaje nietknięty — każdy preset może wskazywać inną zmienną.
+  Web UI pokazuje referencję wprost (to nazwa zmiennej, nie sekret) i podpowiada składnię.
 - Jedno źródło prawdy dla wersji produktu (`shared/version.py`) + `CHANGELOG.md` i runbook wydania.
 - `GET /api/v1/health` zwraca `app_name` i `version` — dashboard Web UI pokazuje wreszcie nazwę
   aplikacji zamiast zawsze wpadać w gałąź zapasową.
