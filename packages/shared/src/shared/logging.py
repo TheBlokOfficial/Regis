@@ -64,6 +64,13 @@ def setup_logging(level: str = "INFO", log_file: Path | str | None = None) -> No
         pozwala odtworzyć pełny techniczny szczegół błędu (np. treść odpowiedzi API
         dostawcy LLM) bez pokazywania go użytkownikowi w UI, gdzie widoczny jest tylko
         ogólny komunikat (patrz `agent/engine.py`, obsługa błędów tury).
+
+    **Handler konsoli jest warunkowy.** W aplikacji zbudowanej PyInstallerem z flagą
+    `--noconsole` (satelita desktopowa) proces nie ma standardowego wyjścia i
+    `sys.stdout` bywa `None`. `logging.StreamHandler(None)` wysypuje się wtedy przy
+    pierwszym logu, czyli natychmiast po starcie — aplikacja bez okna umierałaby bez
+    śladu. W tym trybie zostaje sam plik logu, który i tak jest jedynym kanałem, jaki
+    użytkownik może otworzyć.
     """
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
@@ -74,15 +81,16 @@ def setup_logging(level: str = "INFO", log_file: Path | str | None = None) -> No
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    if hasattr(sys.stdout, "reconfigure"):
-        try:
-            sys.stdout.reconfigure(encoding="utf-8")
-        except Exception:
-            pass
+    if sys.stdout is not None:
+        if hasattr(sys.stdout, "reconfigure"):
+            try:
+                sys.stdout.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
 
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setFormatter(MinimalColorFormatter())
-    root_logger.addHandler(stream_handler)
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(MinimalColorFormatter())
+        root_logger.addHandler(stream_handler)
 
     if log_file is not None:
         log_path = Path(log_file)

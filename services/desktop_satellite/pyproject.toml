@@ -17,6 +17,17 @@ dependencies = [
     "shared",
 ]
 
+[dependency-groups]
+# Zależności potrzebne WYŁĄCZNIE do postaci zainstalowanej i jej budowania.
+# Nie w `dependencies`, bo uruchomienie ze źródeł (tryb --console) ma działać bez nich:
+# `main.py` degraduje wtedy do trybu konsolowego zamiast wywracać start.
+#     python -m uv sync --package desktop_satellite --group build
+build = [
+    "pystray>=0.19",   # ikona i menu w zasobniku systemowym
+    "Pillow>=10.0",    # wymagane przez pystray do renderowania ikony
+    "pyinstaller>=6.0",
+]
+
 [tool.uv.sources]
 shared = { workspace = true }
 

@@ -42,9 +42,20 @@ zainstalowana aplikacja, konfiguracja przez środowisko.
 - **Rejestr obecności klienta** (`voice/presence.py`) zamiast trzech gołych kolekcji wędrujących
   przez sygnatury dwóch fabryk routerów; `create_voice_router` schodzi z 9 do 7 parametrów,
   a rozłączenie sprząta cały ślad jednym wywołaniem.
+- **Build produkcyjny satelity desktopowej** — aplikacja bez okna konsoli z ikoną
+  w zasobniku (`tray.py`), autostart Windows/Linux jako przełącznik w menu (`autostart.py`),
+  skrypty `build.*` i `install.*`. Punkt wejścia rozbity na `app.py` (pętla `asyncio`
+  w wątku roboczym) i `main.py` (cienki), bo `pystray` wymaga wątku głównego.
 - Jedno źródło prawdy dla wersji produktu (`shared/version.py`) + `CHANGELOG.md` i runbook wydania.
 - `GET /api/v1/health` zwraca `app_name` i `version` — dashboard Web UI pokazuje wreszcie nazwę
   aplikacji zamiast zawsze wpadać w gałąź zapasową.
+
+### Naprawione
+- `SatelliteApp.stop()` wołane tuż po `start()` nie robiło nic — pętla `asyncio` nie
+  zdążyła jeszcze powstać, więc „Zakończ" z menu zasobnika zamykało ikonę, zostawiając
+  proces uruchomiony. Znalezione przez test, nie w trakcie używania.
+- `setup_logging()` przewracał aplikację zbudowaną z `--noconsole`: `StreamHandler(None)`
+  wysypywał się przy pierwszym logu, czyli natychmiast po starcie, bez żadnego śladu.
 
 ### Zmienione
 - `GET /api/v1/voice/status` liczy `is_production_ready` z właściwości `is_placeholder`
