@@ -94,6 +94,19 @@ def test_handshake_capabilities_are_captured_and_released(tmp_path: Path) -> Non
     assert not presence.is_connected("test_sender_1")
 
 
+def test_handshake_announces_initial_listening_state(tmp_path: Path) -> None:
+    """Stan początkowy nie jest przejściem automatu, ale musi zasilić dashboard."""
+    presence = ClientPresenceRegistry()
+    client = _make_client(presence, tmp_path)
+
+    with client.websocket_connect("/ws/voice/test_sender_1") as ws:
+        ws.send_text(json.dumps({"type": "hello", "capabilities": ["mic", "speaker"]}))
+        assert json.loads(ws.receive_text())["type"] == "client_config"
+        assert presence.states == {"test_sender_1": "LISTENING_WAKEWORD"}
+
+    assert presence.states == {}
+
+
 def test_get_connected_reflects_presence_registry(tmp_path: Path) -> None:
     presence = ClientPresenceRegistry()
     presence.connect("sender_b")

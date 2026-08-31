@@ -269,6 +269,10 @@ class VoiceConnection:
         self._presence.declare_capabilities(self.sender_id, frame.capabilities)
         logger.info(f"Satelita połączona [sender_id: '{self.sender_id}'], możliwości: {frame.capabilities}.")
 
+        # Konstruktor sesji ustawia LISTENING_WAKEWORD bez przejścia stanu, więc
+        # dashboard potrzebuje pierwszej jawnej publikacji po poprawnym handshake.
+        await self.session.announce_current_state()
+
         settings = self._settings_loader()
         await self.send_client_config(settings.vad_silence_duration_ms, settings.vad_amplitude_threshold)
 

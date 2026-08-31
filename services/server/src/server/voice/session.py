@@ -93,6 +93,18 @@ class VoiceSession:
             VoiceEventType.SATELLITE_STATE_CHANGED, {"sender_id": self.sender_id, "state": state.name}
         )
 
+    async def announce_current_state(self) -> None:
+        """Publikuje stan początkowy po zakończonym handshake.
+
+        Konstruktor zaczyna od ``LISTENING_WAKEWORD``, więc nie przechodzi przez
+        ``_set_state``. Bez jawnej publikacji dashboard nie znał stanu aż do pierwszej
+        realnej zmiany i pokazywał kreskę mimo działającego połączenia.
+        """
+        await self._publish_event(
+            VoiceEventType.SATELLITE_STATE_CHANGED,
+            {"sender_id": self.sender_id, "state": self.state.name},
+        )
+
     async def handle_audio_frame(self, chunk: bytes) -> None:
         """Ramka binarna PCM od satelity — znaczenie zależy od bieżącego stanu."""
         if self.state == SessionState.LISTENING_WAKEWORD:
